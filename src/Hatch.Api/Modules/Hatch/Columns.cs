@@ -92,7 +92,7 @@ public static class Columns
     /// hardcoded "review" would be a rule that quietly stopped applying.
     ///
     /// <para>It is a landmark as well as a column: <see cref="Implementation"/>
-    /// is measured from it, and the attention panel's pull request half is the
+    /// is measured from it where no column is ticked, and the attention panel's pull request half is the
     /// issues standing in it.</para>
     /// </summary>
     public static EfHatchStatus? AwaitingReview(List<EfHatchStatus> statuses)
@@ -105,19 +105,28 @@ public static class Columns
     }
 
     /// <summary>
-    /// The column where an agent writes the code: the one whose own next move
-    /// is into the awaiting-review column. Null on a board too short to have
-    /// one, where a dependency therefore gates nothing.
+    /// The column where an agent writes the code: the one a person ticked
+    /// <em>Code written here</em> on. Where none is ticked, the one whose own
+    /// next move is into the awaiting-review column. Null only on an unticked
+    /// board too short to have one, where a dependency therefore gates nothing.
     /// </summary>
     /// <remarks>
-    /// On a stock board that is "In Progress", and the gated move is "To Do" to
-    /// "In Progress" - the one transition where code gets written. Measured and
-    /// not named, for the reason <see cref="AwaitingReview"/> is: an operator
-    /// renames columns, and a hardcoded name is a rule that quietly stops
-    /// applying.
+    /// The measurement holds only on the stock layout, where it is "In
+    /// Progress" and the gated move is "To Do" to "In Progress" - the one
+    /// transition where code gets written. A board with agent check columns
+    /// between building and review measures the last check column instead,
+    /// which is why a person can tick the right one. Measured and not named,
+    /// for the reason <see cref="AwaitingReview"/> is: an operator renames
+    /// columns, and a hardcoded name is a rule that quietly stops applying.
+    ///
+    /// <para>A tick on a deferred or terminal column is ignored. The route
+    /// refuses to set one there, but a column can become either after it was
+    /// ticked, and the board then answers as if nothing were ticked. It reads
+    /// the list it is handed, with no database call.</para>
     /// </remarks>
     public static EfHatchStatus? Implementation(List<EfHatchStatus> statuses) =>
-        AwaitingReview(statuses) is { } review
+        statuses.FirstOrDefault(s => s.IsImplementation && !s.IsDeferred && !s.IsTerminal)
+        ?? (AwaitingReview(statuses) is { } review
             ? statuses.FirstOrDefault(s => Advance(statuses, s)?.Id == review.Id)
-            : null;
+            : null);
 }

@@ -3888,6 +3888,161 @@ public class WorkControllerTests
         Assert.Equal(HopKinds.Express, entry.HopKind);
     }
 
+    // ---- The ticked implementation column (HAT-2) ----
+    //
+    // The measured implementation column holds only on the stock layout. The
+    // nine-column board below has agent check columns between building and the
+    // merge gate, so it measures QA. Ticked, the three rules keyed on the
+    // column - the dependency gate, the open-children fold and the parent
+    // pull - follow the tick; unticked, they answer as they always have.
+
+    private const string WaitingOn = "is not done, and this cannot be implemented until it is";
+
+    private const string NotReached =
+        "its parent has not reached the implementation column, so nothing pulls it forward yet";
+
+    private static QueueEntryDto Row(ActionResult<IReadOnlyList<QueueEntryDto>> queue, EfHatchIssue issue) =>
+        Value(queue).Single(e => e.Issue.Key == Key(issue));
+
+    [Fact]
+    public async Task Ticked_ADependencyGatesToDoToBuilding_AndNotRuleCheckToQa()
+    {
+        var h = await NewAsync();
+        var nine = await h.NineColumnsAsync();
+        await h.TickImplementationAsync(h.InProgress);
+        var blocker = await h.FileAsync("story", "unmerged", h.Review);
+        var inTodo = await h.FileAsync("story", "waits", h.Todo);
+        var inCheck = await h.FileAsync("story", "already building", nine.RuleCheck);
+        await h.DependsAsync(inTodo, blocker);
+        await h.DependsAsync(inCheck, blocker);
+
+        var queue = await h.Work.GetQueue(0, null, default);
+
+        Assert.Equal($"{Key(blocker)} {WaitingOn}", Row(queue, inTodo).Blocked);
+        Assert.Null(Row(queue, inCheck).Blocked);
+        Assert.Equal($"{Key(blocker)} {WaitingOn}", Value(await h.Work.GetWork(Key(inTodo), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Ticked_TheOpenChildrenFoldIsOutOfBuilding_AndNotOutOfQa()
+    {
+        var h = await NewAsync();
+        var nine = await h.NineColumnsAsync();
+        await h.TickImplementationAsync(h.InProgress);
+        var building = await h.FileAsync("story", "building", h.InProgress);
+        await h.FileAsync("task", "open", h.Todo, parentId: building.Id);
+        var inQa = await h.FileAsync("story", "in qa", nine.Qa);
+        await h.FileAsync("task", "open", h.Todo, parentId: inQa.Id);
+
+        var queue = await h.Work.GetQueue(0, null, default);
+
+        Assert.Equal("its children are the work, and some are still open", Row(queue, building).Blocked);
+        Assert.Null(Row(queue, inQa).Blocked);
+    }
+
+    [Fact]
+    public async Task Ticked_AParentInBuildingPullsItsChild_AndOneInQaDoesNot()
+    {
+        var h = await NewAsync();
+        var nine = await h.NineColumnsAsync();
+        await h.TickImplementationAsync(h.InProgress);
+        var building = await h.FileAsync("story", "building", h.InProgress);
+        var pulled = await h.FileAsync("task", "pulled", nine.Backlog, parentId: building.Id);
+        var inQa = await h.FileAsync("story", "in qa", nine.Qa);
+        var waiting = await h.FileAsync("task", "waiting", nine.Backlog, parentId: inQa.Id);
+
+        var queue = await h.Work.GetQueue(0, null, default);
+
+        var yes = Row(queue, pulled);
+        Assert.Null(yes.Blocked);
+        Assert.True(yes.Hop);
+        Assert.Equal(HopKinds.Parent, yes.HopKind);
+        Assert.Equal(h.Todo, Value(await h.Work.HopWork(Key(pulled), null, null, null, default)).StatusId);
+
+        var no = Row(queue, waiting);
+        Assert.Equal(NotReached, no.Blocked);
+        Assert.False(no.Hop);
+    }
+
+    [Fact]
+    public async Task Unticked_ADependencyGatesRuleCheckToQa_AsToday()
+    {
+        var h = await NewAsync();
+        var nine = await h.NineColumnsAsync();
+        var blocker = await h.FileAsync("story", "unmerged", h.Review);
+        var inTodo = await h.FileAsync("story", "waits", h.Todo);
+        var inCheck = await h.FileAsync("story", "in rule check", nine.RuleCheck);
+        await h.DependsAsync(inTodo, blocker);
+        await h.DependsAsync(inCheck, blocker);
+
+        var queue = await h.Work.GetQueue(0, null, default);
+
+        Assert.Equal($"{Key(blocker)} {WaitingOn}", Row(queue, inCheck).Blocked);
+        Assert.Null(Row(queue, inTodo).Blocked);
+    }
+
+    [Fact]
+    public async Task Unticked_TheOpenChildrenFoldIsOutOfQa_AsToday()
+    {
+        var h = await NewAsync();
+        var nine = await h.NineColumnsAsync();
+        var building = await h.FileAsync("story", "building", h.InProgress);
+        await h.FileAsync("task", "open", h.Todo, parentId: building.Id);
+        var inQa = await h.FileAsync("story", "in qa", nine.Qa);
+        await h.FileAsync("task", "open", h.Todo, parentId: inQa.Id);
+
+        var queue = await h.Work.GetQueue(0, null, default);
+
+        Assert.Equal("its children are the work, and some are still open", Row(queue, inQa).Blocked);
+        Assert.Null(Row(queue, building).Blocked);
+    }
+
+    [Fact]
+    public async Task Unticked_AParentInQaPullsItsChild_AsToday()
+    {
+        var h = await NewAsync();
+        var nine = await h.NineColumnsAsync();
+        var inQa = await h.FileAsync("story", "in qa", nine.Qa);
+        var pulled = await h.FileAsync("task", "pulled", nine.Backlog, parentId: inQa.Id);
+        var building = await h.FileAsync("story", "building", h.InProgress);
+        var waiting = await h.FileAsync("task", "waiting", nine.Backlog, parentId: building.Id);
+
+        var queue = await h.Work.GetQueue(0, null, default);
+
+        Assert.Equal(HopKinds.Parent, Row(queue, pulled).HopKind);
+        Assert.Equal(NotReached, Row(queue, waiting).Blocked);
+    }
+
+    [Theory]
+    [InlineData("deferred")]
+    [InlineData("terminal")]
+    public async Task AStaleTick_IsIgnored(string how)
+    {
+        var h = await NewAsync();
+        var nine = await h.NineColumnsAsync();
+        if (how == "deferred")
+        {
+            await h.TickImplementationAsync(nine.Draft);
+            (await h.Db.Statuses.FirstAsync(s => s.Id == nine.Draft)).IsDeferred = true;
+            await h.Db.SaveChangesAsync();
+        }
+        else
+        {
+            await h.TickImplementationAsync(h.Done);
+        }
+
+        var blocker = await h.FileAsync("story", "unmerged", h.Review);
+        var inTodo = await h.FileAsync("story", "waits", h.Todo);
+        var inCheck = await h.FileAsync("story", "in rule check", nine.RuleCheck);
+        await h.DependsAsync(inTodo, blocker);
+        await h.DependsAsync(inCheck, blocker);
+
+        var queue = await h.Work.GetQueue(0, null, default);
+
+        Assert.Equal($"{Key(blocker)} {WaitingOn}", Row(queue, inCheck).Blocked);
+        Assert.Null(Row(queue, inTodo).Blocked);
+    }
+
     // ---- The pull: an epic and its stories (HA-113) ----
     //
     // A sub-epic standing in a column outside the WIP section whose next
@@ -6226,6 +6381,9 @@ public class WorkControllerTests
 
     private static readonly DateTimeOffset Now = new(2026, 9, 2, 12, 0, 0, TimeSpan.Zero);
 
+    /// <summary>The four columns <see cref="Harness.NineColumnsAsync"/> adds.</summary>
+    private sealed record NineColumns(int Draft, int Backlog, int RuleCheck, int Qa);
+
     private sealed class Harness
     {
         public required HatchContext Db { get; init; }
@@ -6449,6 +6607,51 @@ public class WorkControllerTests
             var status = await Db.Statuses.FirstAsync(s => s.Id == statusId);
             status.ParentPulls = true;
             await Db.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// <em>Code written here</em>, written straight onto the column - what
+        /// the route that writes it accepts and refuses is HAT-3's, in
+        /// <c>IssuesControllerTests</c>; these tests are about what the
+        /// dispatcher does with a ticked column once it is there - see HAT-2.
+        /// </summary>
+        public async Task TickImplementationAsync(int statusId)
+        {
+            var status = await Db.Statuses.FirstAsync(s => s.Id == statusId);
+            status.IsImplementation = true;
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// Turns the stock board into Draft, Inbox, Backlog, To Do, Building,
+        /// Rule Check, QA, Ready to Merge, Done, keeping every stock id: the
+        /// five stock columns are renamed, four are added, and the deferred
+        /// siding stays between Building and Rule Check. Backlog pulls. On
+        /// this board the measured implementation column is QA, not Building.
+        /// </summary>
+        public async Task<NineColumns> NineColumnsAsync()
+        {
+            async Task Rename(int id, string name) => (await Db.Statuses.FirstAsync(s => s.Id == id)).Name = name;
+            await Rename(Inbox, "Inbox");
+            await Rename(Todo, "To Do");
+            await Rename(InProgress, "Building");
+            await Rename(Review, "Ready to Merge");
+            await Rename(Done, "Done");
+
+            var draft = new EfHatchStatus { Name = "Draft", SortOrder = 5 };
+            var backlog = new EfHatchStatus { Name = "Backlog", SortOrder = 15, ParentPulls = true };
+            var ruleCheck = new EfHatchStatus { Name = "Rule Check", SortOrder = 33 };
+            var qa = new EfHatchStatus { Name = "QA", SortOrder = 34 };
+            Db.AddRange(draft, backlog, ruleCheck, qa);
+            await Db.SaveChangesAsync();
+
+            Db.AddRange(
+                Playbook(InProgress, ruleCheck.Id, "", "sonnet"),
+                Playbook(ruleCheck.Id, qa.Id, "", "sonnet"),
+                Playbook(qa.Id, Review, "", "sonnet"));
+            await Db.SaveChangesAsync();
+
+            return new NineColumns(draft.Id, backlog.Id, ruleCheck.Id, qa.Id);
         }
 
         /// <summary>
