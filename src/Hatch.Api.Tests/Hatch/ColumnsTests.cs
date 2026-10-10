@@ -104,4 +104,43 @@ public class ColumnsTests
 
         Assert.Equal(review.Id, Columns.Target(board, doing)?.Id);
     }
+
+    [Fact]
+    public void PlainBoard_SendBackIsTodo()
+    {
+        var todo = S(1, "To Do", 10);
+        var doing = S(2, "Doing", 20);
+        var review = S(3, "Review", 30);
+        var done = S(4, "Done", 40, terminal: true);
+        var board = new List<EfHatchStatus> { todo, doing, review, done };
+
+        Assert.Equal(todo.Id, Columns.SendBack(board)?.Id);
+    }
+
+    [Fact]
+    public void NoImplementationColumn_SendBackIsNull()
+    {
+        var review = S(1, "Review", 10);
+        var done = S(2, "Done", 20, terminal: true);
+        var board = new List<EfHatchStatus> { review, done };
+
+        Assert.Null(Columns.Implementation(board));
+        Assert.Null(Columns.SendBack(board));
+    }
+
+    [Fact]
+    public void RenamedBoard_SendBackIsMeasuredByPosition_NotByName()
+    {
+        var alpha = S(1, "Alpha", 10);
+        var beta = S(2, "Beta", 20);
+        var gamma = S(3, "Gamma", 30);
+        var delta = S(4, "Delta", 40, terminal: true);
+        var board = new List<EfHatchStatus> { alpha, beta, gamma, delta };
+
+        // Shaped exactly like PlainBoard_SendBackIsTodo, with none of its
+        // names - Implementation lands on "Beta", not on anything called
+        // "Doing", and SendBack names "Alpha" the same way.
+        Assert.Equal(beta.Id, Columns.Implementation(board)?.Id);
+        Assert.Equal(alpha.Id, Columns.SendBack(board)?.Id);
+    }
 }

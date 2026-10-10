@@ -1163,6 +1163,89 @@ public class WorkControllerTests
         Assert.Equal(HopKinds.Parent, entry.HopKind);
     }
 
+    // ---- Brief limit, the send-back hop ----
+    //
+    // The same fold, carried one step further: a childless issue over its
+    // playbook's BriefLimit does not merely sit where it is - the loop writes
+    // it back to the column that feeds the implementation column, with no
+    // session. See HA-394.
+
+    [Fact]
+    public async Task Hop_AnOverLongChildlessIssueInImplementation_SendsBackToTheFeederColumn()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.InProgress, h.Review, "story", "sonnet", briefLimit: 1000));
+        var already = await h.FileAsync("story", "already in the feeder column", h.Todo, rank: 1024);
+        var issue = await h.FileAsync("story", "too long to spawn on", h.InProgress);
+        issue.Description = new string('x', 1001);
+        await h.Db.SaveChangesAsync();
+
+        var moved = Value(await h.Work.HopWork(Key(issue), null, null, null, default));
+        var row = await h.Db.Issues.FirstAsync(i => i.Id == issue.Id);
+
+        Assert.Equal(h.Todo, moved.StatusId);
+        Assert.Equal(h.Todo, row.StatusId);
+        Assert.True(row.Rank > already.Rank);
+    }
+
+    [Fact]
+    public async Task Hop_WritesOneStatusChangedEventNamingTheCallerAndCarryingSendBack()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.InProgress, h.Review, "story", "sonnet", briefLimit: 1000));
+        var issue = await h.FileAsync("story", "too long to spawn on", h.InProgress);
+        issue.Description = new string('x', 1001);
+        await h.Db.SaveChangesAsync();
+
+        await h.Work.HopWork(Key(issue), null, null, null, default);
+
+        var row = await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id);
+        var e = Assert.Single(row.Events);
+        Assert.Equal(EfHatchIssueEvent.StatusChanged, e.Kind);
+        Assert.Equal("hatch-loop", e.Actor);
+        var payload = System.Text.Json.JsonDocument.Parse(e.Payload!).RootElement;
+        Assert.True(payload.GetProperty("sendback").GetBoolean());
+        Assert.Equal(1001, payload.GetProperty("length").GetInt32());
+        Assert.Equal(1000, payload.GetProperty("limit").GetInt32());
+    }
+
+    [Fact]
+    public async Task Hop_ABriefOverTheLimit_WithAChild_IsNotASendBackHop()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.InProgress, h.Review, "story", "sonnet", briefLimit: 1000));
+        var issue = await h.FileAsync("story", "too long, but already broken down", h.InProgress);
+        issue.Description = new string('x', 1001);
+        await h.Db.SaveChangesAsync();
+        // Terminal, so this is not also folded by "its children are the work,
+        // and some are still open" above the send-back check - the point here
+        // is specifically that a childless issue is the only one a send-back
+        // hop ever carries.
+        await h.FileAsync("task", "a child, already done", h.Done, parentId: issue.Id);
+
+        var result = await h.Work.HopWork(Key(issue), null, null, null, default);
+
+        Assert.Equal(StatusCodes.Status409Conflict, ((ObjectResult)result.Result!).StatusCode);
+        Assert.Empty((await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id)).Events);
+    }
+
+    [Fact]
+    public async Task Hop_ABriefOverTheLimit_StandingInTheFeederColumn_IsNotASendBackHop()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.Todo, h.InProgress, "story", "sonnet", briefLimit: 1000));
+        var issue = await h.FileAsync("story", "too long, standing in the feeder column itself", h.Todo);
+        issue.Description = new string('x', 1001);
+        await h.Db.SaveChangesAsync();
+
+        var work = Value(await h.Work.GetWork(Key(issue), null, default));
+
+        var sentence = $"its brief is {1001.ToString("N0", CultureInfo.InvariantCulture)} characters, " +
+                        $"and this move is spawned on at most {1000.ToString("N0", CultureInfo.InvariantCulture)} - cut it into tasks first";
+        Assert.Equal(sentence, work.Blocked);
+        Assert.False(work.Hop);
+    }
+
     // ---- Refusals ----
 
     /// <summary>

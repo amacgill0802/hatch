@@ -408,7 +408,7 @@ public class WorkController(
 
         var wip = await Wip.LoadAsync(db, claims, statuses, now, ct);
         var parent = family.ParentOf(issue.Id);
-        var hopKind = to is null ? null : Dispatch.HopKind(issue, from, to, family, statuses, wip, parent);
+        var hopKind = to is null ? null : Dispatch.HopKind(issue, from, to, family, statuses, wip, parent, playbook);
         var hop = hopKind is not null;
         var letGo = await LetGo.ForIssueAsync(db, issue.Id, ct);
         var blocked = Dispatch.Blocked(
@@ -427,7 +427,7 @@ public class WorkController(
         if (blocked is not null) return Conflict(blocked);
         if (!hop) return Conflict($"{key} is not a hop - a session moves this issue, and a hop does not");
 
-        var target = to!;
+        var target = hopKind == HopKinds.SendBack ? Columns.SendBack(statuses)! : to!;
         var actor = await caller.ActorNameAsync(ct);
 
         var payload = hopKind switch
@@ -435,6 +435,11 @@ public class WorkController(
             HopKinds.Parent => JsonSerializer.Serialize(new { from = from.Name, to = target.Name, pulled = true }),
             HopKinds.Epic => JsonSerializer.Serialize(new { from = from.Name, to = target.Name, epic = true }),
             HopKinds.Under => JsonSerializer.Serialize(new { from = from.Name, to = target.Name, under = parent?.Key }),
+            HopKinds.SendBack => JsonSerializer.Serialize(new
+            {
+                from = from.Name, to = target.Name, sendback = true,
+                length = issue.Description.Length, limit = playbook?.BriefLimit,
+            }),
             _ => JsonSerializer.Serialize(new { from = from.Name, to = target.Name, express = true }),
         };
 
@@ -633,7 +638,7 @@ public class WorkController(
             .ToList();
 
         var hopParent = family.ParentOf(issue.Id);
-        var hopKind = to is null ? null : Dispatch.HopKind(issue, from, to, family, statuses, wip, hopParent);
+        var hopKind = to is null ? null : Dispatch.HopKind(issue, from, to, family, statuses, wip, hopParent, playbook);
         var hop = hopKind is not null;
         var letGo = await LetGo.ForIssueAsync(db, issue.Id, ct);
         var blocked = Dispatch.Blocked(

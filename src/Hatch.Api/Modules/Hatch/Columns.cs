@@ -129,4 +129,18 @@ public static class Columns
         ?? (AwaitingReview(statuses) is { } review
             ? statuses.FirstOrDefault(s => Advance(statuses, s)?.Id == review.Id)
             : null);
+
+    /// <summary>
+    /// The column that feeds <see cref="Implementation"/>: the one whose own
+    /// <see cref="Target"/> is the implementation column, measured the same
+    /// way <see cref="Implementation"/>'s own fallback measures the
+    /// awaiting-review column's feeder - off <c>Target</c>, since that is what
+    /// every forward dispatch actually reads, rather than the structurally-next
+    /// column. Null on a board with no implementation column, and null where
+    /// nothing's <c>Target</c> lands on it.
+    /// </summary>
+    public static EfHatchStatus? SendBack(List<EfHatchStatus> statuses) =>
+        Implementation(statuses) is { } implementation
+            ? statuses.FirstOrDefault(s => Target(statuses, s)?.Id == implementation.Id)
+            : null;
 }

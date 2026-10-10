@@ -1393,7 +1393,7 @@ public static class WorkKinds
     public const string Build = "build";
 }
 
-/// <summary>Which of the four reasons carried a hop - see WorkDto.HopKind.</summary>
+/// <summary>Which of the five reasons carried a hop - see WorkDto.HopKind.</summary>
 public static class HopKinds
 {
     /// <summary>An express issue, in a column marked <see cref="StatusDto.ExpressSkips"/>.</summary>
@@ -1413,6 +1413,12 @@ public static class HopKinds
     /// inside the WIP section - see HA-113.
     /// </summary>
     public const string Under = "under";
+
+    /// <summary>
+    /// A childless issue whose brief is over its playbook's BriefLimit, sent back
+    /// to the column that feeds the implementation column - see HA-394.
+    /// </summary>
+    public const string SendBack = "sendback";
 }
 
 /// <summary>
