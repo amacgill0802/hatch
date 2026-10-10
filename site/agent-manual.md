@@ -308,8 +308,9 @@ Prints `<key> -> <column>`.
 
 Output is always two lines: `<key> waits on a, b` or `<key> waits on
 nothing`, then `a, b wait on <key>` or `nothing waits on <key>`. An edge
-gates one move, into the implementation column, and clears when the issue it
-names is in a terminal column.
+gates one move, into the implementation column (the one ticked *Code written
+here* on the Statuses page, or the one just left of review where none is), and
+clears when the issue it names is in a terminal column.
 
 ### `hatch ask AER-12 "the question" [--option "Label: detail"]... [--recommend "Label: detail"]`
 

@@ -234,7 +234,7 @@ exists to prevent.
 ### Status
 
 `EfHatchStatus` — `Name` (unique), `SortOrder`, `IsTerminal`, `IsDeferred`,
-`IsWip`, `ExpressSkips`, `ParentPulls`, `AgentFiles`, `Color` (`#rrggbb`).
+`IsWip`, `ExpressSkips`, `ParentPulls`, `AgentFiles`, `IsImplementation`, `Color` (`#rrggbb`).
 
 One row is one column on the board. **Global, not per-project**, because the
 board shows every project at once and a per-project set would have no column to
@@ -324,6 +324,28 @@ status write — neither `POST /api/hatch/statuses` nor
 `PATCH /api/hatch/statuses/{id}` can set it. A board with nothing ticked files
 every issue leftmost, whoever files it, exactly as it always has.
 
+`IsImplementation` marks the implementation column, the one where code gets
+written, labelled *Code written here* on the Statuses page. Every rule keyed on
+that column follows it: a [dependency](#dependency) holds the move into it, an
+issue with a child still open is not carried out of it, and
+[`ParentPulls`](#the-hop) carries a child on while its parent stands in it. All
+three read `Columns.Implementation`. At most one column ever holds it —
+`PUT /api/hatch/statuses/{id}/implementation` clears every other row when it
+ticks one, the same way `agent-files` does. Ticking a deferred or terminal
+column is refused with a 400 naming the column; unticking is always accepted.
+It is read only where the column is neither deferred nor terminal: a tick
+stranded on a column that has since become either is ignored, and the board
+answers as if nothing were ticked, the same guard `IsWip` and `AgentFiles` read
+under. Set only by a person, through its own route, for the reason under
+["the one edge that is deliberately cut"](#the-one-edge-that-is-deliberately-cut):
+it decides which move a dependency holds, and a key that could move it could
+ungate its own ticket. Neither `POST /api/hatch/statuses` nor
+`PATCH /api/hatch/statuses/{id}` can set it: a new column starts unticked, and a
+PATCH of other fields leaves it as it was. **Nothing ticked means measured,
+exactly as before.** The implementation column is then the one whose own next
+move is into the awaiting-review column (see [Dependency](#dependency)). No
+migration ticks it, so the stock board is measured.
+
 `Color` is a column rather than a palette keyed on the shipped names, because
 the operator invents columns — a lookup by name would leave a new one grey
 forever and lose a renamed one's colour. The ink written on a colour is computed
@@ -347,7 +369,7 @@ the flag existed.
 | Breakdown | 20 | | | **agent** | Turn the draft into a specification: acceptance criteria on the issue, children under it. |
 | Backlog | 30 | | | operator | Specified work, awaiting selection. `AgentFiles` is ticked here, so an issue a program files is born in this column. |
 | To Do | 40 | | | **agent**; an epic is pulled in with no session | Analyse it until implementing it is mechanical. |
-| In Progress | 50 | | ✓ | **agent** | Write the code, get it green, push it, put it up for review. |
+| In Progress | 50 | | ✓ | **agent** | Write the code, get it green, push it, put it up for review. Nothing is ticked `IsImplementation` on the stock board, so this is the implementation column by measurement: the one just left of review. |
 | In Review | 60 | | ✓ | operator; **agent** for a conflict or a failing build | Read the pull request, wait for green, merge. An agent steps in only when the branch has stopped merging with the trunk, or the build on its tip has failed, and fixes that on the branch — see [the review playbook](#playbooks). Conflicts come first. A build that is passing, still running or unread is left alone. |
 | Done | 70 | ✓ | | operator | Terminal. |
 
@@ -998,12 +1020,18 @@ waiting on another still goes through Breakdown, still lands in Backlog, and is
 still analysed — everything left of the writing keeps moving, which is the
 point. What it does not do is get picked up and written.
 
-That column is **measured rather than named**: the implementation column is the
-one whose own next move is into the awaiting-review column, which is itself the
-column immediately left of the first terminal one — exactly where the migration
-that added `review` placed it. On a stock board that is `To Do` to `In
-Progress`, the one transition where code gets written. Named, both would be
-rules that quietly stopped applying the day an operator renamed a column.
+That column is **ticked, and measured only where nothing is**. The
+implementation column is the one a person ticked *Code written here* on
+([`IsImplementation`](#status)), so long as that column is neither deferred nor
+terminal. Where nothing is ticked it is measured: the one whose own next move is
+into the awaiting-review column, which is itself the column immediately left of
+the first terminal one — exactly where the migration that added `review` placed
+it. On a stock board that is `To Do` to `In Progress`, the one transition where
+code gets written. The measurement holds only on that layout: a board with agent
+columns between building and review (`Building, Rule Check, QA, Ready to Merge`)
+would measure `QA`, and the tick is for that board. Neither is a name: a name
+would be a rule that quietly stopped applying the day an operator renamed a
+column, and the tick is held by the row, not by its name.
 
 An issue **already in** the implementation column is never gated. The move into
 review is not a dependency's to refuse, so work that started finishes rather
@@ -2015,6 +2043,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/statuses/{id}` | PATCH, DELETE | DELETE 409s while any issue holds it |
 | `/statuses/{id}/express-skips` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ expressSkips }` — which columns an [express](#express) issue is carried past with no session. Neither `POST /statuses` nor `PATCH /statuses/{id}` can set it |
 | `/statuses/{id}/parent-pulls` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ parentPulls }` — the column a child is carried on out of while its parent stands in the implementation column. Neither `POST /statuses` nor `PATCH /statuses/{id}` can set it |
+| `/statuses/{id}/implementation` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ isImplementation }` — the column where code gets written. Ticking one clears the rest; ticking a deferred or terminal column is refused with a 400, and unticking is always accepted. Neither `POST /statuses` nor `PATCH /statuses/{id}` can set it |
 | `/statuses/{id}/agent-files` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ agentFiles }` — the column a program's issue is born in. Neither `POST /statuses` nor `PATCH /statuses/{id}` can set it |
 | `/wip` | GET | `{ statusIds, slices }` — the flagged columns that are neither deferred nor terminal, in board order, and `slices`: always two entries, `{ types, limit }` for `story,bug` then `epic`, `limit` null where no row is held |
 | `/wip` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action. `{ limit?, epicLimit?, statusIds? }`, the bulk rule throughout: `limit` and `epicLimit` are each a string (`""` clears the slice, a whole number of one or more sets it, and each is validated before anything is touched — a good field beside a bad one changes neither), `statusIds` is the whole section (`[]` clears it) and refuses a column that does not exist, or one that is deferred or terminal. Re-sending what is held writes nothing |

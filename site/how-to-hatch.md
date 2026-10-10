@@ -190,7 +190,9 @@ puts them in. Five stories that are a sequence are a chain of four edges:
 hatch depends AER-13 AER-12     # AER-13 waits on AER-12
 ```
 
-An edge gates one move, into the implementation column, and clears only when
+An edge gates one move, into the implementation column (the one you ticked *Code
+written here* on the Statuses page, or, if you ticked none, the one just left of
+review), and clears only when
 the issue it names is in a terminal column. Merged, not merely up for review.
 So a chain advances at your merge, not at an agent's move. A blocked story is
 still broken down, still lands in Backlog, and is still analysed; it is just not
