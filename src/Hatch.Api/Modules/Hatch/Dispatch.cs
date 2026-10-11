@@ -209,7 +209,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                     var merged = verdicts.TryGetValue(issue.Id, out var found) ? found : [];
                     var built = builds.TryGetValue(issue.Id, out var foundBuilds) ? foundBuilds : [];
                     var parent = family.ParentOf(issue.Id);
-                    var hopKind = HopKind(issue, status, to, family, statuses, wip, parent);
+                    var hopKind = HopKind(issue, status, to, family, statuses, wip, parent, playbook);
                     var hop = hopKind is not null;
                     var hopUnder = hopKind == HopKinds.Under ? parent?.Key : null;
                     var letGo = issue.StalledAt is not null ? letGoCounts?.GetValueOrDefault(issue.Id, 0) ?? 0 : 0;
@@ -807,8 +807,11 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// Asked in order: an express issue in a ticked column; an epic standing
     /// outside the WIP section whose next column is inside it, with something
     /// filed under it and its own direct parent a running epic; a story or bug
-    /// in a ticked column whose parent is a running epic; and last, unrelated
-    /// to the WIP section, a child a ParentPulls column pulls (HA-149). A
+    /// in a ticked column whose parent is a running epic; a child a ParentPulls
+    /// column pulls (HA-149); and last, a childless issue whose brief is over
+    /// its playbook's BriefLimit, with <see cref="Columns.SendBack"/> naming a
+    /// column strictly left of the one it stands in (HA-394) - asked last so
+    /// nothing that is already one of the first four changes meaning. A
     /// top-level epic - one with no parent, or a parent that is not a running
     /// epic - is never carried by the second arm: only a person moves it in
     /// (HA-202). The order matters only where a board ticks both ExpressSkips
@@ -819,7 +822,8 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// </remarks>
     public static string? HopKind(
         EfHatchIssue issue, EfHatchStatus from, EfHatchStatus? to, FamilyGate family,
-        List<EfHatchStatus> statuses, WipSection? wip, FamilyGate.Parent? parent)
+        List<EfHatchStatus> statuses, WipSection? wip, FamilyGate.Parent? parent,
+        EfHatchPlaybook? playbook)
     {
         var crosses = to is not null && to.Id != from.Id;
 
@@ -838,6 +842,12 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         }
 
         if (from.ParentPulls && family.Pulls(issue, statuses)) return HopKinds.Parent;
+
+        if (playbook?.BriefLimit is { } limit && family.Children(issue.Id).Count == 0
+            && issue.Description.Length > limit
+            && Columns.SendBack(statuses) is { } sendBack
+            && Columns.Board(statuses).FindIndex(s => s.Id == sendBack.Id) < Columns.Board(statuses).FindIndex(s => s.Id == from.Id))
+            return HopKinds.SendBack;
 
         return null;
     }
