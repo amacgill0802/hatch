@@ -27,7 +27,8 @@ public class IssuesController(
     IActorDirectory actors,
     IssueClaims claims,
     ICallerIdentity caller,
-    TimeProvider time) : ControllerBase
+    TimeProvider time,
+    IProjectAccess access) : ControllerBase
 {
     /// <summary>
     /// How many times a create will re-read the project and try again. Five is
