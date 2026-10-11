@@ -209,6 +209,64 @@ public sealed class ClaimTests
     }
 
     /// <summary>
+    /// HA-405: a handler attached after the background heartbeat has already
+    /// recorded a lost lease still gets called, exactly once, with the sentence
+    /// already known - closing the race where <c>OnLost</c> was still null the
+    /// moment the heartbeat tried to call it.
+    /// </summary>
+    [Fact]
+    public async Task A_handler_attached_after_the_lease_is_already_lost_still_gets_it_once()
+    {
+        using var h = new Harness();
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.Conflict,
+            "\"this claim was taken over\"");
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+
+        var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
+
+        // No OnLost attached yet: the lease is lost with nobody listening.
+        await Harness.Eventually(() => claim!.Lost is not null, "the lease to be reported lost");
+
+        var stopped = 0;
+        string? sentence = null;
+        claim!.OnLost = s => { Interlocked.Increment(ref stopped); sentence = s; };
+
+        Assert.Equal(1, stopped);
+        Assert.Equal("this claim was taken over", sentence);
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>
+    /// HA-405: the same shape for <c>Preempted</c>/<c>OnPreempted</c> - a
+    /// handler attached after the notice already arrived still gets it once.
+    /// </summary>
+    [Fact]
+    public async Task A_handler_attached_after_the_notice_is_already_recorded_still_gets_it_once()
+    {
+        using var h = new Harness();
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Once("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.OK, Fixtures.Preempted("AER-9", "Trunk is down"));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+
+        var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
+
+        // No OnPreempted attached yet: the notice arrives with nobody listening.
+        await Harness.Eventually(() => claim!.Preempted is not null, "the preemption to be reported");
+
+        var notifications = 0;
+        ClaimPreemptedDto? notified = null;
+        claim!.OnPreempted = p => { Interlocked.Increment(ref notifications); notified = p; };
+
+        Assert.Equal(1, notifications);
+        Assert.Equal("AER-9", notified!.Key);
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>
     /// HA-169: a <c>200</c> with a preemption notice is not a lost lease - the
     /// lease is still good, so the heartbeat keeps beating past it, unlike the
     /// lost-lease test right above this one.
