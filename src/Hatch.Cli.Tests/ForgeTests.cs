@@ -378,14 +378,15 @@ public sealed class ForgeTests
     [Fact]
     public async Task It_asks_gh_pr_view_with_the_url_as_given_and_no_hostname()
     {
-        var runs = new Runs { Answer = _ => new GhForge.Ran(0, """{"state":"MERGED"}""", "") };
+        var runs = new Runs { Answer = _ => new GhForge.Ran(0, """{"state":"MERGED","headRefOid":"abc123"}""", "") };
 
         var answer = await runs.Forge().ReadPullRequestAsync("https://forge.example/owner/repo/pull/7", default);
 
         Assert.Equal(PullRequestStates.Merged, answer.State);
+        Assert.Equal("abc123", answer.HeadSha);
         Assert.Null(answer.Why);
         var call = Assert.Single(runs.Calls);
-        Assert.Equal(["pr", "view", "https://forge.example/owner/repo/pull/7", "--json", "state"], call.Args);
+        Assert.Equal(["pr", "view", "https://forge.example/owner/repo/pull/7", "--json", "state,headRefOid"], call.Args);
         Assert.DoesNotContain("--hostname", call.Args);
         Assert.Equal("forge.example/owner/repo", call.Env["GH_REPO"]);
     }
@@ -431,6 +432,57 @@ public sealed class ForgeTests
         var answer = await runs.Forge(canonical: "/srv/git/repo.git").ReadPullRequestAsync("https://forge.example/owner/repo/pull/7", default);
 
         Assert.Null(answer.State);
+        Assert.Contains("local path", answer.Why, StringComparison.Ordinal);
+        Assert.Empty(runs.Calls);
+    }
+
+    // ---- MergeAsync ----
+
+    [Fact]
+    public async Task It_asks_gh_pr_merge_with_the_url_and_sha_and_no_hostname()
+    {
+        var runs = new Runs { Answer = _ => new GhForge.Ran(0, "", "") };
+
+        var answer = await runs.Forge().MergeAsync("https://forge.example/owner/repo/pull/7", "abc123", default);
+
+        Assert.True(answer.Merged);
+        Assert.Null(answer.Why);
+        var call = Assert.Single(runs.Calls);
+        Assert.Equal(["pr", "merge", "https://forge.example/owner/repo/pull/7", "--merge", "--admin", "--match-head-commit", "abc123"], call.Args);
+        Assert.DoesNotContain("--hostname", call.Args);
+        Assert.Equal("forge.example/owner/repo", call.Env["GH_REPO"]);
+    }
+
+    [Fact]
+    public async Task A_gh_that_refuses_the_merge_says_the_first_line_it_said()
+    {
+        var runs = new Runs { Answer = _ => new GhForge.Ran(1, "", "\nthe base branch was modified\nmore\n") };
+
+        var answer = await runs.Forge().MergeAsync("https://forge.example/owner/repo/pull/7", "abc123", default);
+
+        Assert.False(answer.Merged);
+        Assert.Equal("the base branch was modified", answer.Why);
+    }
+
+    [Fact]
+    public async Task A_missing_gh_is_said_in_one_line_for_a_merge_too()
+    {
+        var runs = new Runs { Answer = _ => new GhForge.Ran(-1, "", "") };
+
+        var answer = await runs.Forge().MergeAsync("https://forge.example/owner/repo/pull/7", "abc123", default);
+
+        Assert.False(answer.Merged);
+        Assert.Equal("gh is not installed", answer.Why);
+    }
+
+    [Fact]
+    public async Task A_local_path_asks_gh_nothing_for_a_merge()
+    {
+        var runs = new Runs();
+
+        var answer = await runs.Forge(canonical: "/srv/git/repo.git").MergeAsync("https://forge.example/owner/repo/pull/7", "abc123", default);
+
+        Assert.False(answer.Merged);
         Assert.Contains("local path", answer.Why, StringComparison.Ordinal);
         Assert.Empty(runs.Calls);
     }
