@@ -104,33 +104,13 @@ makes an issue actionable at all.
 
 ### When a decision is not yours to make
 
-A product call, a name that will be lived with for years, a tradeoff with no
-technically correct side: do not guess, and do not quietly take whichever branch
-is cheapest to build. Ask on the ticket, and **name the choices**:
-
-```
-./scripts/hatch.sh ask AER-12 "How should drain retries be scoped?" \
-    --recommend "Per-node: one budget each, so a slow node cannot starve the rest" \
-    --option   "Global: one budget for the drain, simpler to reason about"
-```
-
-Each `--option` becomes something the operator presses, so the body is the
-question alone and the tradeoffs go inside the options they belong to;
-`--recommend` marks the one you would take, of which there may be one. A label
-reads as a decision on its own — `per-node`, not `we should scope them per
-node` — because the label becomes the answer's own text. Ask in prose
-(`ask AER-12 "…"`, no options) only when the answer is genuinely open-ended: a
-name, a description, a direction.
-
-One call per question, so each can be answered on its own. Then **stop**.
-Answers arrive in the next session's prompt under **Decisions already made**.
-Those are settled: build on them, and do not reopen them.
-
-What the repository can answer, answer by reading the repository.
+The prompt's `## When you cannot decide` section carries this in full —
+name the choices, one call per question, then stop. Nothing here repeats
+it; `./scripts/hatch.sh ask AER-12 "..."` is the call it describes.
 
 ### Given a ticket
 
-A `hatch.${DOMAIN}/issues/AER-12` link, or a bare `AER-12`, means:
+A `hatch.${DOMAIN}/issues/AER-12` link, or a bare `AER-12`:
 
 ```
 GET  ${HATCH_BASE}/api/hatch/issues/AER-12          # title, description, status, parent, children
