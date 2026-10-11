@@ -641,6 +641,7 @@ public class WorkController(
         var hopKind = to is null ? null : Dispatch.HopKind(issue, from, to, family, statuses, wip, hopParent, playbook);
         var hop = hopKind is not null;
         var letGo = await LetGo.ForIssueAsync(db, issue.Id, ct);
+        var sentBack = await SentBack.ForIssueAsync(db, issue.Id, ct);
         var blocked = Dispatch.Blocked(
             issue, from, to, playbook, waiting, letGo, loop, pace, gate, family, claimed, Columns.Implementation(statuses),
             await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct),
@@ -679,7 +680,9 @@ public class WorkController(
             hopped ? hopKind : null,
             hopped && hopKind == HopKinds.Under ? hopParent?.Key : null,
             letGo,
-            inReview);
+            inReview,
+            sentBack is null ? null : new SentBackDto(
+                sentBack.Value.Length, sentBack.Value.Limit, EfHatchIssue.LegalParentTypes["task"].Contains(issue.Type)));
     }
 
     /// <summary>
