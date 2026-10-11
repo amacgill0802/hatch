@@ -52,6 +52,45 @@ public sealed class Claim : IAsyncDisposable
     /// <summary>The release's own budget - see <see cref="ReleaseAsync"/>.</summary>
     private static readonly TimeSpan ReleaseBudget = TimeSpan.FromSeconds(10);
 
+    /// <summary>
+    /// A value set at most once, delivered to its handler exactly once - whichever
+    /// of the two arrives second is what triggers the call, so it no longer
+    /// matters whether the background heartbeat or the caller wiring up a handler
+    /// wins the race between them.
+    /// </summary>
+    private sealed class Signal<T> where T : class
+    {
+        private readonly Lock _gate = new();
+        private Action<T>? _handler;
+        private bool _delivered;
+
+        public T? Value { get; private set; }
+
+        public Action<T>? Handler
+        {
+            set
+            {
+                lock (_gate)
+                {
+                    _handler = value;
+                    if (Value is { } v && !_delivered) { _delivered = true; value?.Invoke(v); }
+                }
+            }
+        }
+
+        /// <summary>False if already set - the lost/preempted "first one wins" guard, preserved.</summary>
+        public bool Set(T value)
+        {
+            lock (_gate)
+            {
+                if (Value is not null) return false;
+                Value = value;
+                if (_handler is { } h && !_delivered) { _delivered = true; h.Invoke(value); }
+                return true;
+            }
+        }
+    }
+
     private readonly HatchClient _client;
     private readonly HatchClient _quiet;
     private readonly CancellationTokenSource _stop = new();
@@ -83,34 +122,40 @@ public sealed class Claim : IAsyncDisposable
     /// <summary>The line the heartbeat carries. Written by whoever is rendering the session.</summary>
     public Chatter Chatter { get; } = new();
 
+    private readonly Signal<string> _lost = new();
+    private readonly Signal<ClaimPreemptedDto> _preempted = new();
+
     /// <summary>
     /// The server's sentence, once a heartbeat has been refused - the lease
     /// expired underneath us, was taken over, or was cleared by the operator.
     /// Null while the lease is good.
     /// </summary>
-    public string? Lost { get; private set; }
+    public string? Lost => _lost.Value;
 
     /// <summary>
     /// What to do the moment the lease goes: stop the session, so that nothing
     /// is spent on a ticket this runner no longer holds. Set by the increment,
-    /// because the increment is what owns the process.
+    /// because the increment is what owns the process. Attaching this after the
+    /// lease has already been lost still calls it once, carrying the lease
+    /// already recorded - see <see cref="Signal{T}"/>.
     /// </summary>
-    public Action<string>? OnLost { get; set; }
+    public Action<string>? OnLost { set => _lost.Handler = value; }
 
     /// <summary>
     /// The board's notice that this runner is the one an emergency ticket is
     /// preempting - the emergency issue's key and title. Null while the lease
     /// is good and nobody has been asked to stand down.
     /// </summary>
-    public ClaimPreemptedDto? Preempted { get; private set; }
+    public ClaimPreemptedDto? Preempted => _preempted.Value;
 
     /// <summary>
     /// What to do the moment a preemption notice arrives: stop the session, the
     /// same as <see cref="OnLost"/> - but the lease is still good, so the
     /// heartbeat keeps beating past it, which is what lets the put-down that
-    /// follows push and write its own comment.
+    /// follows push and write its own comment. Attaching this after the notice
+    /// has already arrived still calls it once - see <see cref="Signal{T}"/>.
     /// </summary>
-    public Action<ClaimPreemptedDto>? OnPreempted { get; set; }
+    public Action<ClaimPreemptedDto>? OnPreempted { set => _preempted.Handler = value; }
 
     /// <summary>
     /// How often to say "still here". A fifth of the lease, so four heartbeats
@@ -206,8 +251,7 @@ public sealed class Claim : IAsyncDisposable
 
             if (_stallLapse is { } lapse && lapse > TimeSpan.Zero && DateTimeOffset.UtcNow - lastGood >= lapse)
             {
-                Lost = $"no answer from Hatch for over {(int)lapse.TotalSeconds}s";
-                OnLost?.Invoke(Lost);
+                _lost.Set($"no answer from Hatch for over {(int)lapse.TotalSeconds}s");
                 return;
             }
 
@@ -242,17 +286,13 @@ public sealed class Claim : IAsyncDisposable
                 // beat` swallows it - so a bad body would silently kill the
                 // heartbeat until release, which is worse than missing one
                 // preemption notice.
-                if (Preempted is null && answer.Status == HttpStatusCode.OK)
+                if (answer.Status == HttpStatusCode.OK)
                 {
                     try
                     {
                         var preempted = System.Text.Json.JsonSerializer.Deserialize(
                             answer.Body, HatchJson.Default.ClaimPreemptedDto);
-                        if (preempted is not null)
-                        {
-                            Preempted = preempted;
-                            OnPreempted?.Invoke(preempted);
-                        }
+                        if (preempted is not null) _preempted.Set(preempted);
                     }
                     catch (System.Text.Json.JsonException)
                     {
@@ -266,8 +306,7 @@ public sealed class Claim : IAsyncDisposable
 
             if (answer.Conflict)
             {
-                Lost = answer.Sentence;
-                OnLost?.Invoke(answer.Sentence);
+                _lost.Set(answer.Sentence);
                 return;
             }
 
