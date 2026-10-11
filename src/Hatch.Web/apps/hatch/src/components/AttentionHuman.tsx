@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@hatch/ui';
-import { fileTrunkBuildBug } from '../api/client';
 import {
   buildIconTone,
   buildIconWords,
@@ -13,9 +12,8 @@ import {
   trunkIconWords,
   waitedWords,
 } from '../lib/attention';
-import { message } from '../lib/errors';
 import { pullRequestWords } from '../lib/pullRequest';
-import { useIssueConfirmations } from '../lib/useIssueConfirmations';
+import { TrunkBuildBugDialog } from './TrunkBuildBugDialog';
 import type { Attention, TrunkBuild } from '../types';
 
 /**
@@ -68,23 +66,7 @@ function TrunkIcon({ holdsTrunk, trunk }: { holdsTrunk: boolean | null; trunk: s
  * a question row is one destination the whole row goes to.
  */
 function TrunkBuildRow({ build, onFiled }: { build: TrunkBuild; onFiled: () => void }) {
-  const [filing, setFiling] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const { confirm } = useIssueConfirmations();
-
-  async function fileBug() {
-    setFiling(true);
-    setError(null);
-    try {
-      const created = await fileTrunkBuildBug(build.id);
-      confirm(created);
-      onFiled();
-    } catch (err) {
-      setError(message(err));
-    } finally {
-      setFiling(false);
-    }
-  }
+  const [open, setOpen] = useState(false);
 
   return (
     <div className="hatch-attention-row hatch-attention-row-plain">
@@ -114,13 +96,13 @@ function TrunkBuildRow({ build, onFiled }: { build: TrunkBuild; onFiled: () => v
         {build.bugIssueKey ? (
           <Link to={`/issues/${build.bugIssueKey}`}>{build.bugIssueKey}</Link>
         ) : (
-          <Button variant="primary" loading={filing} onClick={() => void fileBug()}>
+          <Button variant="primary" onClick={() => setOpen(true)}>
             File a bug
           </Button>
         )}
       </span>
 
-      {error && <p className="hatch-attention-row-error">{error}</p>}
+      <TrunkBuildBugDialog open={open} buildId={build.id} onClose={() => setOpen(false)} onFiled={onFiled} />
     </div>
   );
 }

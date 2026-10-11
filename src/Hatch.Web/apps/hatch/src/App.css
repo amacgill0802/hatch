@@ -4303,12 +4303,6 @@ button.hatch-option.chosen {
   justify-content: flex-end;
 }
 
-.hatch-attention-row-error {
-  margin: 0;
-  font-size: var(--t-micro);
-  color: var(--danger);
-}
-
 .hatch-attention-row-head {
   display: flex;
   align-items: baseline;
