@@ -27,7 +27,13 @@ public sealed record ForgeAnswer(BuildRead? Read, string? Why);
 /// </summary>
 /// <param name="State">One of <see cref="PullRequestStates"/>.</param>
 /// <param name="Why">One line, for a sentence. Null where <paramref name="State"/> was read.</param>
-public sealed record PullRequestAnswer(string? State, string? Why);
+/// <param name="HeadSha">The pull request's own head sha. Null where it was not read.</param>
+public sealed record PullRequestAnswer(string? State, string? Why, string? HeadSha = null);
+
+/// <summary>What a forge answered about a merge attempt: whether it took, or why it did not.</summary>
+/// <param name="Merged">True where the merge went through.</param>
+/// <param name="Why">One line, for a sentence. Null where <paramref name="Merged"/> is true.</param>
+public sealed record MergeAnswer(bool Merged, string? Why);
 
 /// <summary>
 /// Where a runner reads the build on a branch's tip from. A seam so a test can
@@ -49,6 +55,9 @@ public interface IForge
     /// The only read that tells a merge from a close: see <see cref="PullRequestStates"/>.
     /// </summary>
     Task<PullRequestAnswer> ReadPullRequestAsync(string url, CancellationToken ct);
+
+    /// <summary>Merges the pull request at <paramref name="url"/>, provided its head is still <paramref name="sha"/>.</summary>
+    Task<MergeAnswer> MergeAsync(string url, string sha, CancellationToken ct);
 }
 
 /// <summary>
@@ -134,19 +143,29 @@ public sealed class GhForge(
         // The url names the host, the owner and the number, so gh resolves the
         // repository from it without --hostname - unlike gh api, which ignores
         // the host in GH_REPO and always needs it.
-        var ran = await _run(path, Env(), ["pr", "view", url, "--json", "state"], ct);
+        var ran = await _run(path, Env(), ["pr", "view", url, "--json", "state,headRefOid"], ct);
         if (ran.Code != 0) return new PullRequestAnswer(null, Why(ran));
 
         try
         {
             using var doc = JsonDocument.Parse(ran.Out);
             var state = Text(doc.RootElement, "state");
-            return new PullRequestAnswer(ClassifyState(state), null);
+            return new PullRequestAnswer(ClassifyState(state), null, Text(doc.RootElement, "headRefOid"));
         }
         catch (JsonException)
         {
             return new PullRequestAnswer(null, "gh answered with something that is not a pull request");
         }
+    }
+
+    public async Task<MergeAnswer> MergeAsync(string url, string sha, CancellationToken ct)
+    {
+        // A local path has no host, and nothing to ask a forge about.
+        if (canonical is { } c && (c.StartsWith('/') || c.StartsWith('.')))
+            return new MergeAnswer(false, "its repository is a local path, so there is no forge to merge a pull request on");
+
+        var ran = await _run(path, Env(), ["pr", "merge", url, "--merge", "--admin", "--match-head-commit", sha], ct);
+        return ran.Code == 0 ? new MergeAnswer(true, null) : new MergeAnswer(false, Why(ran));
     }
 
     /// <summary>One of <see cref="PullRequestStates"/>, matched case-insensitively against what <c>gh</c> prints (<c>OPEN</c>, <c>CLOSED</c>, <c>MERGED</c>).</summary>
