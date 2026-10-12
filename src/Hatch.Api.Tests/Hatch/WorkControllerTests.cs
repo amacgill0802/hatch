@@ -5737,6 +5737,122 @@ public class WorkControllerTests
             "AER-404", new PullRequestMergedRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default)).Result);
     }
 
+    // ---- Closed: a runner reporting that the recorded pull request closed without merging ----
+
+    [Fact]
+    public async Task ClosedWork_SetsPullRequestClosedAtAndWritesOneEventNamingTheCaller()
+    {
+        var h = await NewAsync();
+        var merges = new EfHatchStatus { Name = "merges", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(merges);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("task", "its pull request closed", merges.Id);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+
+        var result = Value(await h.Work.ClosedWork(
+            Key(issue), new PullRequestClosedRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default));
+
+        var row = await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id);
+        Assert.Equal(Now, row.PullRequestClosedAt);
+        Assert.Equal(merges.Id, row.StatusId);
+        Assert.Equal(merges.Id, result.StatusId);
+
+        var e = Assert.Single(row.Events);
+        Assert.Equal(EfHatchIssueEvent.PullRequestClosed, e.Kind);
+        Assert.Equal("hatch-loop", e.Actor);
+    }
+
+    [Fact]
+    public async Task ClosedWork_CalledTwice_WritesTheEventOnceAndLeavesTheFirstTimeStanding()
+    {
+        var h = await NewAsync();
+        var merges = new EfHatchStatus { Name = "merges", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(merges);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("task", "its pull request closed", merges.Id);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+
+        await h.Work.ClosedWork(
+            Key(issue), new PullRequestClosedRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default);
+        var firstReadAt = (await h.Db.Issues.FirstAsync(i => i.Id == issue.Id)).PullRequestClosedAt;
+
+        h.Time.Advance(TimeSpan.FromMinutes(5));
+        await h.Work.ClosedWork(
+            Key(issue), new PullRequestClosedRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default);
+
+        var row = await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id);
+        Assert.Equal(firstReadAt, row.PullRequestClosedAt);
+        Assert.Single(row.Events);
+    }
+
+    [Fact]
+    public async Task ClosedWork_RefusesAColumnThatDoesNotMergeThePullRequest()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "still being written", h.InProgress);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+
+        var result = await h.Work.ClosedWork(
+            Key(issue), new PullRequestClosedRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default);
+
+        Assert.Equal(
+            "\"in progress\" does not merge the pull request - a closed pull request only matters to the merge column",
+            Assert.IsType<ConflictObjectResult>(result.Result).Value);
+    }
+
+    [Fact]
+    public async Task ClosedWork_RefusesWhenNoPullRequestIsRecorded()
+    {
+        var h = await NewAsync();
+        var merges = new EfHatchStatus { Name = "merges", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(merges);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("task", "nothing recorded", merges.Id);
+
+        var result = await h.Work.ClosedWork(
+            Key(issue), new PullRequestClosedRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default);
+
+        Assert.Equal(
+            "no pull request is recorded on this issue, so there is nothing for a close to confirm",
+            Assert.IsType<ConflictObjectResult>(result.Result).Value);
+    }
+
+    [Fact]
+    public async Task ClosedWork_RefusesWhenTheUrlDoesNotMatchTheRecordedOne()
+    {
+        var h = await NewAsync();
+        var merges = new EfHatchStatus { Name = "merges", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(merges);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("task", "a different pull request closed", merges.Id);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+
+        var result = await h.Work.ClosedWork(
+            Key(issue), new PullRequestClosedRequest("https://example.com/o/r/pull/2", "somewhere:/checkouts/one"), default);
+
+        Assert.Equal(
+            "\"https://example.com/o/r/pull/2\" is not the pull request recorded on this issue",
+            Assert.IsType<ConflictObjectResult>(result.Result).Value);
+    }
+
+    [Fact]
+    public async Task ClosedWork_Is404ForAKeyThatDoesNotParse()
+    {
+        var h = await NewAsync();
+
+        Assert.IsType<NotFoundResult>((await h.Work.ClosedWork(
+            "nonsense", new PullRequestClosedRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default)).Result);
+    }
+
+    [Fact]
+    public async Task ClosedWork_Is404ForAKeyThatDoesNotExist()
+    {
+        var h = await NewAsync();
+
+        Assert.IsType<NotFoundResult>((await h.Work.ClosedWork(
+            "AER-404", new PullRequestClosedRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default)).Result);
+    }
+
     // ---- The review playbook ----
 
     [Fact]

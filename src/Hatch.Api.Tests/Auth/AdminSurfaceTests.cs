@@ -219,6 +219,14 @@ public class AdminSurfaceTests
         // operator already agreed it may go.
         "WorkController.MergedWork",
 
+        // The merge column's own counterpart to MergedWork above: a pull
+        // request read as closed rather than merged, for the same board
+        // row and the same reason a key may report it - a runner's poll
+        // reads the forge, not a person. It moves nothing and takes no
+        // claim (see the action's own remark), so there is nothing here
+        // for a claimed issue to be refused on.
+        "WorkController.ClosedWork",
+
         // The same walk as GetNextWork, reported instead of acted on. A read,
         // and one a key already holds every part of: it says nothing about the
         // board that `next` and `/issues` do not already say, only in one

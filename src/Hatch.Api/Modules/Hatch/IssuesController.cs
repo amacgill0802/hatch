@@ -817,6 +817,7 @@ public class IssuesController(
                 now));
 
             issue.PullRequestUrl = edit.PullRequestUrl;
+            issue.PullRequestClosedAt = null;
         }
 
         if (parentKey is not null && parent.Issue?.Id != issue.ParentId)
