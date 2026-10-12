@@ -1251,6 +1251,182 @@ public sealed class PollTests
         Assert.Single(rig.H.Wire.To("PUT", PutBuild("AER-1")));
     }
 
+    // ---- The merge half ----
+
+    private const string MergeCanonical = "example.test/repo";
+
+    private static string Comments(string key) => $"/api/hatch/issues/{key}/comments";
+
+    /// <summary>
+    /// A row in the merges column, judged <paramref name="kind"/>: the project's
+    /// one repository, bound so <c>where.Canonical</c> resolves to
+    /// <see cref="MergeCanonical"/>, and a clean merge check on <paramref name="branch"/>
+    /// whose shas already match origin - so the merge-check half above vouches for
+    /// it and fetches nothing, leaving only this half to ask anything of <c>gh</c>.
+    /// Null <paramref name="kind"/> is an ordinary review row: no <c>MergeWork</c> at all.
+    /// </summary>
+    private static ReviewCheckDto MergeRow(
+        string key, string branch, string pullRequestUrl, string? kind = WorkKinds.Merge, string? judgedSha = null)
+    {
+        var sha = judgedSha ?? Tip;
+        var repo = Fixtures.Repository("https://example.test/repo.git", MergeCanonical);
+        var stored = Fixtures.MergeCheck(MergeVerdicts.Clean, "main", MergeCanonical, holdsTrunk: true) with
+        {
+            Remote = "https://example.test/repo.git", TrunkSha = Trunk, Branch = branch, BranchSha = sha,
+        };
+
+        return Fixtures.Review(
+            key, [repo], pullRequestUrl: pullRequestUrl,
+            mergeWork: kind is null ? null : new MergeWorkDto(kind, "its branch holds main and its build passes"),
+            checks: [stored]);
+    }
+
+    [Fact]
+    public async Task A_merge_row_whose_head_still_matches_the_judged_sha_is_merged_and_announced()
+    {
+        using var rig = new Rig().Board(MergeRow("AER-1", "aer-1-thing", PrUrl));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip));
+        rig.H.Forge.PullRequestAnswer = new(PullRequestStates.Open, null, HeadSha: Tip);
+        rig.H.Forge.MergeAnswer = new(true, null);
+        rig.H.Wire.Json("POST", Merged("AER-1"), Fixtures.Issue("AER-1") with { StatusId = 4 });
+        rig.H.Wire.Json("GET", Statuses, new[] { Fixtures.Status(4, "Done") });
+        rig.H.Wire.Json("POST", Comments("AER-1"), Fixtures.Comment());
+
+        await rig.RunAsync();
+
+        Assert.Equal([(rig.H.Root, PrUrl, Tip)], rig.H.Forge.MergeCalls);
+        Assert.Equal(PrUrl, Assert.Single(rig.H.Wire.To("POST", Merged("AER-1"))).Read<PullRequestMergedRequest>().Url);
+        Assert.Contains("hatch: AER-1 pull request merged -> Done", rig.H.Say.Said);
+
+        var comment = Assert.Single(rig.H.Wire.To("POST", Comments("AER-1"))).Read<CommentCreateRequest>().Body;
+        Assert.Contains(Tip, comment, StringComparison.Ordinal);
+        Assert.Contains("test:/checkout", comment, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(PullRequestStates.Open, false)]
+    [InlineData(PullRequestStates.Closed, true)]
+    public async Task A_moved_head_is_not_merged_and_comments_once(string state, bool headMatches)
+    {
+        using var rig = new Rig().Board(MergeRow("AER-1", "aer-1-thing", PrUrl));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip));
+        rig.H.Forge.PullRequestAnswer = new(state, null, HeadSha: headMatches ? Tip : Moved);
+        rig.H.Wire.Json("POST", Comments("AER-1"), Fixtures.Comment());
+
+        await rig.RunAsync();
+        await rig.Later().RunAsync();
+
+        Assert.Empty(rig.H.Forge.MergeCalls);
+        Assert.Single(rig.H.Wire.To("POST", Comments("AER-1")));
+    }
+
+    [Fact]
+    public async Task A_gh_pr_merge_refusal_comments_the_reason_verbatim_once_and_is_never_retried()
+    {
+        using var rig = new Rig().Board(MergeRow("AER-1", "aer-1-thing", PrUrl));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip));
+        rig.H.Forge.PullRequestAnswer = new(PullRequestStates.Open, null, HeadSha: Tip);
+        rig.H.Forge.MergeAnswer = new(false, "a required review is still outstanding");
+        rig.H.Wire.Json("POST", Comments("AER-1"), Fixtures.Comment());
+
+        await rig.RunAsync();
+        await rig.Later().RunAsync();
+
+        Assert.Single(rig.H.Forge.MergeCalls);
+        var comment = Assert.Single(rig.H.Wire.To("POST", Comments("AER-1"))).Read<CommentCreateRequest>().Body;
+        Assert.Contains("a required review is still outstanding", comment, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_409_from_the_merged_route_on_a_merge_row_is_not_a_fault_and_the_poll_reaches_the_next_merge_row()
+    {
+        using var rig = new Rig().Board(
+            MergeRow("AER-1", "aer-1-thing", PrUrl),
+            MergeRow("AER-2", "aer-2-other", PrUrl2, judgedSha: Tip2));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: [("aer-1-thing", Tip), ("aer-2-other", Tip2)]);
+        rig.H.Forge.PullRequestFor[PrUrl] = new(PullRequestStates.Open, null, HeadSha: Tip);
+        rig.H.Forge.PullRequestFor[PrUrl2] = new(PullRequestStates.Open, null, HeadSha: Tip2);
+        rig.H.Forge.MergeAnswer = new(true, null);
+        rig.H.Wire.Reply("POST", Merged("AER-1"), HttpStatusCode.Conflict, "\"AER-1 moved\"");
+        rig.H.Wire.Json("POST", Merged("AER-2"), Fixtures.Issue("AER-2") with { StatusId = 4 });
+        rig.H.Wire.Json("GET", Statuses, new[] { Fixtures.Status(4, "Done") });
+        rig.H.Wire.Json("POST", Comments("AER-2"), Fixtures.Comment());
+
+        await rig.RunAsync();
+
+        Assert.Equal([(rig.H.Root, PrUrl, Tip), (rig.H.Root, PrUrl2, Tip2)], rig.H.Forge.MergeCalls);
+        Assert.Single(rig.H.Wire.To("POST", Merged("AER-2")));
+        Assert.Contains("hatch: AER-2 pull request merged -> Done", rig.H.Say.Said);
+    }
+
+    [Theory]
+    [InlineData(WorkKinds.Update)]
+    [InlineData(WorkKinds.Hold)]
+    [InlineData(null)]
+    public async Task A_row_not_judged_merge_is_never_asked_about_by_this_half(string? kind)
+    {
+        using var rig = new Rig().Board(MergeRow("AER-1", "aer-1-thing", PrUrl, kind: kind));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip));
+        rig.H.Forge.PullRequestAnswer = new(PullRequestStates.Open, null, HeadSha: Tip);
+        rig.H.Forge.MergeAnswer = new(true, null);
+
+        await rig.RunAsync();
+
+        // The pull-request half above still reads it, MergeWork or no - what is
+        // this half's alone is that it never calls MergeAsync or comments.
+        Assert.Single(rig.H.Forge.PullRequestReads);
+        Assert.Empty(rig.H.Forge.MergeCalls);
+        Assert.Empty(rig.H.Wire.To("POST", Comments("AER-1")));
+    }
+
+    [Fact]
+    public async Task A_runner_with_no_checkout_of_the_repository_is_silently_skipped()
+    {
+        var repo = Fixtures.Repository("https://example.other/repo.git", MergeCanonical);
+        var stored = Fixtures.MergeCheck(MergeVerdicts.Clean, "main", MergeCanonical, holdsTrunk: true) with
+        {
+            Remote = "https://example.other/repo.git", TrunkSha = Trunk, Branch = "aer-1-thing", BranchSha = Tip,
+        };
+        var review = Fixtures.Review(
+            "AER-1", [repo], pullRequestUrl: PrUrl,
+            mergeWork: new MergeWorkDto(WorkKinds.Merge, "its branch holds main and its build passes"),
+            checks: [stored]);
+        using var rig = new Rig().Board(review);
+
+        // Unrelated to the issue's own (unmatched) repository: the standing
+        // checkout still gets its trunk build read every poll, stubbed quiet
+        // here so the only thing under test is this half's silence.
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads();
+
+        await rig.RunAsync();
+
+        Assert.Empty(rig.H.Forge.PullRequestReads);
+        Assert.Empty(rig.H.Forge.MergeCalls);
+        Assert.Empty(rig.H.Wire.To("POST", Comments("AER-1")));
+        Assert.Empty(rig.H.Say.Complained);
+    }
+
+    [Fact]
+    public async Task A_forge_that_cannot_read_the_pull_request_on_a_merge_row_is_skipped_with_the_one_checkout_complaint()
+    {
+        using var rig = new Rig().Board(MergeRow("AER-1", "aer-1-thing", PrUrl));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip));
+        rig.H.Forge.PullRequestAnswer = new(null, "gh is not installed");
+
+        await rig.RunAsync();
+
+        Assert.Empty(rig.H.Forge.MergeCalls);
+        Assert.Empty(rig.H.Wire.To("POST", Comments("AER-1")));
+
+        // The pull-request half above complains about the same checkout too -
+        // its own, separate dedupe - so this proves no crash and nothing else
+        // said, not that the whole poll says it only once.
+        Assert.NotEmpty(rig.H.Say.Complained);
+        Assert.All(
+            rig.H.Say.Complained,
+            l => Assert.Equal("hatch: could not read pull requests in checkout - gh is not installed", l));
+    }
+
     [Fact]
     public async Task Cancellation_ends_the_poll_rather_than_being_swallowed_as_a_failure()
     {
