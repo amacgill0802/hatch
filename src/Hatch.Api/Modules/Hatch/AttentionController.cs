@@ -189,8 +189,53 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
         var reviewsHeldBack = inReview.Count(i => !string.IsNullOrWhiteSpace(i.PullRequestUrl)
             && (conflicted.ContainsKey(i.Id) || failed.ContainsKey(i.Id)));
 
+        var approvedHeld = new List<ApprovedHeldDto>();
+        var approvedWaiting = new List<ApprovedWaitingDto>();
+
+        if (Columns.Merges(statuses) is { } merges)
+        {
+            var inMerges = await db.Issues.AsNoTracking()
+                .Where(i => i.StatusId == merges.Id)
+                .OrderBy(i => i.Rank).ThenBy(i => i.Id)
+                .Include(i => i.Project).ThenInclude(p => p!.Repositories)
+                .ToListAsync(ct);
+
+            var mergeIds = inMerges.Select(i => i.Id).ToList();
+
+            var mergeChecksForMerges = await db.MergeChecks.AsNoTracking()
+                .Where(m => mergeIds.Contains(m.IssueId))
+                .OrderBy(m => m.Canonical)
+                .ToListAsync(ct);
+            var mergesByIssueForMerges = mergeChecksForMerges.GroupBy(m => m.IssueId)
+                .ToDictionary(g => g.Key, g => (IReadOnlyList<EfHatchMergeCheck>)g.ToList());
+
+            var buildChecksForMerges = await db.BuildChecks.AsNoTracking()
+                .Where(b => mergeIds.Contains(b.IssueId))
+                .OrderBy(b => b.Canonical)
+                .ToListAsync(ct);
+            var buildsByIssueForMerges = buildChecksForMerges.GroupBy(b => b.IssueId)
+                .ToDictionary(g => g.Key, g => (IReadOnlyList<EfHatchBuildCheck>)g.ToList());
+
+            foreach (var issue in inMerges)
+            {
+                var merged = mergesByIssueForMerges.TryGetValue(issue.Id, out var mv) ? mv : [];
+                var built = buildsByIssueForMerges.TryGetValue(issue.Id, out var bv) ? bv : [];
+
+                var j = MergeWork.Judge(
+                    issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
+                    merged, built, issue.PullRequestClosedAt, time.GetUtcNow());
+
+                var key = IssueKey.Format(issue.Project!.Key, issue.Number);
+                if (j.Kind == WorkKinds.Hold)
+                    approvedHeld.Add(new ApprovedHeldDto(key, issue.Title, issue.Type, issue.PullRequestUrl, j.Sentence));
+                else
+                    approvedWaiting.Add(new ApprovedWaitingDto(key, issue.Title, issue.Type, issue.PullRequestUrl, j.Kind, j.Sentence));
+            }
+        }
+
         return new AttentionDto(
-            reviews, withoutPr, questions, conflicts, failingBuilds, reviewsHeldBack, trunkBuilds, exhausted);
+            reviews, withoutPr, questions, conflicts, failingBuilds, reviewsHeldBack, trunkBuilds, exhausted,
+            approvedHeld, approvedWaiting);
     }
 
     /// <summary>

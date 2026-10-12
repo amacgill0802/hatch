@@ -960,6 +960,22 @@ public record ReviewDto(
 /// than a pill - see <see cref="AttentionDto"/>'s remarks. Defaults to empty so
 /// an older client still reads.
 /// </param>
+/// <param name="ApprovedHeld">
+/// The merge column's issues that are stuck - conflicted, ambiguous, branchless,
+/// build-broken, or closed without merging - with the judge's own sentence
+/// saying why. Counted towards the badge, unlike <paramref name="Conflicts"/>
+/// and <paramref name="FailingBuilds"/>: nothing in this column is an agent's
+/// to fix (HA-289), so a row here is a person's, every time. Defaults to null
+/// so an older client still reads.
+/// </param>
+/// <param name="ApprovedWaiting">
+/// The merge column's issues the loop is still progressing on its own - about
+/// to merge, about to update, or waiting on its own next poll - each carrying
+/// which of the three it is as <see cref="WorkKinds.Merge"/>/
+/// <see cref="WorkKinds.Update"/>/<see cref="WorkKinds.Pending"/>. Not counted
+/// towards the badge: the loop already owns these. Defaults to null so an
+/// older client still reads.
+/// </param>
 public record AttentionDto(
     IReadOnlyList<ReviewDto> Reviews,
     int InReviewWithoutPullRequest,
@@ -968,7 +984,9 @@ public record AttentionDto(
     IReadOnlyList<FailingBuildDto>? FailingBuilds = null,
     int ReviewsHeldBack = 0,
     IReadOnlyList<TrunkBuildDto>? TrunkBuilds = null,
-    IReadOnlyList<ExhaustedRunnerDto>? ExhaustedRunners = null);
+    IReadOnlyList<ExhaustedRunnerDto>? ExhaustedRunners = null,
+    IReadOnlyList<ApprovedHeldDto>? ApprovedHeld = null,
+    IReadOnlyList<ApprovedWaitingDto>? ApprovedWaiting = null);
 
 /// <summary>
 /// One runner out of Claude usage, for the top of the attention panel.
@@ -1002,6 +1020,18 @@ public record FailingBuildDto(
     string Type,
     string? PullRequestUrl,
     IReadOnlyList<BuildCheckDto> Checks);
+
+/// <summary>
+/// One merge-column issue a person has to act on: conflicted, ambiguous,
+/// branchless, build-broken, or closed without merging.
+/// </summary>
+public record ApprovedHeldDto(string Key, string Title, string Type, string? PullRequestUrl, string Sentence);
+
+/// <summary>
+/// One merge-column issue the loop is still progressing on its own.
+/// </summary>
+/// <param name="Kind">One of <see cref="WorkKinds.Merge"/>/<see cref="WorkKinds.Update"/>/<see cref="WorkKinds.Pending"/>.</param>
+public record ApprovedWaitingDto(string Key, string Title, string Type, string? PullRequestUrl, string Kind, string Sentence);
 
 // ---- The board ----
 
