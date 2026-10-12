@@ -6,8 +6,9 @@ namespace Hatch.Api.Modules.Hatch;
 /// reported about its branch. Unlike <see cref="ReviewWork.Judgement"/>,
 /// <see cref="Judgement.Sentence"/> is never null - nothing in this column is
 /// ever clear for an agent, since the whole point of the column (HA-289) is
-/// that no agent runs here. Merging, and updating a branch that does not yet
-/// hold the trunk, are both a person's call.
+/// that no agent runs here. Merging a branch that holds the trunk is a person's
+/// call, which this judge defers; updating one that does not is the runner's
+/// own, named by this sentence.
 /// </summary>
 public static class MergeWork
 {
@@ -54,7 +55,7 @@ public static class MergeWork
             return Hold($"its build on {Short(failed.Sha)} failed");
 
         if (clean.Any(m => m.HoldsTrunk != true))
-            return new Judgement(WorkKinds.Update, $"its branch merges cleanly with {trunk} but does not hold its tip yet");
+            return new Judgement(WorkKinds.Update, $"bringing its branch current from {trunk}");
 
         if (about.FirstOrDefault(b => b.Verdict == BuildVerdicts.Pending) is { } running)
             return Pending($"its build on {Short(running.Sha)} is still running");

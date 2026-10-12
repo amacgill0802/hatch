@@ -116,7 +116,7 @@ public class MergeWorkTests
         var judgement = MergeWork.Judge(bound, merges, [], null, Now);
 
         Assert.Equal(WorkKinds.Update, judgement.Kind);
-        Assert.Contains("does not hold its tip yet", judgement.Sentence);
+        Assert.Contains("bringing its branch current from", judgement.Sentence);
     }
 
     [Fact]
