@@ -732,6 +732,26 @@ public class AttentionControllerTests
         Assert.Single(Value(await h.Attention.GetAttention(default)).TrunkBuilds!);
     }
 
+    // ---- The merges column half (HA-466) ----
+
+    [Fact]
+    public async Task Attention_AnApprovedIssueWhoseBranchConflicts_IsHeldNotWaiting()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("story", "merging", approved.Id, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.CheckAsync(issue, MergeVerdicts.Conflicted, ["a.cs"]);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        var row = Assert.Single(attention.ApprovedHeld);
+        Assert.Equal(Key(issue), row.Key);
+        Assert.Contains("conflicts", row.Sentence);
+        Assert.Empty(attention.ApprovedWaiting);
+    }
+
     // ---- The gate ----
 
     [Fact]
