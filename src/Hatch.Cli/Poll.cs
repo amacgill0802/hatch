@@ -62,6 +62,7 @@ public sealed class Poll
 
     private readonly Dictionary<(string Path, string Key), string> _seen = [];
     private readonly Dictionary<(string Path, string Key), string> _seenBuild = [];
+    private readonly Dictionary<(string Path, string Key), string> _seenMergeRefusal = [];
     private readonly Dictionary<string, string> _seenTrunk = [];
     private DateTimeOffset? _last;
     private HashSet<string> _saidBefore = [];
@@ -123,6 +124,8 @@ public sealed class Poll
         // since PullRequestUrl is one field on one issue however many
         // repositories its project binds.
         await ReadPullRequestsAsync(runtime, complain, review, ct);
+
+        await MergeApprovedAsync(runtime, complain, review, ct);
 
         var targets = new Dictionary<(string Path, string? BaseBranch), List<Target>>();
         foreach (var issue in review)
@@ -511,6 +514,112 @@ public sealed class Poll
         catch (Exception e) when (e is not OperationCanceledException)
         {
             complain($"hatch: could not read pull requests - {e.Message}");
+        }
+    }
+
+    /// <summary>
+    /// The merge half: for every issue in the merges column the judge marked
+    /// <see cref="WorkKinds.Merge"/>, merge its pull request and advance it -
+    /// <see cref="WorkKinds.Update"/> and <see cref="WorkKinds.Hold"/> rows, and
+    /// every row in the review column (<c>MergeWork</c> null), are left for
+    /// whatever else acts on them and not asked about here at all.
+    /// </summary>
+    /// <remarks>
+    /// Keyed on the issue, the same as <see cref="ReadPullRequestsAsync"/> and
+    /// for the same reason - a pull request url is one field on one issue
+    /// however many repositories its project binds. <c>judgedSha</c> is read
+    /// from the resolved checkout's own clean verdict rather than any bound
+    /// repository's, since the pull request lives in exactly one of them: the
+    /// primary, which is what <see cref="Checkouts.ToPoll"/> already resolved
+    /// <c>where</c> to. <c>failed</c> is the same per-checkout dedupe
+    /// <see cref="ReadPullRequestsAsync"/> keeps, and <c>_seenMergeRefusal</c>
+    /// is the same idea again, remembered across intervals rather than within
+    /// one: a head that has moved, or a merge <c>gh</c> refused, is reported
+    /// once per sha and not every interval - "never a retry storm". The outer
+    /// try/catch keeps anything unanticipated here from propagating into
+    /// <see cref="PollAsync"/> and aborting the halves that run after it.
+    /// </remarks>
+    private async Task MergeApprovedAsync(
+        Runtime runtime, Action<string> complain, IReadOnlyList<ReviewCheckDto> review, CancellationToken ct)
+    {
+        var failed = new HashSet<string>();
+        try
+        {
+            foreach (var issue in review)
+            {
+                if (issue.MergeWork?.Kind != WorkKinds.Merge) continue;
+                if (issue.PullRequestUrl is not { Length: > 0 } url) continue;
+                ct.ThrowIfCancellationRequested();
+
+                var where = Checkouts.ToPoll(issue.Repositories, runtime.Checkouts, runtime.Settings.BaseBranch)
+                    .FirstOrDefault();
+                if (where is null || failed.Contains(where.Path)) continue;
+
+                var judgedSha = issue.MergeChecks
+                    .FirstOrDefault(c => c.Canonical == where.Canonical && c.Verdict == MergeVerdicts.Clean)?.BranchSha;
+                if (judgedSha is null) continue;
+
+                var name = Path.GetFileName(where.Path.TrimEnd('/', '\\'));
+                var pr = await runtime.Forge(where.Path, where.Canonical).ReadPullRequestAsync(url, ct);
+                if (pr.State is not { } state)
+                {
+                    failed.Add(where.Path);
+                    if (pr.Why is { } why) complain($"hatch: could not read pull requests in {name} - {why}");
+                    continue;
+                }
+
+                var dedupeKey = (where.Path, issue.Key);
+                var alreadySeen = _seenMergeRefusal.TryGetValue(dedupeKey, out var seenSha) && seenSha == judgedSha;
+
+                if (state != PullRequestStates.Open || pr.HeadSha != judgedSha)
+                {
+                    if (alreadySeen) continue;
+                    _seenMergeRefusal[dedupeKey] = judgedSha;
+                    await runtime.QuietBoard.CommentAsync(
+                        issue.Key,
+                        $"Its pull request's head is now {pr.HeadSha ?? "unknown"}, not the {judgedSha} this "
+                        + "runner approved to merge - skipping until a fresh verdict says it is clean again.",
+                        ct);
+                    continue;
+                }
+
+                // The same dedupe as above, now stopping the gh pr merge call
+                // itself and not only the comment about it: a refusal on this
+                // sha is asked about once, not every interval.
+                if (alreadySeen) continue;
+
+                var merge = await runtime.Forge(where.Path, where.Canonical).MergeAsync(url, judgedSha, ct);
+                if (!merge.Merged)
+                {
+                    _seenMergeRefusal[dedupeKey] = judgedSha;
+                    await runtime.QuietBoard.CommentAsync(issue.Key, $"gh would not merge its pull request - {merge.Why}", ct);
+                    continue;
+                }
+
+                (IssueDto? Issue, string? WalkOn) result;
+                try
+                {
+                    result = await runtime.QuietBoard.MergedAsync(
+                        issue.Key, new PullRequestMergedRequest(url, runtime.RunnerName), ct);
+                }
+                catch (HatchException e)
+                {
+                    complain($"hatch: {issue.Key} - the board would not take the merge - {e.Message}");
+                    continue;
+                }
+
+                if (result.WalkOn is not null) continue;
+
+                await runtime.QuietBoard.CommentAsync(
+                    issue.Key, $"Merged its pull request at {judgedSha}, as {runtime.RunnerName}.", ct);
+
+                var to = await ResolvedColumnNameAsync(runtime, result.Issue!.StatusId, ct);
+                runtime.Say.Line($"hatch: {PullRequestWords(issue.Key, to)}");
+            }
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            complain($"hatch: could not merge approved pull requests - {e.Message}");
         }
     }
 
