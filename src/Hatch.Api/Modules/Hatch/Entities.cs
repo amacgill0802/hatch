@@ -633,6 +633,15 @@ public class EfHatchIssue
     public string? PullRequestUrl { get; set; }
 
     /// <summary>
+    /// When the pull request recorded on this issue was read as closed without
+    /// merging, or null until it is. Set once and left alone - a runner's poll
+    /// calls <c>/closed</c> every pass until a person acts, and the route that
+    /// sets this must not write a duplicate event every time it is told the
+    /// same thing twice.
+    /// </summary>
+    public DateTimeOffset? PullRequestClosedAt { get; set; }
+
+    /// <summary>
     /// The model every agent increment dispatched for this issue runs on,
     /// whichever playbook speaks for the move - or null, which is every issue
     /// on a stock board and means "whatever the playbook says".
@@ -1341,6 +1350,13 @@ public class EfHatchIssueEvent
     /// held - see <see cref="EfHatchIssue.PullRequestUrl"/>.
     /// </summary>
     public const string PullRequestChanged = "pull_request_changed";
+
+    /// <summary>
+    /// The pull request recorded on the issue was read as closed without
+    /// merging - see <see cref="EfHatchIssue.PullRequestClosedAt"/>. Written
+    /// once; a second read of the same close is a no-op and writes nothing.
+    /// </summary>
+    public const string PullRequestClosed = "pull_request_closed";
 
     /// <summary>
     /// The issue was given to somebody, handed to somebody else, or taken off

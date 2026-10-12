@@ -244,6 +244,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<int>("ProjectId")
                         .HasColumnType("integer");
 
+                    b.Property<DateTimeOffset?>("PullRequestClosedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("PullRequestUrl")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");

@@ -538,6 +538,63 @@ public class WorkController(
         return await IssueProjection.ToDtoAsync(db, actors, issue, claims, now, ct);
     }
 
+    /// <summary>
+    /// A runner reporting that the pull request recorded on an issue closed
+    /// without merging. Unlike <see cref="MergedWork"/> this does not move the
+    /// issue - a closed pull request is not a decision the forge made for the
+    /// board, only a fact for a person to act on - so it only records when the
+    /// close was first read.
+    /// </summary>
+    /// <remarks>
+    /// Takes no claim, and deliberately does not mirror <see cref="MergedWork"/>
+    /// on that point: a merge-column row is never claimed in practice - no
+    /// agent runs there, see <see cref="MergeWork"/>'s own remark - and this
+    /// route never moves the issue, so nothing it writes needs to wait for a
+    /// session to end.
+    /// </remarks>
+    [HttpPost("{key}/closed")]
+    public async Task<ActionResult<IssueDto>> ClosedWork(
+        string key, PullRequestClosedRequest request, CancellationToken ct)
+    {
+        if (!IssueKey.TryParse(key, out var projectKey, out var number)) return NotFound();
+
+        var issue = await db.Issues.Include(i => i.Project)
+            .WithKey(projectKey, number).FirstOrDefaultAsync(ct);
+        if (issue is null) return NotFound();
+
+        var statuses = await _dispatch.OrderedStatusesAsync(ct);
+        var from = statuses.First(s => s.Id == issue.StatusId);
+
+        if (!from.MergesPullRequest)
+            return Conflict(
+                $"\"{from.Name}\" does not merge the pull request - a closed pull request only matters to the merge column");
+
+        var recorded = issue.PullRequestUrl?.Trim();
+        if (string.IsNullOrEmpty(recorded))
+            return Conflict("no pull request is recorded on this issue, so there is nothing for a close to confirm");
+
+        var url = request.Url?.Trim() ?? "";
+        if (!string.Equals(url, recorded, StringComparison.Ordinal))
+            return Conflict($"\"{url}\" is not the pull request recorded on this issue");
+
+        if (issue.PullRequestClosedAt is null)
+        {
+            var now = time.GetUtcNow();
+            var actor = await caller.ActorNameAsync(ct);
+            issue.PullRequestClosedAt = now;
+            issue.Events.Add(new EfHatchIssueEvent
+            {
+                Actor = actor,
+                Kind = EfHatchIssueEvent.PullRequestClosed,
+                At = now,
+            });
+            issue.UpdatedAt = now;
+            await db.SaveChangesAsync(ct);
+        }
+
+        return await IssueProjection.ToDtoAsync(db, actors, issue, claims, time.GetUtcNow(), ct);
+    }
+
     // ---- Resolution ----
 
     /// <summary>

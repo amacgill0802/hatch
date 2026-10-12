@@ -1168,6 +1168,28 @@ public class IssuesControllerTests
     }
 
     /// <summary>
+    /// A stale close is cleared the moment a fresh pull request is recorded -
+    /// see <see cref="EfHatchIssue.PullRequestClosedAt"/>. Without this, an
+    /// issue whose first pull request closed would still read as closed once
+    /// `hatch pr` pointed it at a second one.
+    /// </summary>
+    [Fact]
+    public async Task ARecordedPullRequest_ClearsAPreviouslySetPullRequestClosedAt()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("task", "the work");
+        await h.Issues.PatchIssue("AER-1", Patch(pullRequestUrl: "https://example.com/owner/repo/pull/12"), default);
+
+        var issue = await h.Db.Issues.FirstAsync(i => i.Number == 1);
+        issue.PullRequestClosedAt = Now;
+        await h.Db.SaveChangesAsync();
+
+        await h.Issues.PatchIssue("AER-1", Patch(pullRequestUrl: "https://example.com/owner/repo/pull/13"), default);
+
+        Assert.Null((await h.Db.Issues.FirstAsync(i => i.Number == 1)).PullRequestClosedAt);
+    }
+
+    /// <summary>
     /// The rule is that the link opens, not whose forge it points at. A
     /// self-hosted one on a private address is a pull request like any other.
     /// </summary>
