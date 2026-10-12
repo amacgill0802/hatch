@@ -5340,7 +5340,7 @@ public class WorkControllerTests
         var entry = Only(await h.Work.GetQueue(0, null, default));
 
         Assert.Equal(WorkKinds.Update, entry.Kind);
-        Assert.Equal("its branch merges cleanly with main but does not hold its tip yet", entry.Blocked);
+        Assert.Equal("bringing its branch current from main", entry.Blocked);
     }
 
     [Fact]
