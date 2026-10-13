@@ -149,6 +149,9 @@ one loads on every increment. Two rules from it matter enough to repeat:
 - **Never move a ticket to a terminal or deferred status** — only the
   operator does. The prompt's "Where this increment ends" section names
   where this one stops.
+- **Never move a ticket into a protected column** — only an owner or
+  approver does. A `403` there is the gate working, the same as a scope
+  refusal (see "The key").
 - **End by saying what you did**, in the `work-log` block the prompt's
   closing section describes — `hatch` lifts it into the work log row.
 

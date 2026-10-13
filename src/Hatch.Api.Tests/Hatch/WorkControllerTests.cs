@@ -5693,6 +5693,18 @@ public class WorkControllerTests
     }
 
     [Fact]
+    public async Task ReviewRead_ARowCarriesItsOwnProjectKey()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var issue = await h.FileAsync("story", "up for review", h.Review);
+
+        var rows = Value(await h.Work.GetReview(["git@example.com:o/r.git"], null, default));
+
+        Assert.Equal("AER", Assert.Single(rows).ProjectKey);
+    }
+
+    [Fact]
     public async Task ReviewRead_AMergesColumnsFirstClearRowIsHead_ItsWaitingSiblingIsNot()
     {
         var h = await NewAsync();

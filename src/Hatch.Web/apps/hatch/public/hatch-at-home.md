@@ -275,6 +275,80 @@ the rest of what it takes — one increment, the loop, the bounds that stop it,
 and the reads that spend nothing. The Runner page carries the same reference,
 beneath the download.
 
+## Letting the loop merge for you
+
+The runner above opens a pull request and leaves it in review — it never
+merges one itself. The next thing worth doing once it's running is this:
+teach the board a column where moving a ticket by hand *is* the approval,
+and the runner merges its pull request from there with no session and
+nothing spent.
+
+**1. Add the column.** On **Manage → Statuses**, add a column — call it
+`Approved`, or anything else; every name here is a placeholder, and nothing
+hangs on it being this one — positioned between `In Review` and `Done`.
+Tick **Protected** first, then **Merges PR**: the second checkbox refuses to
+tick until the first already has ("is not protected - tick that first"). The
+page's own legend says what each one does:
+
+- **Protected** — "Only an owner or approver of the issue's project may move
+  work into this column by hand - never a key, never a hop, never a
+  dispatch."
+- **Merges PR** — "The runner merges an issue's pull request once it stands
+  here, current and green, with no session. Needs Protected ticked first."
+
+**2. Add an approver.** **Manage → Projects**, edit the project, and open
+its **Members** section. If nobody has claimed the project yet, a **Claim**
+button sits above the member list — press it first. Then add whoever should
+approve, with a role of `owner` or `approver`, either one, from the same
+dialog. An approver here is always a *person* — a key can never move work
+into a protected column, by the gate's own design: "moving work into a
+protected column is an owner's or approver's call, not an agent's".
+
+**3. On GitHub: a ruleset, and why.** The runner merges a pull request with
+`gh pr merge --merge --admin --match-head-commit <sha>` — exactly what it
+runs once Hatch's own gate has approved the move. `--admin` is what lets
+that succeed even though nobody clicked **Approve** on GitHub's own pull
+request review: the approval already happened on the board, in the move
+into the protected column, not on the forge. So, on `<your-org>/<your-repo>`:
+
+- Create a ruleset on the default branch requiring one approving review and
+  the required status checks — the ordinary protection everybody else's push
+  still has to clear.
+- Add the account `HATCH_GH_TOKEN` signs `gh` in as to the ruleset's
+  **bypass list**. Without it, the same rule that protects everyone else's
+  pushes would also refuse the runner's merge, and the approval that already
+  happened on the board would have nowhere to land.
+
+**4. `HATCH_GH_TOKEN`.** The same `.env` beside `compose.yaml` as *Putting a
+front door on it*, above it on this page. Compose turns it into `GH_TOKEN`
+for `gh`, and without it the runner's own entrypoint already says so once:
+"gh is not signed in - build checks and merges are off. Set HATCH_GH_TOKEN
+to turn them on."
+
+**5. What a merge looks like on the ticket.** Once a pull request is
+approved — moved into the column from step 1 — and its branch holds the
+trunk with a passing build, the next poll interval merges it with no
+session, no agent and nothing spent. It leaves one comment on the ticket,
+`Merged its pull request at <sha>, as <runner>.`, and the terminal where the
+runner is running shows its own line for the same event: `<key> pull
+request merged -> <column>`.
+
+**6. What to do when a row holds.** Some things stop an approved pull
+request from merging, and they show up rather than sit silent: the nav
+bar's attention panel grows a section, **Approved, not merging**, between
+*Pull requests to review* and *Questions to answer* — each row names the
+issue and says why, in its own sentence: a closed pull request, more than
+one branch on origin named for it, no branch on origin named for it, or —
+rarer — a branch that holds the trunk but never got a check run before a
+ten-minute settle window closed. The issue page draws the same sentence as
+a chip beside the pull request link, for that ticket alone.
+
+A branch that starts conflicting with the trunk, or whose build fails, is
+not one of these — the loop already pushes it straight back to review on
+its own, and it never reaches this panel at all. For everything that does
+land here, the fix happens on the ticket or the branch, never by anything
+typed into GitHub's own UI.
+
 ## Running the runner as a container instead
 
 The section above is the primary path, and this one is the shortcut. Rather
