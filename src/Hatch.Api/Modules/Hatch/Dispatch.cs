@@ -1092,6 +1092,19 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
 
     public Task<List<EfHatchStatus>> OrderedStatusesAsync(CancellationToken ct) =>
         db.Statuses.AsNoTracking().OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync(ct);
+
+    // ---- Which checkout the caller holds ----
+
+    /// <summary>
+    /// Whether a caller's declared repositories give it a checkout of a
+    /// project's: the project's own repositories matched against the
+    /// caller's, or - for a project that binds none - whatever a standing
+    /// checkout already means. One rule, shared by <see cref="WorkController.GetReview"/>'s
+    /// own eligibility and <see cref="Runners.DriversAsync"/>'s election, so
+    /// the two can never disagree about which projects a runner can act on.
+    /// </summary>
+    public static bool HoldsCheckout(ICollection<EfHatchProjectRepository> bound, RepositoryDeclaration repos) =>
+        bound.Count == 0 ? repos.Standing : bound.Any(r => repos.Match(r.Canonical) is not null);
 }
 
 /// <summary>One issue the pass looked at, and what it decided.</summary>

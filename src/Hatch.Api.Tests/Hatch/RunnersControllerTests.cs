@@ -544,6 +544,102 @@ public class RunnersControllerTests
         Assert.Equal(["second:/tree", "first:/tree"], (await h.ListAsync()).Select(r => r.Name));
     }
 
+    // ---- Driving a project ----
+
+    [Fact]
+    public async Task TheEarlierFirstSeenRunner_IsTheOnlyOneWhoseInstructionCarriesTheProject()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+
+        var first = await h.BeatAsync("here:/one", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+        Assert.Equal(["AER"], first.Drives);
+
+        h.Time.Advance(TimeSpan.FromSeconds(10));
+        var second = await h.BeatAsync("here:/two", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+
+        Assert.Empty(second.Drives!);
+    }
+
+    [Fact]
+    public async Task TheDrivingRunnerGoingQuiet_HandsTheProjectToTheOtherRunner()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+
+        await h.BeatAsync("here:/one", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+        h.Time.Advance(TimeSpan.FromSeconds(10));
+        await h.BeatAsync("here:/two", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+
+        h.Time.Advance(TimeSpan.FromSeconds(Horizon));
+        var second = await h.BeatAsync("here:/two", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+
+        Assert.Equal(["AER"], second.Drives);
+    }
+
+    [Fact]
+    public async Task ARunnerNamingARemoteNoProjectBinds_DrivesNothing()
+    {
+        var h = await NewAsync();
+
+        var beat = await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:unbound/repo.git"]));
+
+        Assert.Empty(beat.Drives!);
+    }
+
+    [Fact]
+    public async Task AOnceRunner_IsNeverElectedEvenAsTheOnlyCandidate()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+
+        var beat = await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "once", Remotes: ["git@example.com:o/r.git"]));
+
+        Assert.Empty(beat.Drives!);
+    }
+
+    [Fact]
+    public async Task IdenticalFirstSeen_IsBrokenByNameOrdinally_AndStaysThatWayAcrossRepeatedCalls()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+
+        // Written directly, bypassing the heartbeat's own insert ordering, so
+        // both rows carry exactly the same FirstSeenAt.
+        h.Db.Runners.Add(new EfHatchRunner
+        {
+            Name = "b:/tree", Kind = EfHatchRunner.LoopKind, FirstSeenAt = Now, LastSeenAt = Now,
+            State = EfHatchRunner.Running, Remotes = "example.com/o/r",
+        });
+        h.Db.Runners.Add(new EfHatchRunner
+        {
+            Name = "a:/tree", Kind = EfHatchRunner.LoopKind, FirstSeenAt = Now, LastSeenAt = Now,
+            State = EfHatchRunner.Running, Remotes = "example.com/o/r",
+        });
+        await h.Db.SaveChangesAsync();
+
+        for (var i = 0; i < 3; i++)
+        {
+            var rows = await h.ListAsync();
+            Assert.Equal(["AER"], rows.Single(r => r.Name == "a:/tree").Drives);
+            Assert.Empty(rows.Single(r => r.Name == "b:/tree").Drives!);
+        }
+    }
+
+    [Fact]
+    public async Task GetRunnersAndPatchRunner_AgreeWithTheRunnersOwnHeartbeat()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+
+        var beat = await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+        var listed = await h.OneAsync();
+        var patched = await h.PatchAsync(Runner, new RunnerPatchRequest(State: "paused"));
+
+        Assert.Equal(beat.Drives, listed.Drives);
+        Assert.Equal(beat.Drives, patched.Drives);
+    }
+
     // ---- The seed ----
 
     [Fact]
@@ -775,8 +871,28 @@ public class RunnersControllerTests
         public required int ProjectId { get; init; }
         public required StubActorDirectory Actors { get; init; }
 
+        private int nextRepoOrder;
+
         public async Task<IssueDto> FileAsync(string title = "a thing") =>
             Created(await Issues.CreateIssue(new IssueCreateRequest(ProjectId, "task", title, null, null, null, null), default));
+
+        /// <summary>A remote bound to the shared project, written straight to the table - WorkControllerTests's own pattern.</summary>
+        public async Task<EfHatchProjectRepository> BindRepositoryAsync(string remote)
+        {
+            var (canonical, _) = RemoteIdentity.Canonical(remote);
+            var repo = new EfHatchProjectRepository
+            {
+                ProjectId = ProjectId,
+                Remote = remote,
+                Canonical = canonical!,
+                SortOrder = nextRepoOrder++,
+                CreatedAt = Now,
+            };
+
+            Db.ProjectRepositories.Add(repo);
+            await Db.SaveChangesAsync();
+            return repo;
+        }
 
         public async Task<RunnerInstructionDto> BeatAsync(string name, RunnerHeartbeatRequest request) =>
             Value(await Runners.Heartbeat(name, request, default));

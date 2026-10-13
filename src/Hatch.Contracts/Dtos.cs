@@ -1617,13 +1617,19 @@ public record QueueEntryDto(
 /// the review column. The client never re-derives it: the server judges,
 /// and this is the judgement.
 /// </param>
+/// <param name="ProjectKey">
+/// The issue's own project, since the driven set a heartbeat carries is
+/// project keys and two projects may share a repository. Absent from a
+/// board that predates it.
+/// </param>
 public record ReviewCheckDto(
     string Key,
     IReadOnlyList<WorkRepositoryDto> Repositories,
     IReadOnlyList<MergeCheckDto> MergeChecks,
     IReadOnlyList<BuildCheckDto>? BuildChecks = null,
     string? PullRequestUrl = null,
-    MergeWorkDto? MergeWork = null);
+    MergeWorkDto? MergeWork = null,
+    string ProjectKey = "");
 
 /// <summary>The kind of work an issue in the merges column is, and why it is not work where it is not - see <see cref="Hatch.Api.Modules.Hatch.MergeWork.Judgement"/>.</summary>
 /// <param name="IsHead">
@@ -2309,6 +2315,11 @@ public static class RunnerStates
 /// expects to reset - null on an ordinary runner. A fact this runner reports
 /// about itself, never a person's to set.
 /// </param>
+/// <param name="Drives">
+/// The project keys this row is the elected driver for, computed off every
+/// live loop's own heartbeat - see <see cref="Hatch.Api.Modules.Hatch.Runners.DriversAsync"/>.
+/// Empty for a runner driving nothing, including every <c>once</c> runner.
+/// </param>
 public record RunnerDto(
     string Name,
     string Kind,
@@ -2328,7 +2339,8 @@ public record RunnerDto(
     bool? Mine,
     bool? Standing,
     string? Where,
-    DateTimeOffset? ExhaustedUntil = null);
+    DateTimeOffset? ExhaustedUntil = null,
+    IReadOnlyList<string>? Drives = null);
 
 /// <summary>
 /// Still here, and what should I do next - the one call a runner makes about
@@ -2437,13 +2449,18 @@ public record RunnerUsageWindowDto(
 /// Hatch too old to answer with it, which the console reads the same way as
 /// a key belonging to nobody.
 /// </param>
+/// <param name="Drives">
+/// The project keys this row is the elected driver for - <see cref="RunnerDto.Drives"/>,
+/// answered back on the same heartbeat that asked.
+/// </param>
 public record RunnerInstructionDto(
     string State,
     string? Under,
     int? MaxRuns,
     decimal? MaxSpend,
     DateTimeOffset? UntilAt,
-    string? For = null);
+    string? For = null,
+    IReadOnlyList<string>? Drives = null);
 
 /// <summary>
 /// The operator's half: keep going, pause, stop after this one - and the bounds

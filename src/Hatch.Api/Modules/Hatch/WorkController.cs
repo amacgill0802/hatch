@@ -290,7 +290,7 @@ public class WorkController(
             .Include(i => i.Project).ThenInclude(p => p!.Repositories)
             .ToListAsync(ct);
 
-        var held = rows.Where(i => HoldsCheckout(i, repos)).ToList();
+        var held = rows.Where(i => Dispatch.HoldsCheckout(i.Project!.Repositories, repos)).ToList();
 
         // The true head of a project's train may be a row this runner holds
         // no checkout of, so the train is read over every merges-column row
@@ -336,19 +336,9 @@ public class WorkController(
                 merged.Select(IssueMergeChecks.Project).ToList(),
                 built.Select(IssueBuildChecks.Project).ToList(),
                 i.PullRequestUrl,
-                mergeWork is { } j ? new MergeWorkDto(j.Kind, j.Sentence, trainSlots.GetValueOrDefault(i.Id)?.IsHead ?? true) : null);
+                mergeWork is { } j ? new MergeWorkDto(j.Kind, j.Sentence, trainSlots.GetValueOrDefault(i.Id)?.IsHead ?? true) : null,
+                i.Project.Key);
         }).ToList();
-    }
-
-    /// <summary>
-    /// The dispatcher's own repository rule without the clone allowance: the
-    /// caller has a checkout the project's repositories match, or the project
-    /// binds nothing and the caller has a standing one.
-    /// </summary>
-    private static bool HoldsCheckout(EfHatchIssue issue, RepositoryDeclaration repos)
-    {
-        var bound = issue.Project!.Repositories;
-        return bound.Count == 0 ? repos.Standing : bound.Any(r => repos.Match(r.Canonical) is not null);
     }
 
     /// <summary>
