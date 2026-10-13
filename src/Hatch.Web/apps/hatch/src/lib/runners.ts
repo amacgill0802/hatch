@@ -94,6 +94,13 @@ export function mineLabel(runner: Runner): string | null {
   return runner.mine ? 'own tickets only' : null;
 }
 
+/** The trains this runner drives, as one phrase - or the sentence saying it
+    drives none, the one way this label is louder than repositoriesLabel and
+    mineLabel: AC5 asks the row to say it is driving none, not say nothing. */
+export function drivesLabel(runner: Runner): string {
+  return runner.drives.length === 0 ? 'driving nothing' : `driving ${runner.drives.join(', ')}`;
+}
+
 /** The bounds as the form holds them: strings, because that is what inputs are
     and what the wire takes. */
 export interface RunnerBounds {

@@ -1467,6 +1467,7 @@ export interface Runner {
   under: string | null;
   /** The checkouts this runner is serving, canonical, from its own heartbeat. */
   repositories: string[];
+  drives: string[];
   /** Whether this runner makes a clone for itself when it lacks one. */
   clones: boolean | null;
   /** Whether this runner was started with do-my-work or --mine - working its owner's tickets only. */
