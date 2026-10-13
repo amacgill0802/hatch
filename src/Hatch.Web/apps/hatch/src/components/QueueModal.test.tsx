@@ -119,6 +119,7 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   state: 'running',
   under: null,
   repositories: [],
+  drives: [],
   clones: null,
   mine: null,
   where: null,

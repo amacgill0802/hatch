@@ -10,6 +10,7 @@ import {
   boundsOf,
   boundsProblem,
   boundsRequest,
+  drivesLabel,
   isControllable,
   mineLabel,
   repositoriesLabel,
@@ -132,6 +133,7 @@ function Row({
           {/* The machine and checkout, under the name now that the name is a
               character and not a path - absent from an older CLI's row. */}
           {runner.where && <Text tone="muted">{runner.where}</Text>}
+          <Text tone="muted">{drivesLabel(runner)}</Text>
         </td>
         <td>
           <Badge tone={TONES[activity]}>{activityWords(runner, now)}</Badge>
