@@ -194,6 +194,43 @@ That is a project renaming its own key, in place. An issue changing which
 project it belongs to is a different rekey, paid by that issue alone — see
 [Moving between projects](#moving-between-projects).
 
+### Project Member
+
+`EfHatchProjectMember` — `ProjectId` (FK), `PersonId` (a bare `Guid`
+rather than a foreign key, for the reason `EfHatchIssue.AssigneePersonId`
+is one: Hatch owns its own schema and migration history, and a
+constraint into `public.People` is the compile-time coupling
+`Modules/README.md` exists to prevent), `Role`
+(`ProjectMemberRole.Owner` or `.Approver`, nothing else), `CreatedAt`.
+Unique on `(ProjectId, PersonId)`.
+
+One row is one person's role on one project — who may own it, or approve
+on it — the one question `IProjectAccess` answers about the caller
+alone, never about an arbitrary person. `ProjectDto.Members` is the same
+list `GET .../members` answers with, resolved — a row whose person no
+longer exists is silently dropped rather than shown as a name nobody can
+reach. `CanApprove` and `CanAdminister` are the same two questions asked
+about the caller: a live owner or approver, and a live owner — the
+booleans a client reads instead of re-deriving the role list itself.
+
+**Reading is open to a key — "reading who is on a project is not a
+power," in the route's own words.** Writing it is a person's alone, and
+an owner's alone beyond that: `PUT /projects/{id}/members/{personId}`
+sets or adds a role (`{ role }`, `"owner"` or `"approver"`), refused with
+`403` from anyone who is not a live owner, `400` naming an unknown person
+or an unknown role, and `409` where it would drop the project's last
+owner; `DELETE /projects/{id}/members/{personId}` takes the same `403`
+and the same no-owner-left `409`. Both are checked twice, the
+`ProjectsController.NotAPerson` idiom a [repository](#repository) or a
+[logo](#logo) write already uses — a key or a keyless runner is refused
+outright before the owner check ever runs.
+
+**`POST /projects/{id}/claim` is the way out of a project left with no
+owner** — every guard above exists to keep from reaching that state any
+other way, and this is the one door back out of it: whoever calls it
+becomes an owner, refused with `409` ("{key} already has an owner") the
+moment one already exists.
+
 ### Logo
 
 `EfHatchProjectLogo` — `ProjectId` (PK, cascading FK), `Bytes`, `ContentType`,
@@ -2057,6 +2094,10 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/projects/{id}` | PATCH, DELETE | PATCH name and key, and carries `color`/`icon`; DELETE 409s unless the project is empty, and takes its [repositories](#repository) with it |
 | `/projects/{id}/repositories` | GET | The ordered list of remotes, in `SortOrder` — see [Repository](#repository) |
 | `/projects/{id}/repositories` | PUT | **Person only** — plain `[RequireRole(User)]`. The whole ordered list, `[{ remote, baseBranch? }]`; refused as a whole, naming the entry, on an empty, over-limit, unparseable or duplicate remote. Re-sending the same list writes nothing |
+| `/projects/{id}/members` | GET | Who owns or approves on this project — open to a key, reading who is on a project is not a power |
+| `/projects/{id}/members/{personId}` | PUT | **Person only** — plain `[RequireRole(User)]`, and only an owner of the project may call it. `{ role }` — `"owner"` or `"approver"`. `403` from anybody else, `400` on an unknown person or role, `409` where it would leave the project with no owner |
+| `/projects/{id}/members/{personId}` | DELETE | **Person only**, owner only, the same guard as the PUT beside it. `409` where it would leave the project with no owner |
+| `/projects/{id}/claim` | POST | **Person only** — plain `[RequireRole(User)]`. Takes ownership of a project that has none — the way out of the state the owner-removal guards above exist to prevent reaching any other way. `409` once the project already has an owner |
 | `/projects/{id}/logo` | GET | The bytes, sniffed type and an ETag from `UpdatedAt` — see [Logo](#logo). 404 with none uploaded |
 | `/projects/{id}/logo` | PUT | **Person only** — plain `[RequireRole(User)]`. The body is the image itself, not multipart; refused with a sentence on an unsupported format, an empty body, or one over `PersonPhoto.MaxBytes` |
 | `/projects/{id}/logo` | DELETE | **Person only** — plain `[RequireRole(User)]`. 404 with none uploaded |
@@ -2097,6 +2138,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/work/queue` | GET | The same walk `next` takes, reported rather than acted on, and the same three repository flags — see [what a pass skipped](#what-a-pass-skipped). Same `?mine=true`, folding every ticket that is not the caller's own with a sentence naming whose it is. `?asRunner=<name>` answers off that runner's own row instead of the query string — `remote`, `standing`, `clones`, `mine` and `ancestorKey` come from it and may not be given alongside it; a name no live row answers to is a `400` naming it. `clearNote` names a row that is clear only because a stall mark's resume window passed, e.g. `"it stalled 18 minutes ago and resumes itself after 15 minutes"` — null on every ordinary clear row |
 | `/work/{key}/hop` | POST | Carries an [express](#express) issue, an epic entering the WIP section, a story or bug under a running epic, or a child its parent pulls, one column right with no session — see [the hop](#the-hop). Takes the same query parameters as `GET /work/{key}` and no `heldToken`: a hop takes no claim. `409` carrying the fold's sentence where the issue is blocked, and `409` where it is clear but not a hop |
 | `/work/{key}/merged` | POST | Advances an issue in the review column whose pull request has merged, one column right, with no claim and no session. `{ url, runner }` — `runner` rides the body unused, for shape parity with the requests that do read it. `409` for a column other than review, for no pull request recorded, for a `url` that does not match the one recorded (trimmed, ordinal), for no column after review, and for a claimed issue; `404` on an unknown key. See [the one path past the terminal guard](#the-one-path-past-the-terminal-guard) |
+| `/work/{key}/closed` | POST | Records that an issue's pull request was closed without merging (`PullRequestClosedAt`) — a runner's poll calls it once, on the first read, and does nothing further; `MergeWork.Judge` holds an approval on this until a person acts. `{ url, runner }`, the same shape parity as `/merged`. `409` for a column that does not merge the pull request, for no pull request recorded, and for a `url` that does not match the one recorded; `404` on an unknown key |
 | `/work/{key}/pushback` | POST | Carries an issue in the merge column back to the review column, with no claim and no session — judged by `MergeWork` itself, off the issue's own stored merge and build checks, not by the caller. `{ url, runner }` — `runner` rides the body unused, for shape parity. `409` for a column that does not merge the pull request, for no pull request recorded, for a `url` that does not match the one recorded (trimmed, ordinal), for a judged kind other than `pushback` (carrying the judge's own sentence), for no review column on the board or one that is the merge column itself, and for a claimed issue; `404` on an unknown key |
 | `/issues/{key}/build-check` | PUT | Keeps a runner's [build verdict](#build-check) for one repository. `{ remote, branch, sha, verdict, failing?, runner, pushedByIncrement? }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an unknown verdict, no branch or sha, and `failed` with no failing checks; a link that is not `http(s)` is stored as null; `404` on an unknown key. The column is not checked. A verdict that repeats the stored one writes no event, and one that moves the row into failed-and-flagged marks the issue stalled with it |
 | `/trunk-builds` | PUT | Keeps a runner's [trunk build verdict](#trunk-build) for one repository's trunk. `{ remote, trunk, sha, verdict, failing?, runner }`; answers with what it now holds. The same refusals the build check's write takes, naming the trunk rather than the branch. No event and no question — there is no issue to write either on. `passed` lets an attached bug go |
