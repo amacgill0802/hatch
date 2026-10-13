@@ -68,8 +68,9 @@ public class RunnersController(
             .ToListAsync(ct);
 
         var held = await runners.HeldAsync(db, claims, now, ct);
+        var drivers = await runners.DriversAsync(db, now, ct);
 
-        return rows.Select(r => runners.Project(r, Holding(held, r.Name))).ToList();
+        return rows.Select(r => runners.Project(r, Holding(held, r.Name), drivers.GetValueOrDefault(r.Name, []))).ToList();
     }
 
     /// <summary>
@@ -134,7 +135,7 @@ public class RunnersController(
             try
             {
                 await db.SaveChangesAsync(ct);
-                return Runners.Instruct(row, forName);
+                return Runners.Instruct(row, forName, (await runners.DriversAsync(db, now, ct)).GetValueOrDefault(row.Name, []));
             }
             catch (DbUpdateException)
             {
@@ -152,7 +153,7 @@ public class RunnersController(
         Touch(row, kind, line, now, request, forActor?.Id);
         await db.SaveChangesAsync(ct);
 
-        return Runners.Instruct(row, forName);
+        return Runners.Instruct(row, forName, (await runners.DriversAsync(db, now, ct)).GetValueOrDefault(row.Name, []));
     }
 
     /// <summary>
@@ -248,7 +249,10 @@ public class RunnersController(
         await db.SaveChangesAsync(ct);
 
         var now = time.GetUtcNow();
-        return runners.Project(row, Holding(await runners.HeldAsync(db, claims, now, ct), row.Name));
+        return runners.Project(
+            row,
+            Holding(await runners.HeldAsync(db, claims, now, ct), row.Name),
+            (await runners.DriversAsync(db, now, ct)).GetValueOrDefault(row.Name, []));
     }
 
     // ---- The one narrowing ----

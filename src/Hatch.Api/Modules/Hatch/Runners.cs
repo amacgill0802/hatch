@@ -88,7 +88,7 @@ public sealed class Runners(IOptions<HatchOptions> options)
     /// released must read as free rather than gone in exactly the seconds
     /// that matters.
     /// </remarks>
-    public RunnerDto Project(EfHatchRunner runner, (string Key, ClaimSnapshot Claim)? claim) => new(
+    public RunnerDto Project(EfHatchRunner runner, (string Key, ClaimSnapshot Claim)? claim, IReadOnlyList<string>? drives = null) => new(
         runner.Name,
         runner.Kind,
         runner.FirstSeenAt,
@@ -107,15 +107,16 @@ public sealed class Runners(IOptions<HatchOptions> options)
         runner.Mine,
         runner.Standing,
         runner.Where,
-        runner.ExhaustedUntil);
+        runner.ExhaustedUntil,
+        drives);
 
     /// <summary>
     /// What the loop reads back off its own heartbeat: the row's operator half,
     /// plus who it works for - a fact about the caller and not about the row,
     /// so it is handed in rather than read off <paramref name="runner"/>.
     /// </summary>
-    public static RunnerInstructionDto Instruct(EfHatchRunner runner, string? forName) =>
-        new(runner.State, runner.Under, runner.MaxRuns, runner.MaxSpend, runner.UntilAt, forName);
+    public static RunnerInstructionDto Instruct(EfHatchRunner runner, string? forName, IReadOnlyList<string>? drives = null) =>
+        new(runner.State, runner.Under, runner.MaxRuns, runner.MaxSpend, runner.UntilAt, forName, drives);
 
     /// <summary>
     /// Every live claim, by the runner holding it. The key is
@@ -162,6 +163,55 @@ public sealed class Runners(IOptions<HatchOptions> options)
                     .Select(i => (i.Key, i.Claim))
                     .First(),
                 StringComparer.Ordinal);
+    }
+
+    /// <summary>
+    /// One project, one driver: the longest-running live loop that holds a
+    /// checkout of it, by <see cref="Dispatch.HoldsCheckout"/> - the same rule
+    /// <see cref="WorkController.GetReview"/> uses for its own eligibility, so
+    /// the two can never disagree about which projects a runner can act on.
+    /// </summary>
+    /// <remarks>
+    /// The tie-break - oldest <c>FirstSeenAt</c> first, then <c>Name</c>
+    /// ordinally - is what makes the election stable: the longest-running
+    /// eligible runner keeps a project for as long as it keeps heartbeating,
+    /// and only moves when it drops out of <c>live</c>, the same lazy
+    /// arithmetic <see cref="IsHere"/> already draws everywhere else. No
+    /// sweep, no new table, no migration - every input already lives on
+    /// <see cref="EfHatchRunner"/> and <see cref="EfHatchProjectRepository"/>.
+    /// </remarks>
+    public async Task<IReadOnlyDictionary<string, IReadOnlyList<string>>> DriversAsync(
+        HatchContext db, DateTimeOffset now, CancellationToken ct)
+    {
+        var cutoff = Cutoff(now);
+
+        // Only a loop ever starts a MergeTrain; a `once` runner's own BeatAsync
+        // throws its instruction away (GoToWork.cs), so electing one would
+        // strand a project with a driver that can never answer.
+        var live = await db.Runners.AsNoTracking()
+            .Where(r => r.LastSeenAt >= cutoff && r.Kind == EfHatchRunner.LoopKind)
+            .Select(r => new { r.Name, r.FirstSeenAt, r.Remotes, r.Standing })
+            .ToListAsync(ct);
+
+        var candidates = live
+            .Select(r => (r.Name, r.FirstSeenAt, Repos: RepositoryDeclaration.From(
+                r.Remotes?.Split('\n', StringSplitOptions.RemoveEmptyEntries), r.Standing, null)))
+            .ToList();
+
+        var projects = await db.Projects.AsNoTracking().Include(p => p.Repositories).ToListAsync(ct);
+        var byRunner = live.ToDictionary(r => r.Name, _ => new List<string>(), StringComparer.Ordinal);
+
+        foreach (var project in projects)
+        {
+            var driver = candidates
+                .Where(c => Dispatch.HoldsCheckout(project.Repositories, c.Repos))
+                .OrderBy(c => c.FirstSeenAt).ThenBy(c => c.Name, StringComparer.Ordinal)
+                .Select(c => c.Name).FirstOrDefault();
+
+            if (driver is not null) byRunner[driver].Add(project.Key);
+        }
+
+        return byRunner.ToDictionary(kv => kv.Key, kv => (IReadOnlyList<string>)kv.Value, StringComparer.Ordinal);
     }
 
     /// <summary>
