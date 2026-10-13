@@ -5442,6 +5442,126 @@ public class WorkControllerTests
         Assert.Equal("its branch holds main and its build passes", entry.Blocked);
     }
 
+    [Fact]
+    public async Task MergeColumn_WithAnExpeditedRowAheadOfANormalOne_OnlyTheNormalOneNamesTheWait()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+
+        var normal = await h.FileAsync("task", "normal, ranked behind", approved.Id, rank: 2048);
+        var expedited = await h.FileAsync("task", "expedited, ready to merge", approved.Id, rank: 1024);
+        await h.ExpediteAsync(expedited);
+        foreach (var issue in new[] { normal, expedited })
+        {
+            await h.VerdictAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+            await h.BuildAsync(issue, BuildVerdicts.Passed);
+        }
+
+        var entries = Value(await h.Work.GetQueue(0, null, default));
+
+        Assert.Equal(
+            "its branch holds main and its build passes",
+            entries.Single(e => e.Issue.Key == Key(expedited)).Blocked);
+        Assert.Equal(
+            $"its branch holds main and its build passes - waiting its turn behind {Key(expedited)}, position 2 in the train",
+            entries.Single(e => e.Issue.Key == Key(normal)).Blocked);
+    }
+
+    [Fact]
+    public async Task MergeColumn_WithAHeldRowAheadOfACleanOne_TheCleanOneIsTheHeadAndNamesNoWait()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+
+        var held = await h.FileAsync("task", "no branch named for it", approved.Id, rank: 1024);
+        await h.VerdictAsync(held, MergeVerdicts.None);
+        var clean = await h.FileAsync("task", "ready to merge, behind the held one", approved.Id, rank: 2048);
+        await h.VerdictAsync(clean, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(clean, BuildVerdicts.Passed);
+
+        var entries = Value(await h.Work.GetQueue(0, null, default));
+
+        Assert.Equal(
+            "no branch on origin is named for it",
+            entries.Single(e => e.Issue.Key == Key(held)).Blocked);
+        Assert.Equal(
+            "its branch holds main and its build passes",
+            entries.Single(e => e.Issue.Key == Key(clean)).Blocked);
+    }
+
+    [Fact]
+    public async Task MergeColumn_WithAClosedPullRequestAheadOfTwoCleanRows_TheFirstCleanRowIsHead()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+
+        var closed = await h.FileAsync("task", "its pull request closed without merging", approved.Id, rank: 1024);
+        closed.PullRequestClosedAt = Now;
+        await h.Db.SaveChangesAsync();
+
+        var first = await h.FileAsync("task", "ready to merge, first in line", approved.Id, rank: 2048);
+        await h.VerdictAsync(first, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(first, BuildVerdicts.Passed);
+
+        var second = await h.FileAsync("task", "ready to merge, waits behind the first", approved.Id, rank: 3072);
+        await h.VerdictAsync(second, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(second, BuildVerdicts.Passed);
+
+        var entries = Value(await h.Work.GetQueue(0, null, default));
+
+        Assert.Equal(
+            "its pull request was closed without merging",
+            entries.Single(e => e.Issue.Key == Key(closed)).Blocked);
+        Assert.Equal(
+            "its branch holds main and its build passes",
+            entries.Single(e => e.Issue.Key == Key(first)).Blocked);
+        Assert.Equal(
+            $"its branch holds main and its build passes - waiting its turn behind {Key(first)}, position 3 in the train",
+            entries.Single(e => e.Issue.Key == Key(second)).Blocked);
+    }
+
+    [Fact]
+    public async Task MergeColumn_InTwoProjects_EachWaitingRowNamesItsOwnProjectsHead()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        var other = await h.AddProjectAsync("OTH");
+
+        var headA = await h.FileAsync("task", "ready to merge, project AER", approved.Id, rank: 1024);
+        var waitingA = await h.FileAsync("task", "waits behind AER's own head", approved.Id, rank: 2048);
+        var headB = await h.FileAsync("task", "ready to merge, project OTH", approved.Id, rank: 1024, projectId: other);
+        var waitingB = await h.FileAsync("task", "waits behind OTH's own head", approved.Id, rank: 2048, projectId: other);
+
+        foreach (var issue in new[] { headA, waitingA, headB, waitingB })
+        {
+            await h.VerdictAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+            await h.BuildAsync(issue, BuildVerdicts.Passed);
+        }
+
+        var entries = Value(await h.Work.GetQueue(0, null, default));
+
+        Assert.Equal(
+            "its branch holds main and its build passes",
+            entries.Single(e => e.Issue.Key == Key(headA)).Blocked);
+        Assert.Equal(
+            "its branch holds main and its build passes",
+            entries.Single(e => e.Issue.Key == Key("OTH", headB)).Blocked);
+        Assert.Equal(
+            $"its branch holds main and its build passes - waiting its turn behind {Key(headA)}, position 2 in the train",
+            entries.Single(e => e.Issue.Key == Key(waitingA)).Blocked);
+        Assert.Equal(
+            $"its branch holds main and its build passes - waiting its turn behind {Key("OTH", headB)}, position 2 in the train",
+            entries.Single(e => e.Issue.Key == Key("OTH", waitingB)).Blocked);
+    }
+
     // ---- The review read ----
 
     [Fact]
