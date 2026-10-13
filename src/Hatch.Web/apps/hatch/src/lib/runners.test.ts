@@ -5,6 +5,7 @@ import {
   boundsOf,
   boundsProblem,
   boundsRequest,
+  drivesLabel,
   isControllable,
   mineLabel,
   repositoriesLabel,
@@ -29,6 +30,7 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   state: 'running',
   under: null,
   repositories: [],
+  drives: [],
   clones: null,
   mine: null,
   where: 'here:/checkouts/one',
@@ -127,6 +129,20 @@ describe('repositoriesLabel', () => {
     expect(repositoriesLabel(runner({ repositories: ['example.com/owner/repo'], clones: null }))).toBe(
       'example.com/owner/repo',
     );
+  });
+});
+
+describe('drivesLabel', () => {
+  it('says driving nothing for a runner that drives none', () => {
+    expect(drivesLabel(runner())).toBe('driving nothing');
+  });
+
+  it('names one project', () => {
+    expect(drivesLabel(runner({ drives: ['AER'] }))).toBe('driving AER');
+  });
+
+  it('joins two or more projects', () => {
+    expect(drivesLabel(runner({ drives: ['AER', 'HA'] }))).toBe('driving AER, HA');
   });
 });
 
