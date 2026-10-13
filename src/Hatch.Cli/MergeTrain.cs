@@ -6,12 +6,62 @@ namespace Hatch.Cli;
 /// is merged, and one judged <see cref="WorkKinds.Update"/> is brought current
 /// with the trunk - all three told to the board.
 /// </summary>
-public sealed class MergeTrain
+/// <remarks>
+/// The clock is optional and lives apart from <see cref="TickAsync"/> itself:
+/// the bare constructor stays inert, which is what lets a test construct one
+/// and call <see cref="TickAsync"/> by hand, once, without a background loop
+/// racing it. Only <see cref="Start"/> spins one up - the same "stop first,
+/// then let go" shape as <see cref="Claim"/>.
+/// </remarks>
+public sealed class MergeTrain : IAsyncDisposable
 {
     private readonly Dictionary<(string Path, string Key), string> _seenMergeRefusal = [];
     private readonly Dictionary<(string Path, string Key), string> _seenUpdate = [];
     private readonly HashSet<string> _seenClosed = [];
     private HashSet<string> _saidBefore = [];
+
+    private readonly CancellationTokenSource _stop = new();
+    private Task? _clock;
+
+    /// <summary>Starts the clock: <see cref="TickAsync"/>, then its own interval, until stopped.</summary>
+    public static MergeTrain Start(Runtime runtime, TimeSpan interval)
+    {
+        var train = new MergeTrain();
+        train._clock = Task.Run(() => train.ClockAsync(runtime, interval, train._stop.Token), CancellationToken.None);
+        return train;
+    }
+
+    private async Task ClockAsync(Runtime runtime, TimeSpan interval, CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                await TickAsync(runtime, ct);
+                await Task.Delay(interval, ct);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    /// <summary>Stops the clock first, then lets it go - the same order <see cref="Claim.ReleaseAsync"/> uses.</summary>
+    public async ValueTask DisposeAsync()
+    {
+        await _stop.CancelAsync();
+        if (_clock is { } clock)
+        {
+            try { await clock; }
+            catch (Exception)
+            {
+                // Whatever the clock died of, it is not a reason to fail the
+                // stop - and this already runs on the way out.
+            }
+        }
+
+        _stop.Dispose();
+    }
 
     /// <summary>
     /// Takes the pull request, merge and update halves in that order, against
