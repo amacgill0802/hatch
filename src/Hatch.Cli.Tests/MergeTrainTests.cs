@@ -40,6 +40,7 @@ public sealed class MergeTrainTests
         {
             H.Wire.Json("GET", Review, rows);
             foreach (var row in rows) H.Wire.Json("PUT", Put(row.Key), Fixtures.MergeCheck());
+            H.Runtime.Readout.SetDrives(rows.Select(r => r.ProjectKey).Distinct().ToList());
             return this;
         }
 
@@ -206,7 +207,7 @@ public sealed class MergeTrainTests
     /// </summary>
     private static ReviewCheckDto MergeRow(
         string key, string branch, string pullRequestUrl, string? kind = WorkKinds.Merge, string? judgedSha = null,
-        bool isHead = true)
+        bool isHead = true, string? projectKey = null)
     {
         var sha = judgedSha ?? Tip;
         var repo = Fixtures.Repository("https://example.test/repo.git", MergeCanonical);
@@ -218,6 +219,7 @@ public sealed class MergeTrainTests
         return Fixtures.Review(
             key, [repo], pullRequestUrl: pullRequestUrl,
             mergeWork: kind is null ? null : new MergeWorkDto(kind, "its branch holds main and its build passes", isHead),
+            projectKey: projectKey,
             checks: [stored]);
     }
 
@@ -702,6 +704,77 @@ public sealed class MergeTrainTests
 
         Assert.Empty(rig.H.Say.Complained);
         Assert.Empty(rig.H.Say.Said);
+    }
+
+    // ---- The driven gate ----
+
+    [Fact]
+    public async Task A_merges_column_row_whose_project_is_not_driven_is_never_read()
+    {
+        using var rig = new Rig().Board(
+            MergeRow("AER-1", "aer-1-thing", PrUrl), MergeRow("AER-2", "aer-2-other", PrUrl2, judgedSha: Tip2));
+        rig.Runtime.Readout.SetDrives([]);
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: [("aer-1-thing", Tip), ("aer-2-other", Tip2)]);
+
+        await rig.RunAsync();
+
+        Assert.Empty(rig.H.Forge.PullRequestReads);
+    }
+
+    [Fact]
+    public async Task A_merges_column_row_whose_project_is_driven_is_merged_exactly_as_today()
+    {
+        using var rig = new Rig().Board(MergeRow("AER-1", "aer-1-thing", PrUrl));
+        rig.Runtime.Readout.SetDrives(["AER"]);
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip));
+        rig.H.Forge.PullRequestAnswer = new(PullRequestStates.Open, null, HeadSha: Tip);
+        rig.H.Forge.MergeAnswer = new(true, null);
+        rig.H.Wire.Json("POST", Merged("AER-1"), Fixtures.Issue("AER-1") with { StatusId = 4 });
+        rig.H.Wire.Json("GET", Statuses, new[] { Fixtures.Status(4, "Done") });
+        rig.H.Wire.Json("POST", Comments("AER-1"), Fixtures.Comment());
+
+        await rig.RunAsync();
+
+        Assert.Equal([(rig.H.Root, PrUrl, Tip)], rig.H.Forge.MergeCalls);
+        Assert.Equal(PrUrl, Assert.Single(rig.H.Wire.To("POST", Merged("AER-1"))).Read<PullRequestMergedRequest>().Url);
+        Assert.Contains("hatch: AER-1 pull request merged -> Done", rig.H.Say.Said);
+    }
+
+    [Fact]
+    public async Task The_gate_is_evaluated_per_row_not_once_per_tick()
+    {
+        using var rig = new Rig().Board(
+            MergeRow("AER-1", "aer-1-thing", PrUrl, projectKey: "AER"),
+            MergeRow("ZEN-1", "zen-1-thing", PrUrl2, judgedSha: Tip2, projectKey: "ZEN"));
+        rig.Runtime.Readout.SetDrives(["AER"]);
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: [("aer-1-thing", Tip), ("zen-1-thing", Tip2)]);
+        rig.H.Forge.PullRequestFor[PrUrl] = new(PullRequestStates.Open, null, HeadSha: Tip);
+        rig.H.Forge.MergeAnswer = new(true, null);
+        rig.H.Wire.Json("POST", Merged("AER-1"), Fixtures.Issue("AER-1") with { StatusId = 4 });
+        rig.H.Wire.Json("GET", Statuses, new[] { Fixtures.Status(4, "Done") });
+        rig.H.Wire.Json("POST", Comments("AER-1"), Fixtures.Comment());
+
+        await rig.RunAsync();
+
+        Assert.Equal([(rig.H.Root, PrUrl, Tip)], rig.H.Forge.MergeCalls);
+        Assert.DoesNotContain(rig.H.Forge.PullRequestReads, l => l.Contains(PrUrl2, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_review_column_row_acts_regardless_of_the_driven_set()
+    {
+        using var rig = new Rig().Board(MergeRow("AER-1", "aer-1-thing", PrUrl, kind: null));
+        rig.Runtime.Readout.SetDrives([]);
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip));
+        rig.H.Forge.PullRequestAnswer = new(PullRequestStates.Merged, null);
+        rig.H.Wire.Json("POST", Merged("AER-1"), Fixtures.Issue("AER-1") with { StatusId = 4 });
+        rig.H.Wire.Json("GET", Statuses, new[] { Fixtures.Status(4, "Done") });
+
+        await rig.RunAsync();
+
+        Assert.Equal([$"{rig.H.Root} {PrUrl}"], rig.H.Forge.PullRequestReads);
+        Assert.Equal(PrUrl, Assert.Single(rig.H.Wire.To("POST", Merged("AER-1"))).Read<PullRequestMergedRequest>().Url);
+        Assert.Contains("hatch: AER-1 pull request merged -> Done", rig.H.Say.Said);
     }
 
     [Fact]

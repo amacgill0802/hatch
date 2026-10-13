@@ -158,6 +158,7 @@ public sealed class MergeTrain : IAsyncDisposable
         {
             foreach (var issue in review)
             {
+                if (issue.MergeWork is not null && !runtime.Readout.Drives(issue.ProjectKey)) continue;
                 if (issue.PullRequestUrl is not { Length: > 0 } url) continue;
                 ct.ThrowIfCancellationRequested();
 
@@ -253,7 +254,8 @@ public sealed class MergeTrain : IAsyncDisposable
         {
             foreach (var issue in review)
             {
-                if (issue.MergeWork?.Kind != WorkKinds.Merge || issue.MergeWork?.IsHead != true) continue;
+                if (issue.MergeWork?.Kind != WorkKinds.Merge || issue.MergeWork?.IsHead != true
+                    || !runtime.Readout.Drives(issue.ProjectKey)) continue;
                 if (issue.PullRequestUrl is not { Length: > 0 } url) continue;
                 ct.ThrowIfCancellationRequested();
 
@@ -364,7 +366,8 @@ public sealed class MergeTrain : IAsyncDisposable
         {
             foreach (var issue in review)
             {
-                if (issue.MergeWork?.Kind != WorkKinds.Update || issue.MergeWork?.IsHead != true) continue;
+                if (issue.MergeWork?.Kind != WorkKinds.Update || issue.MergeWork?.IsHead != true
+                    || !runtime.Readout.Drives(issue.ProjectKey)) continue;
                 if (issue.PullRequestUrl is not { Length: > 0 } url) continue;
                 ct.ThrowIfCancellationRequested();
 
@@ -464,7 +467,7 @@ public sealed class MergeTrain : IAsyncDisposable
         {
             foreach (var issue in review)
             {
-                if (issue.MergeWork?.Kind != WorkKinds.Pushback) continue;
+                if (issue.MergeWork?.Kind != WorkKinds.Pushback || !runtime.Readout.Drives(issue.ProjectKey)) continue;
                 if (issue.PullRequestUrl is not { Length: > 0 } url) continue;
                 ct.ThrowIfCancellationRequested();
 
