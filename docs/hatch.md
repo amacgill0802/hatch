@@ -289,7 +289,8 @@ exists to prevent.
 ### Status
 
 `EfHatchStatus` — `Name` (unique), `SortOrder`, `IsTerminal`, `IsDeferred`,
-`IsWip`, `ExpressSkips`, `ParentPulls`, `AgentFiles`, `IsImplementation`, `Color` (`#rrggbb`).
+`IsWip`, `ExpressSkips`, `ParentPulls`, `AgentFiles`, `IsImplementation`,
+`IsProtected`, `MergesPullRequest`, `Color` (`#rrggbb`).
 
 One row is one column on the board. **Global, not per-project**, because the
 board shows every project at once and a per-project set would have no column to
@@ -401,6 +402,34 @@ exactly as before.** The implementation column is then the one whose own next
 move is into the awaiting-review column (see [Dependency](#dependency)). No
 migration ticks it, so the stock board is measured.
 
+`IsProtected` marks a column only an owner or approver of the issue's
+project may move work into — never a key, never a hop, never a dispatch;
+that gate is HA-293's own question, and this flag only carries it. Ticking
+it refuses a deferred or a terminal column, the same refusal `AgentFiles`
+and `IsImplementation` give those columns for their own question;
+unticking it refuses while `MergesPullRequest` still holds, since a merge
+column with nobody guarding its door would let anything that can move a
+card merge its own code. Set only by a person, through its own route
+(`PUT /api/hatch/statuses/{id}/protected`), checked again in the action —
+the same `ProjectsController.NotAPerson` idiom a [repository](#repository)
+write uses — for the same reason `ParentPulls` is closed to a key: it
+decides who may move work past this door, and that is a playbook's kind of
+power. Neither `POST /api/hatch/statuses` nor
+`PATCH /api/hatch/statuses/{id}` can set it.
+
+`MergesPullRequest` marks the column whose runner poll merges an issue's
+pull request once it stands there, current and green, with no session —
+HA-289's epic. Ticking it requires `IsProtected` already on — a column
+that merges but is not protected would let anything that can move a card,
+a key included, merge its own code — and refuses a deferred or a terminal
+column for the same reason `IsProtected` does; unticking is always
+allowed, the same stranded-flag tolerance `IsWip` gives. Set only by a
+person, through its own route
+(`PUT /api/hatch/statuses/{id}/merges-pull-request`), for the same reason
+`IsProtected` is: it decides whose code merges unattended, and that is a
+playbook's kind of power. Neither `POST /api/hatch/statuses` nor
+`PATCH /api/hatch/statuses/{id}` can set it.
+
 `Color` is a column rather than a palette keyed on the shipped names, because
 the operator invents columns — a lookup by name would leave a new one grey
 forever and lose a renamed one's colour. The ink written on a colour is computed
@@ -427,6 +456,10 @@ the flag existed.
 | In Progress | 50 | | ✓ | **agent** | Write the code, get it green, push it, put it up for review. Nothing is ticked `IsImplementation` on the stock board, so this is the implementation column by measurement: the one just left of review. |
 | In Review | 60 | | ✓ | operator; **agent** for a conflict or a failing build | Read the pull request, wait for green, merge. An agent steps in only when the branch has stopped merging with the trunk, or the build on its tip has failed, and fixes that on the branch — see [the review playbook](#playbooks). Conflicts come first. A build that is passing, still running or unread is left alone. |
 | Done | 70 | ✓ | | operator | Terminal. |
+
+A board that adds one — ticking `Protected` then `MergesPullRequest` on a
+column between `In Review` and `Done` — is walked through operator-side in
+[Letting the loop merge for you](../src/Hatch.Web/apps/hatch/public/hatch-at-home.md#letting-the-loop-merge-for-you).
 
 A migration flags `In Progress` and `In Review` on a board that still has
 columns of exactly those names, and writes no limit row — the WIP section is
