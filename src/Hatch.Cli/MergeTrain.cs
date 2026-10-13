@@ -3,8 +3,9 @@ namespace Hatch.Cli;
 /// <summary>
 /// The loop's own acting on what is in review: a pull request that merged or
 /// closed advances or comments its issue, one judged <see cref="WorkKinds.Merge"/>
-/// is merged, and one judged <see cref="WorkKinds.Update"/> is brought current
-/// with the trunk - all three told to the board.
+/// is merged, one judged <see cref="WorkKinds.Update"/> is brought current with
+/// the trunk, and one judged <see cref="WorkKinds.Pushback"/> is carried back to
+/// review - all four told to the board.
 /// </summary>
 /// <remarks>
 /// The clock is optional and lives apart from <see cref="TickAsync"/> itself:
@@ -64,9 +65,10 @@ public sealed class MergeTrain : IAsyncDisposable
     }
 
     /// <summary>
-    /// Takes the pull request, merge and update halves in that order, against
-    /// what is in review right now. Nothing it does throws out: a cause that
-    /// persists across calls is said once and not every call.
+    /// Takes the pull request, merge, update and pushback halves in that
+    /// order, against what is in review right now. Nothing it does throws
+    /// out: a cause that persists across calls is said once and not every
+    /// call.
     /// </summary>
     public async Task TickAsync(Runtime runtime, CancellationToken ct)
     {
@@ -116,6 +118,15 @@ public sealed class MergeTrain : IAsyncDisposable
         await MergeApprovedAsync(runtime, complain, review, ct);
 
         await UpdateApprovedAsync(runtime, complain, review, ct);
+
+        // Ordered after the two halves above rather than before them for no
+        // reason that matters: unlike those two, this one writes to nothing
+        // but the board, and the board's own route re-judges the issue's
+        // stored merge and build checks itself - so a row this tick read as
+        // pushback a moment ago that the board no longer agrees with costs
+        // one 409, walked on the same way Board.PushbackAsync documents, and
+        // never a wrong move either way.
+        await PushbackApprovedAsync(runtime, complain, review, ct);
     }
 
     /// <summary>
@@ -422,6 +433,65 @@ public sealed class MergeTrain : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// The pushback half: for every issue in the merges column the judge marked
+    /// <see cref="WorkKinds.Pushback"/>, ask the board to carry it back to review -
+    /// <see cref="WorkKinds.Merge"/>, <see cref="WorkKinds.Update"/> and
+    /// <see cref="WorkKinds.Hold"/> rows, and every row in the review column
+    /// (<c>MergeWork</c> null), are left for whatever else acts on them and not
+    /// asked about here at all. Unlike <see cref="MergeApprovedAsync"/> and
+    /// <see cref="UpdateApprovedAsync"/> above it, this never checks
+    /// <c>IsHead</c>: a row judged <c>pushback</c> is never the train's head in
+    /// the first place (see <see cref="Dispatch.Train"/>), so waiting for its
+    /// turn would wait forever.
+    /// </summary>
+    /// <remarks>
+    /// This asks nothing of <c>gh</c> and keeps no <c>judgedSha</c>: the board's
+    /// own route re-judges the issue's stored merge and build checks itself, so
+    /// there is nothing here for a fresh read to be compared against, and
+    /// nothing that needs remembering across ticks either - a successful
+    /// pushback moves the issue out of the merge column, so it is no longer
+    /// judged <see cref="WorkKinds.Pushback"/> and this half never visits it
+    /// again; a <c>409</c> says nothing at all; and a genuine refusal is a line
+    /// the outer <c>complain</c> already keeps from repeating verbatim. The
+    /// outer try/catch keeps anything unanticipated here from propagating into
+    /// <see cref="TickAsync"/> and aborting the halves that run after it.
+    /// </remarks>
+    private async Task PushbackApprovedAsync(
+        Runtime runtime, Action<string> complain, IReadOnlyList<ReviewCheckDto> review, CancellationToken ct)
+    {
+        try
+        {
+            foreach (var issue in review)
+            {
+                if (issue.MergeWork?.Kind != WorkKinds.Pushback) continue;
+                if (issue.PullRequestUrl is not { Length: > 0 } url) continue;
+                ct.ThrowIfCancellationRequested();
+
+                (IssueDto? Issue, string? WalkOn) result;
+                try
+                {
+                    result = await runtime.QuietBoard.PushbackAsync(
+                        issue.Key, new PullRequestPushbackRequest(url, runtime.RunnerName), ct);
+                }
+                catch (HatchException e)
+                {
+                    complain($"hatch: {issue.Key} - the board would not take the pushback - {e.Message}");
+                    continue;
+                }
+
+                if (result.WalkOn is not null) continue;
+
+                var to = await ResolvedColumnNameAsync(runtime, result.Issue!.StatusId, ct);
+                runtime.Say.Line($"hatch: {PushbackWords(issue.Key, to)}");
+            }
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            complain($"hatch: could not push back approved pull requests - {e.Message}");
+        }
+    }
+
     /// <summary>The column a merged pull request advanced its issue into, by name - <c>"?"</c> where it cannot be read.</summary>
     private static async Task<string> ResolvedColumnNameAsync(Runtime runtime, int statusId, CancellationToken ct)
     {
@@ -438,6 +508,9 @@ public sealed class MergeTrain : IAsyncDisposable
 
     /// <summary>A line for the terminal: <c>HA-12 pull request merged -> Done</c>.</summary>
     private static string PullRequestWords(string key, string to) => $"{key} pull request merged -> {to}";
+
+    /// <summary>A line for the terminal: <c>HA-12 pull request pushed back -> In Review</c>.</summary>
+    private static string PushbackWords(string key, string to) => $"{key} pull request pushed back -> {to}";
 
     /// <summary>A line for the terminal: <c>HA-12 branch brought current with main</c>.</summary>
     private static string UpdateWords(string key, string trunk) => $"{key} branch brought current with {trunk}";
