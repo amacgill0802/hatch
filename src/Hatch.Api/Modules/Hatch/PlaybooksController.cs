@@ -339,6 +339,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
         p.Effort,
         p.Budget,
         p.BriefLimit,
+        EfHatchPlaybook.ReadDeniedTools(p.DeniedTools) ?? [],
         p.UpdatedAt,
         p.ProjectId,
         p.Project?.Key,
