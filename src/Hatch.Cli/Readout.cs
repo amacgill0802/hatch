@@ -51,6 +51,7 @@ public sealed class ReadoutState
     private RunnerSnapshot _runner = RunnerSnapshot.Empty;
     private IReadOnlyList<UsageWindow> _usage = [];
     private DateTimeOffset? _usageReadAt;
+    private IReadOnlySet<string> _drives = new HashSet<string>(StringComparer.Ordinal);
 
     /// <summary>A session is about to be spawned. Clears whatever idle line was showing.</summary>
     public void BeginIncrement(string key, string title, string what, string? issueUrl, DateTimeOffset startedAt, long? budgetTokens = null)
@@ -88,6 +89,18 @@ public sealed class ReadoutState
     public void SetRunner(RunnerSnapshot runner)
     {
         lock (_gate) _runner = runner;
+    }
+
+    /// <summary>The project keys this runner is elected to drive, refreshed on every real heartbeat.</summary>
+    public void SetDrives(IReadOnlyList<string> projectKeys)
+    {
+        lock (_gate) _drives = projectKeys.ToHashSet(StringComparer.Ordinal);
+    }
+
+    /// <summary>Whether this runner is elected to drive the merge train for a project.</summary>
+    public bool Drives(string projectKey)
+    {
+        lock (_gate) return _drives.Contains(projectKey);
     }
 
     /// <summary>The account's usage windows, refreshed while a session is running, and the instant they were read.</summary>

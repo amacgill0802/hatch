@@ -1793,7 +1793,7 @@ public sealed class GoToWorkTests
         // folding back a bare null would clear the cap this test relies on to
         // end the loop.
         h.Wire.Json("POST", $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}",
-            new RunnerInstructionDto("running", null, 1, null, null, "Nathan"));
+            new RunnerInstructionDto("running", null, 1, null, null, "Nathan", Drives: ["AER"]));
 
         Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-runs", "1"], default));
 
@@ -1809,6 +1809,7 @@ public sealed class GoToWorkTests
         Assert.Equal("Nathan", snapshot.Runner.ForName);
         Assert.Equal(1, snapshot.Runner.NightRuns);
         Assert.Null(snapshot.Increment);
+        Assert.True(h.Runtime.Readout.Drives("AER"));
     }
 
     // ---- HA-245: a branch on origin nobody can find a pull request for ----
