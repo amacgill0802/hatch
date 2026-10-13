@@ -11,6 +11,7 @@ namespace Hatch.Cli.Tests;
 public sealed class GoToWorkTests
 {
     private const string Queue = "/api/hatch/work/queue";
+    private const string Review = "/api/hatch/work/review";
 
     private static string Held(string runner) =>
         $"\"hatch is working this from {runner}, last heard from 8 seconds ago\"";
@@ -567,8 +568,11 @@ public sealed class GoToWorkTests
 
         // Nothing was read and nothing was claimed: the question is asked before
         // the board, because a night that cannot spend should not take a ticket
-        // off it to find that out.
-        Assert.Empty(h.Wire.Calls);
+        // off it to find that out. The merge train starts before this check and
+        // is no exception to it - merging an approved pull request needs no
+        // Claude CLI - so its own independent read of review is not this
+        // invariant's concern.
+        Assert.Empty(h.Wire.Calls.Where(c => c.Path != Review));
     }
 
     [Fact]

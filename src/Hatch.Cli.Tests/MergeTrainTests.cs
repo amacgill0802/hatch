@@ -580,4 +580,31 @@ public sealed class MergeTrainTests
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => rig.Train.TickAsync(rig.Runtime, cancelled.Token));
     }
+
+    // ---- The clock: Start and DisposeAsync ----
+
+    [Fact]
+    public async Task Start_ticks_on_its_own_interval_until_disposed()
+    {
+        using var rig = new Rig().Board(Fixtures.Review("AER-1", pullRequestUrl: PrUrl));
+
+        var train = MergeTrain.Start(rig.Runtime, Harness.Beat);
+        await Harness.Eventually(() => rig.H.Forge.PullRequestReads.Count >= 2, "the clock to tick at least twice");
+
+        await train.DisposeAsync();
+        var countAtDispose = rig.H.Forge.PullRequestReads.Count;
+        await Task.Delay(Harness.Beat * 6);
+
+        Assert.Equal(countAtDispose, rig.H.Forge.PullRequestReads.Count);
+    }
+
+    [Fact]
+    public async Task A_bare_constructor_stays_inert_until_Start_is_called()
+    {
+        using var rig = new Rig().Board(Fixtures.Review("AER-1", pullRequestUrl: PrUrl));
+
+        await Task.Delay(Harness.Beat * 6);
+
+        Assert.Empty(rig.H.Forge.PullRequestReads);
+    }
 }
