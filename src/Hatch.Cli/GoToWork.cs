@@ -886,6 +886,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // one.
             if (told is not null) under = Fold(told, tally, under);
             if (told?.For is { Length: > 0 } named) forName = named;
+            if (told is not null) runtime.Readout.SetDrives(told.Drives ?? []);
 
             runtime.Readout.SetRunner(new RunnerSnapshot(
                 runtime.RunnerName, forName, tally.Runs, runtime.Clock.GetUtcNow() - tally.Started, tally.Spent,
