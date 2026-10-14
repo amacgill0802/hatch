@@ -161,7 +161,7 @@ public class IssuesController(
                 i.AssigneePersonId,
                 i.AssigneeApiKeyId,
                 i.Priority,
-                i.Express,
+                i.PreApproval,
                 i.StalledAt,
                 i.StalledWhy,
                 i.Held,
@@ -196,7 +196,7 @@ public class IssuesController(
                 Assignee: await IssueProjection.ToAssigneeAsync(actors, i.AssigneePersonId, i.AssigneeApiKeyId, ct),
                 Claim: claims.Project(i.Claim, now),
                 Expedited: effective >= PriorityLevels.Expedited,
-                Express: i.Express,
+                Express: i.PreApproval >= PreApprovalLevels.Express,
                 Priority: PriorityLevels.Name(effective),
                 PriorityOwn: PriorityLevels.Name(i.Priority),
                 PriorityFrom: effectiveFrom,
@@ -228,7 +228,7 @@ public class IssuesController(
     /// the express flag and the column a person chose. Internal, and called
     /// only from <see cref="TrunkBuildBugController"/> - the bug a failing
     /// trunk's button files is born expedited the way an issue under an express
-    /// parent is born express (<see cref="EfHatchIssue.Express"/>), in the same
+    /// parent is born express (<see cref="EfHatchIssue.PreApproval"/>), in the same
     /// save and with no second event, because expediting at birth is not a
     /// change from anything.
     /// </summary>
@@ -310,8 +310,8 @@ public class IssuesController(
 
             // Taken from the parent at filing, and at no other time: an issue
             // created under an express parent is born express, whoever files
-            // it and however - see EfHatchIssue.Express.
-            var expressFrom = parent.Issue?.Express == true ? parent.Issue : null;
+            // it and however - see EfHatchIssue.PreApproval.
+            var expressFrom = parent.Issue?.PreApproval >= PreApprovalLevels.Express ? parent.Issue : null;
 
             var issue = new EfHatchIssue
             {
@@ -327,7 +327,7 @@ public class IssuesController(
                 ReadyAtHasTime = readyAt?.HasTime ?? false,
                 DueAt = dueAt?.At,
                 DueAtHasTime = dueAt?.HasTime ?? false,
-                Express = express || expressFrom is not null,
+                PreApproval = (express || expressFrom is not null) ? PreApprovalLevels.Express : PreApprovalLevels.None,
                 Priority = priority,
                 CreatedBy = actor,
                 CreatedAt = now,

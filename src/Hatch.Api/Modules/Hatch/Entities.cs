@@ -377,7 +377,7 @@ public class EfHatchStatus
     /// <summary>
     /// Whether an express issue standing here is carried on to the next column
     /// with no session, as long as it has no unanswered question - see
-    /// <see cref="EfHatchIssue.Express"/>.
+    /// <see cref="EfHatchIssue.PreApproval"/>.
     ///
     /// <para>Not a "whose column is this" flag: that stays derived from the
     /// playbook matrix, for the reasons <c>docs/hatch.md</c> (<em>Status</em>)
@@ -386,7 +386,7 @@ public class EfHatchStatus
     ///
     /// <para>Writing it is closed to an API key
     /// (<see cref="StatusesController.PutExpressSkips"/>) for the same reason
-    /// as <see cref="EfHatchIssue.Express"/>: it decides which gates the loop
+    /// as <see cref="EfHatchIssue.PreApproval"/>: it decides which gates the loop
     /// may pass unattended, and that is a playbook's kind of power.</para>
     /// </summary>
     public bool ExpressSkips { get; set; }
@@ -746,11 +746,12 @@ public class EfHatchIssue
 
     /// <summary>
     /// A gate-passer, not a sort key - the opposite shape from
-    /// <see cref="Priority"/>. An issue marked express is carried past a
-    /// column marked <see cref="EfHatchStatus.ExpressSkips"/> with no session,
-    /// as long as it has no unanswered question; every other fold still holds
-    /// it exactly as it holds any other issue (<see cref="WorkController"/>).
-    /// It changes no order, on the board or in the queue.
+    /// <see cref="Priority"/>. An issue at <see cref="PreApprovalLevels.Express"/>
+    /// or above is carried past a column marked <see cref="EfHatchStatus.ExpressSkips"/>
+    /// with no session, as long as it has no unanswered question; every other
+    /// fold still holds it exactly as it holds any other issue
+    /// (<see cref="WorkController"/>). It changes no order, on the board or in
+    /// the queue.
     /// </summary>
     /// <remarks>
     /// <para>Set by a person
@@ -766,7 +767,7 @@ public class EfHatchIssue
     /// how an issue came to exist, not a fact that follows its parent
     /// around.</para>
     /// </remarks>
-    public bool Express { get; set; }
+    public int PreApproval { get; set; }
 
     /// <summary>
     /// When an increment last left this ticket where it found it. Null for
@@ -1412,11 +1413,19 @@ public class EfHatchIssueEvent
     public const string PriorityChanged = "priority_changed";
 
     /// <summary>
-    /// The issue was marked express, or unmarked - see
-    /// <see cref="EfHatchIssue.Express"/>. The payload carries both sides, the
-    /// same as <see cref="PriorityChanged"/>.
+    /// The issue was marked express, or unmarked, back when that was a bool -
+    /// see <see cref="EfHatchIssue.PreApproval"/>. Superseded by
+    /// <see cref="PreApprovalChanged"/>; nothing writes this kind any longer,
+    /// but old rows still carry it and nothing reads or migrates them.
     /// </summary>
     public const string ExpressChanged = "express_changed";
+
+    /// <summary>
+    /// The issue's pre-approval level changed - see
+    /// <see cref="EfHatchIssue.PreApproval"/>. The payload carries both sides
+    /// by name, the same as <see cref="PriorityChanged"/>.
+    /// </summary>
+    public const string PreApprovalChanged = "pre_approval_changed";
 
     /// <summary>An increment left this ticket where it found it - see <see cref="EfHatchIssue.StalledAt"/>.</summary>
     public const string Stalled = "stalled";

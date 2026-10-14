@@ -681,7 +681,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// <param name="hop">
     /// Whether this issue is express and stands in a column marked
     /// <see cref="EfHatchStatus.ExpressSkips"/> - see
-    /// <see cref="EfHatchIssue.Express"/>. Checked last, after every other fold,
+    /// <see cref="EfHatchIssue.PreApproval"/>. Checked last, after every other fold,
     /// because a hop answers only "does this column still need a session" and
     /// every other reason to hold the issue back still applies to it exactly as
     /// it applies to any other issue.
@@ -982,7 +982,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     {
         var crosses = to is not null && to.Id != from.Id;
 
-        if (crosses && issue.Express && from.ExpressSkips) return HopKinds.Express;
+        if (crosses && issue.PreApproval >= PreApprovalLevels.Express && from.ExpressSkips) return HopKinds.Express;
 
         if (crosses && wip is not null)
         {

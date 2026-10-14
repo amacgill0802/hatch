@@ -222,9 +222,6 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)");
 
-                    b.Property<bool>("Express")
-                        .HasColumnType("boolean");
-
                     b.Property<bool>("Held")
                         .HasColumnType("boolean");
 
@@ -237,6 +234,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
 
                     b.Property<long?>("ParentId")
                         .HasColumnType("bigint");
+
+                    b.Property<int>("PreApproval")
+                        .HasColumnType("integer");
 
                     b.Property<int>("Priority")
                         .HasColumnType("integer");

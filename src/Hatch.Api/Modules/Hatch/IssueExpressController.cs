@@ -11,7 +11,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// The night train's flag. Set by a person, honoured by the dispatcher: an
 /// express issue standing in a column marked <see cref="EfHatchStatus.ExpressSkips"/>
 /// is carried to the next column with no session, as long as it has no
-/// unanswered question - see <see cref="EfHatchIssue.Express"/>.
+/// unanswered question - see <see cref="EfHatchIssue.PreApproval"/>.
 ///
 /// It is a gate-passer and not a sort key, the opposite of
 /// <see cref="EfHatchIssue.Priority"/>: every fold an issue already meets
@@ -55,21 +55,27 @@ public class IssueExpressController(
         var issue = await db.Issues.Include(i => i.Project).WithKey(projectKey, number).FirstOrDefaultAsync(ct);
         if (issue is null) return NotFound();
 
+        var level = request.Express ? PreApprovalLevels.Express : PreApprovalLevels.None;
+
         // Setting the value the issue already holds writes nothing and does not
         // move UpdatedAt, the same as every other edit in Hatch.
-        if (request.Express != issue.Express)
+        if (level != issue.PreApproval)
         {
             var now = time.GetUtcNow();
 
             issue.Events.Add(new EfHatchIssueEvent
             {
                 Actor = await caller.ActorNameAsync(ct),
-                Kind = EfHatchIssueEvent.ExpressChanged,
-                Payload = JsonSerializer.Serialize(new { from = issue.Express, to = request.Express }),
+                Kind = EfHatchIssueEvent.PreApprovalChanged,
+                Payload = JsonSerializer.Serialize(new
+                {
+                    from = PreApprovalLevels.Name(issue.PreApproval),
+                    to = PreApprovalLevels.Name(level),
+                }),
                 At = now,
             });
 
-            issue.Express = request.Express;
+            issue.PreApproval = level;
             issue.UpdatedAt = now;
             await db.SaveChangesAsync(ct);
         }

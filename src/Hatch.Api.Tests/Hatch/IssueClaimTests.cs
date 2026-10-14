@@ -1222,7 +1222,7 @@ public class IssueClaimTests
                 ParentId = parentId,
                 Rank = 1024 * number,
                 Priority = priority,
-                Express = express,
+                PreApproval = express ? PreApprovalLevels.Express : PreApprovalLevels.None,
                 CreatedBy = "operator",
                 CreatedAt = Now,
                 UpdatedAt = Now,

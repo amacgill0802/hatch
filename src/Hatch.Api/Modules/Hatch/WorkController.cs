@@ -755,7 +755,7 @@ public class WorkController(
                 ProjectKey = i.Project!.Key,
                 i.Number, i.Type, i.Title, i.StatusId, i.Rank,
                 i.ReadyAt, i.ReadyAtHasTime, i.DueAt, i.DueAtHasTime,
-                i.AssigneePersonId, i.AssigneeApiKeyId, i.Priority, i.Express,
+                i.AssigneePersonId, i.AssigneeApiKeyId, i.Priority, i.PreApproval,
                 i.StalledAt, i.StalledWhy, i.Held, i.PullRequestUrl,
                 Claim = new ClaimSnapshot(
                     i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
@@ -778,7 +778,7 @@ public class WorkController(
                 Assignee: await IssueProjection.ToAssigneeAsync(actors, c.AssigneePersonId, c.AssigneeApiKeyId, ct),
                 Claim: claims.Project(c.Claim, claimed.Now),
                 Expedited: c.Priority >= PriorityLevels.Expedited,
-                Express: c.Express,
+                Express: c.PreApproval >= PreApprovalLevels.Express,
                 Priority: PriorityLevels.Name(c.Priority),
                 StalledAt: c.StalledAt,
                 StalledWhy: c.StalledWhy,
