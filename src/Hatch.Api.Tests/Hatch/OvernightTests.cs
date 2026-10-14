@@ -107,4 +107,43 @@ public class OvernightTests
 
         Assert.Equal(result.Rows.Count, result.Count);
     }
+
+    [Fact]
+    public void NoSeenAtAtAll_ReportsEveryRowUnseen()
+    {
+        var result = Overnight.NewestNight([Landing(1, Base), Landing(2, Base + TimeSpan.FromMinutes(1))]);
+
+        Assert.Equal(2, result.Unseen);
+    }
+
+    [Fact]
+    public void ASeenAtBetweenTwoLandings_CountsOnlyTheLaterOne()
+    {
+        var older = Landing(1, Base);
+        var newer = Landing(2, Base + TimeSpan.FromMinutes(1));
+
+        var result = Overnight.NewestNight([older, newer], seenAt: Base + TimeSpan.FromSeconds(30));
+
+        Assert.Equal(1, result.Unseen);
+    }
+
+    [Fact]
+    public void ASeenAtAfterEveryLanding_ReportsNothingUnseen()
+    {
+        var result = Overnight.NewestNight(
+            [Landing(1, Base), Landing(2, Base + TimeSpan.FromMinutes(1))],
+            seenAt: Base + TimeSpan.FromHours(1));
+
+        Assert.Equal(0, result.Unseen);
+    }
+
+    [Fact]
+    public void ASeenAtExactlyEqualToALanding_DoesNotCountThatLanding()
+    {
+        var landing = Landing(1, Base);
+
+        var result = Overnight.NewestNight([landing], seenAt: Base);
+
+        Assert.Equal(0, result.Unseen);
+    }
 }

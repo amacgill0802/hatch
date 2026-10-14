@@ -12,24 +12,35 @@ namespace Hatch.Api.Modules.Hatch;
 /// gap-splitting and ordering.
 /// </summary>
 /// <remarks>
-/// No <c>ICallerIdentity</c> and no <c>NotAKey</c> - the same reason
-/// <see cref="WorkLogController"/> gives: this is a read, and reads in this
-/// module are open to a person and to a <c>hatch</c>-scoped key alike.
+/// No class-level attribute - the same split <see cref="ProjectsController"/>
+/// draws, for the same reason: <see cref="GetOvernight"/> is a read, open to
+/// a person and to a <c>hatch</c>-scoped key alike the way
+/// <see cref="WorkLogController"/>'s reads are, but <see cref="PostSeen"/> is
+/// a person's own mark and nothing else's.
 /// </remarks>
 [ApiController]
 [Route("api/hatch/overnight")]
-[RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
-public class OvernightController(HatchContext db) : ControllerBase
+public class OvernightController(
+    HatchContext db, ICallerIdentity caller, IActorDirectory directory, TimeProvider time) : ControllerBase
 {
     [HttpGet]
+    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
     public async Task<ActionResult<OvernightDto>> GetOvernight(CancellationToken ct)
     {
+        var principal = await directory.PrincipalAsync(ct);
+        DateTimeOffset? seenAt = principal is null
+            ? null
+            : await db.OvernightSeen.AsNoTracking()
+                .Where(s => s.PersonId == principal.Id)
+                .Select(s => (DateTimeOffset?)s.SeenAt)
+                .FirstOrDefaultAsync(ct);
+
         var terminal = await db.Issues.AsNoTracking()
             .Where(i => i.Status!.IsTerminal)
             .Select(i => new { i.Id, ProjectKey = i.Project!.Key, i.Number, i.Type, i.Title })
             .ToListAsync(ct);
 
-        if (terminal.Count == 0) return Overnight.NewestNight([]);
+        if (terminal.Count == 0) return Overnight.NewestNight([], seenAt);
 
         var terminalIds = terminal.Select(i => i.Id).ToHashSet();
 
@@ -64,6 +75,46 @@ public class OvernightController(HatchContext db) : ControllerBase
                 landedAt[i.Id], tree.DescendantCount(i.Id)))
             .ToList();
 
-        return Overnight.NewestNight(landings);
+        return Overnight.NewestNight(landings, seenAt);
     }
+
+    /// <summary>
+    /// Marks the night as read, for the caller - now, for whoever is asking.
+    /// No body: a person only has one mark to set, their own.
+    /// </summary>
+    [HttpPost("seen")]
+    [RequireRole(PersonRole.User)]
+    public async Task<IActionResult> PostSeen(CancellationToken ct)
+    {
+        if (await NotAPerson(ct) is { } refusal) return refusal;
+
+        var personId = (await directory.PrincipalAsync(ct))!.Id;
+        var now = time.GetUtcNow();
+
+        var row = await db.OvernightSeen.FirstOrDefaultAsync(s => s.PersonId == personId, ct);
+        if (row is null) db.OvernightSeen.Add(new EfHatchOvernightSeen { PersonId = personId, SeenAt = now });
+        else row.SeenAt = now;
+
+        await db.SaveChangesAsync(ct);
+        return NoContent();
+    }
+
+    // ---- The one narrowing ----
+
+    /// <summary>
+    /// A person, not a key - checked in the action as well as declared in the
+    /// attribute, for <see cref="RunnersController"/>'s reason:
+    /// <see cref="RoleGate"/> is dormant wherever the wall is off, which is
+    /// all of local development, and a guarantee that evaporates under a
+    /// switch is not a guarantee. A keyless runner that named itself with the
+    /// runner header is refused here too - it is an agent whether or not it
+    /// carries a credential.
+    /// </summary>
+    private async Task<ObjectResult?> NotAPerson(CancellationToken ct) =>
+        await caller.IsProgramAsync(ct)
+            ? new ObjectResult("marking the night as seen is the operator's, not an agent's")
+            {
+                StatusCode = StatusCodes.Status403Forbidden,
+            }
+            : null;
 }

@@ -35,7 +35,11 @@ public static class Overnight
     /// either side. Empty input answers an empty night - no <c>From</c>/<c>To</c>,
     /// zero rows - never a refusal.
     /// </summary>
-    public static OvernightDto NewestNight(IReadOnlyList<Landing> landings)
+    /// <param name="seenAt">
+    /// This reader's own mark, or null for a reader who has never read the
+    /// page - in which case every row in the night is unseen.
+    /// </param>
+    public static OvernightDto NewestNight(IReadOnlyList<Landing> landings, DateTimeOffset? seenAt = null)
     {
         if (landings.Count == 0) return new OvernightDto(null, null, 0, []);
 
@@ -59,7 +63,11 @@ public static class Overnight
             .Select(l => new OvernightRowDto(l.Key, l.Type, l.Title, l.ProjectKey, l.At, l.DescendantCount))
             .ToList();
 
-        return new OvernightDto(night.Min(l => l.At), night.Max(l => l.At), night.Count, rows);
+        // Strictly later than the mark: a landing exactly at it is the mark,
+        // not after it.
+        var unseen = night.Count(l => seenAt is null || l.At > seenAt.Value);
+
+        return new OvernightDto(night.Min(l => l.At), night.Max(l => l.At), night.Count, rows, unseen);
     }
 
     private static int TypeRank(Landing l) => Array.IndexOf(TypeOrder, l.Type) is var i and >= 0 ? i : TypeOrder.Length;
