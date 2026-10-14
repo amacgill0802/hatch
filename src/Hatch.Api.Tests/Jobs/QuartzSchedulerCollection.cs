@@ -12,8 +12,11 @@ namespace Hatch.Api.Tests.Jobs;
 /// process resolves a logger off a disposed factory.</para>
 ///
 /// <para>Naming every such class into one collection is where xUnit enforces
-/// that, and it is the whole cost - a handful of fast tests and three that need
-/// a Postgres, which no longer overlap.</para>
+/// that, and it is the whole cost - a handful of fast tests and the ones that
+/// need a Postgres, which no longer overlap. The membership has to stay
+/// complete to mean that: <c>ManifestContentTypeTests</c> boots a host the
+/// same way and was left out, which raced exactly this way against
+/// <c>JobsInitTests</c> and <c>SchedulerCheckoutTests</c> until it joined.</para>
 /// </summary>
 [CollectionDefinition(Name)]
 public class QuartzSchedulerCollection
