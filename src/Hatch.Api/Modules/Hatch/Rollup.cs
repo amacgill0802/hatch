@@ -180,6 +180,11 @@ public static class Rollup
         /// </summary>
         public bool IsLeaf(long id) => ChildrenOf(id).Count == 0;
 
+        /// <summary>Every issue below this one, at any depth - a count drawn from the
+        /// same walk <see cref="Rollup.DescendantIdsAsync"/> runs, off the tree already
+        /// folded rather than a second query.</summary>
+        public int DescendantCount(long id) => Descend(children, id).Count;
+
         /// <summary>What this subtree adds up to.</summary>
         public RollupDto Of(long id) => Shape(Fold(id));
 
