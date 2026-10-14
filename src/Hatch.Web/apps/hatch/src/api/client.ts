@@ -29,6 +29,7 @@ import type {
   IssueSearch,
   Me,
   AuthMe,
+  OvernightDto,
   ParsedEpic,
   PastedPlan,
   Plan,
@@ -591,6 +592,10 @@ export interface WorkLogSessionQuery {
   /** 1 to 500; the server refuses anything outside it. */
   limit?: number;
 }
+
+// ---- Overnight ----
+
+export const getOvernight = () => fetchJson<OvernightDto>('/api/hatch/overnight');
 
 // ---- People ----
 //

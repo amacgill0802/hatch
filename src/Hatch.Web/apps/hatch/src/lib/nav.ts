@@ -33,6 +33,7 @@ export const NAV: NavEntry[] = [
       { to: '/runners', label: 'Runners' },
       { to: '/playbooks', label: 'Playbooks' },
       { to: '/leaderboard', label: 'Leaderboard' },
+      { to: '/overnight', label: 'Overnight' },
       { to: '/runner', label: 'Get the runner' },
     ],
   },

@@ -22,6 +22,7 @@ import { BulkPage } from './pages/BulkPage';
 import { HistoryPage } from './pages/HistoryPage';
 import { ImportPage } from './pages/ImportPage';
 import { RunnerPage } from './pages/RunnerPage';
+import { OvernightPage } from './pages/OvernightPage';
 import { ApiKeysPage } from './pages/ApiKeysPage';
 import { UsersPage } from './pages/UsersPage';
 import { SettingsPage } from './pages/SettingsPage';
@@ -126,6 +127,7 @@ function AppShell() {
             <Route path="/statuses" element={<StatusesPage />} />
             <Route path="/playbooks" element={<PlaybooksPage />} />
             <Route path="/runners" element={<RunnersPage />} />
+            <Route path="/overnight" element={<OvernightPage />} />
             <Route path="/history" element={<HistoryPage />} />
             <Route path="/issues/:key" element={<IssuePage />} />
             <Route path="/import" element={<ImportPage />} />
