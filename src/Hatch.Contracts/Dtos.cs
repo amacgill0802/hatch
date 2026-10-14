@@ -1216,16 +1216,14 @@ public static class ClaudeTools
 {
     public static readonly string[] BuiltIn =
     [
-        "Agent", "Artifact", "AskUserQuestion", "Bash", "CronCreate", "CronDelete",
-        "CronList", "Edit", "EndConversation", "EnterPlanMode", "EnterWorktree",
-        "ExitPlanMode", "ExitWorktree", "Glob", "Grep", "ListAgents",
-        "ListMcpResourcesTool", "LSP", "Monitor", "NotebookEdit", "PowerShell",
-        "PushNotification", "Read", "ReadMcpResourceTool", "RemoteTrigger",
-        "ReportFindings", "ScheduleWakeup", "SendFeedback", "SendMessage",
-        "SendUserFile", "ShareOnboardingGuide", "Skill", "SubagentHandback",
-        "TaskCreate", "TaskGet", "TaskList", "TaskOutput", "TaskStop",
-        "TaskUpdate", "TodoWrite", "ToolSearch", "WaitForMcpServers", "WebFetch",
-        "WebSearch", "Workflow", "Write",
+        "Agent", "Artifact", "ArtifactCheck", "ArtifactComments", "ArtifactData", "AskUserQuestion", "Bash",
+        "CronCreate", "CronDelete", "CronList", "DesignSync", "Edit", "EndConversation", "EnterPlanMode",
+        "EnterWorktree", "ExitPlanMode", "ExitWorktree", "Glob", "Grep", "ListAgents", "ListMcpResourcesTool",
+        "LSP", "Monitor", "NotebookEdit", "PowerShell", "PushNotification", "Read", "ReadMcpResourceTool",
+        "RemoteTrigger", "ReportFindings", "ScheduleWakeup", "SendFeedback", "SendMessage", "SendUserFile",
+        "ShareOnboardingGuide", "Skill", "SubagentHandback", "TaskCreate", "TaskGet", "TaskList", "TaskOutput",
+        "TaskStop", "TaskUpdate", "TodoWrite", "ToolSearch", "WaitForMcpServers", "WebFetch", "WebSearch",
+        "Workflow", "Write",
     ];
 }
 
