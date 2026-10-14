@@ -92,6 +92,8 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
             briefLimit = value;
         }
 
+        if (InvalidDeniedTools(request.DeniedTools) is { } deniedToolsError) return BadRequest(deniedToolsError);
+
         var now = time.GetUtcNow();
         var playbook = new EfHatchPlaybook
         {
@@ -104,6 +106,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
             Effort = effort,
             Budget = budget,
             BriefLimit = briefLimit,
+            DeniedTools = EfHatchPlaybook.WriteDeniedTools(request.DeniedTools),
             ProjectId = projectId,
             CreatedAt = now,
             UpdatedAt = now,
@@ -167,6 +170,9 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
             briefLimit = value;
         }
 
+        if (InvalidDeniedTools(request.DeniedTools) is { } deniedToolsError) return BadRequest(deniedToolsError);
+        var deniedTools = request.DeniedTools is null ? playbook.DeniedTools : EfHatchPlaybook.WriteDeniedTools(request.DeniedTools);
+
         playbook.FromStatusId = from;
         playbook.ToStatusId = to;
         playbook.Types = types;
@@ -175,6 +181,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
         playbook.Effort = effort;
         playbook.Budget = budget;
         playbook.BriefLimit = briefLimit;
+        playbook.DeniedTools = deniedTools;
         playbook.ProjectId = projectId;
         playbook.UpdatedAt = time.GetUtcNow();
 
@@ -312,6 +319,41 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
 
         return (null, $"a project is a whole number of one or more - not \"{trimmed}\"");
     }
+
+    internal static string? InvalidDeniedTools(IReadOnlyList<string>? rules)
+    {
+        if (rules is null) return null;
+
+        if (rules.Count > EfHatchPlaybook.MaxDeniedTools)
+            return $"a denied-tools list is at most {EfHatchPlaybook.MaxDeniedTools} rules - not {rules.Count}";
+
+        foreach (var rule in rules)
+        {
+            if (rule.Length > EfHatchPlaybook.MaxToolRuleLength)
+                return $"a tool rule is at most {EfHatchPlaybook.MaxToolRuleLength} characters - not \"{rule}\"";
+
+            if (InvalidToolRule(rule))
+                return "a tool rule is a built-in name, \"mcp__…\", or \"*\", each optionally followed " +
+                       $"by one (pattern) - not \"{rule}\"";
+        }
+
+        return null;
+    }
+
+    /// <summary>The rule's name - the part before an optional (pattern) - names a tool, and any parens are balanced and non-empty.</summary>
+    private static bool InvalidToolRule(string rule)
+    {
+        var paren = rule.IndexOf('(');
+        if (paren < 0) return InvalidToolName(rule);
+
+        if (rule[^1] != ')' || rule.Count(c => c == '(') != 1 || rule.Count(c => c == ')') != 1) return true;
+        if (paren == rule.Length - 2) return true; // "Name()" - zero characters inside
+
+        return InvalidToolName(rule[..paren]);
+    }
+
+    private static bool InvalidToolName(string name) =>
+        name != "*" && !name.StartsWith("mcp__", StringComparison.Ordinal) && !ClaudeTools.BuiltIn.Contains(name);
 
     // ---- Reading back ----
 
