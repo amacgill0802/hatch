@@ -86,14 +86,16 @@ absence starts to hurt:
   The API key's scope is still a statement about *which surface*, never about
   which verb.
 - **No swimlanes or sprints.**
-- **No GitHub integration beyond one read.** A commit sha in a comment is the
-  link, and it is written by whoever did the work. What is read is the build on
-  the tip of a branch in review, and it is read by the runner's own `gh`, never
-  by the server — see [the build half of checking the branches in
-  review](#checking-the-branches-in-review). What is still not read: whether a
-  pull request is approved, whether it merges (that is git's answer), and
-  anything at all from the server. Nothing in Hatch names a forge or inspects a
-  host.
+- **No GitHub integration beyond one read and two writes.** A commit sha in a
+  comment is the link, and it is written by whoever did the work. What is read
+  is the build on the tip of a branch in review; what is written, once a pull
+  request stands approved in a protected column, is the merge itself and the
+  branch update that keeps it current with the trunk while it waits. All three
+  are the runner's own `gh`, never the server — see [the build half of checking
+  the branches in review](#checking-the-branches-in-review). What is still not
+  read: whether a pull request is approved on the forge, whether it merges
+  (that is git's answer), and anything at all from the server. Nothing in
+  Hatch names a forge or inspects a host.
 - **No websockets.** The board refetches on action and on focus, and every 30
   seconds while it is on screen, and at once when it returns to the screen. It
   was once refetched on action and focus alone, on the premise that whoever
@@ -1133,8 +1135,9 @@ actionable](#what-makes-an-issue-actionable).
 **Satisfied means done.** An edge clears when the issue it names is in a
 terminal column — merged, not merely up for review. Anything softer and story
 two starts on top of story one's unmerged branch, which is the failure the whole
-feature exists to prevent, and it is why the chain advances at the operator's
-merge rather than at an agent's move.
+feature exists to prevent, and it is why the chain advances at a merge — the
+operator's, on the forge, or the poll's, in the merges column — rather than at
+an agent's move.
 
 **A dependency an ancestor holds reaches everything below it.** A task under a
 blocked story is blocked and every story under a blocked epic is blocked, which
@@ -1916,6 +1919,16 @@ every request and is enforced in two places; the role gate runs on the handful
 of routes that ask and is enforced only in this process. Folding them would put
 a person lookup on the health probes and the media stream, which is precisely
 what the wall's allow-list exists to prevent.
+
+### One permission beyond the role
+
+A third thing sits beside the wall and the role gate rather than inside
+either: a project's `EfHatchProjectMember` role (`Owner` or `Approver`)
+grants the one permission a person can hold beyond their global role —
+moving an issue into a protected column, read through
+`IProjectAccess.CanApproveAsync`. It is the single exception to the rule the
+rest of this section runs on; see [One granular permission](#non-goals) for
+why it stops at exactly one.
 
 ### The key
 
@@ -5186,6 +5199,12 @@ so the trail says who did what without anybody being asked to record it.
   comment saying what landed and what did not. Only the operator decides that
   something shipped, and the board enforces it: the dispatcher refuses a
   transition into a terminal column outright.
+- **Move work into a protected column.** Only an owner or approver can, the
+  same gate [the one permission](#one-permission-beyond-the-role) describes —
+  but once an issue is there with `MergesPullRequest` ticked, merging it is
+  the poll's, not a click the operator makes on the forge. The column itself
+  is not terminal, so nothing above is broken: the move in is still a
+  person's, only the merge out is not.
 - **Shelve work in a [deferred](#status) column.** Whether something is worth
   doing at all is the same kind of call, and it is refused the same way: `hatch
   move` will not take a ticket there, and no pass dispatches one out of there.
@@ -5246,13 +5265,16 @@ code already settles is a round trip through a person for nothing.
   [the one edge](#the-one-edge-that-is-deliberately-cut).
 - **Reporting.** The events are there; nothing renders them. The Plan view
   answers the question that was actually being asked.
-- **GitHub integration, beyond one read.** A branch and a PR are named in a
-  comment by whoever made them. The one thing read from a forge is the build on
-  an in-review branch's tip, through the runner's own `gh`
+- **GitHub integration, beyond one read and two writes.** A branch and a PR
+  are named in a comment by whoever made them. The one thing read from a forge
+  is the build on an in-review branch's tip; the two writes are the merge of a
+  pull request the board has already gated behind a protected column, and the
+  branch update that keeps it current with the trunk while it waits — all
+  three through the runner's own `gh`
   ([checking the branches in review](#checking-the-branches-in-review)). Review
-  state, mergeability, webhooks and anything the server would ask a forge itself
-  are deferred: each is a credential on the server, which is what the runner
-  asking `gh` as whoever it is signed in as avoids.
+  state, mergeability, webhooks and anything else the server would ask a forge
+  itself are deferred: each is a credential on the server, which is what the
+  runner asking `gh` as whoever it is signed in as avoids.
 - **A deleted issue takes its events with it.** Hard delete, confirmed in the
   UI, and an accepted gap.
 - **Pushed updates.** The board polls (see above); a server-sent signal would
