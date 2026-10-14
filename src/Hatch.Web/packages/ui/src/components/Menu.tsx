@@ -51,8 +51,11 @@ export interface MenuProps {
   /** Open on first render, uncontrolled. For the gallery's "open" specimen. */
   defaultOpen?: boolean;
   /** Open when a pointer that can hover rests on the trigger, and close when it
-      leaves. Off for a panel that is worked in, such as a list of checkboxes,
-      which a passing pointer must not open. */
+      leaves. A click on the trigger can then only open it, never close it - the
+      pointer already decided it is open, and a click would otherwise fight the
+      hover that just showed it. Off for a panel that is worked in, such as a
+      list of checkboxes, which a passing pointer must not open; there a click
+      is the only way in and out, and still toggles. */
   hover?: boolean;
   /** Draw the trigger yourself, for an icon. */
   trigger?: (props: MenuTriggerProps) => ReactNode;
@@ -107,7 +110,9 @@ function MenuBar({ as: Tag = 'div', className, children }: MenuBarProps) {
 
 /**
  * A trigger that opens a panel of links, or of anything: on hover, on click or
- * tap, and from the keyboard.
+ * tap, and from the keyboard. A click can only open a menu that hover already
+ * opened; everywhere else - a tap, the keyboard, a `hover={false}` panel - it
+ * still toggles, since there a click is the only way in and the only way out.
  *
  * The APG disclosure-navigation pattern, deliberately not `role="menu"`: the
  * rows are links and a segmented control, not commands, and `role="menu"`
@@ -192,10 +197,16 @@ function MenuRoot({
     'aria-controls': panelId,
     'aria-current': active ? 'true' : undefined,
     onClick(event) {
-      // detail is 0 for a keyboard-initiated click (Enter, Space): that opens
-      // and goes in; a pointer click just toggles.
-      if (event.detail === 0 && !open) openFromKeyboard();
-      else controller.toggle(id);
+      // detail is 0 for a keyboard-initiated click (Enter, Space): the
+      // keyboard drives aria-expanded both ways itself. A pointer click goes
+      // through the controller, which only ever opens a hover-opened menu -
+      // the pointer already decided that one is open.
+      if (event.detail === 0) {
+        if (open) controller.close(id);
+        else openFromKeyboard();
+      } else {
+        controller.toggle(id);
+      }
     },
     onKeyDown(event) {
       if (event.key === 'ArrowDown') {
