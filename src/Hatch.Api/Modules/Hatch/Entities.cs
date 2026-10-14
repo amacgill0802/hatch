@@ -721,8 +721,7 @@ public class EfHatchIssue
     /// stops. It is live, not copied: nothing is ever written onto a
     /// descendant's own row because an ancestor's changed, and nothing is
     /// written onto a child's row at filing because its parent happened to be
-    /// Emergency that day - see <see cref="PreApproval"/> for the one field that
-    /// still does work that way, and why the two differ. Normal on the way up
+    /// Emergency that day. Normal on the way up
     /// is not a stop; the walk passes through it to the next ancestor, and only
     /// a non-Normal row - or running out of ancestors - ends it.</para>
     ///
@@ -764,19 +763,11 @@ public class EfHatchIssue
     /// issue that sets none of its own - every child, every grandchild, down
     /// to the first descendant that carries a level of its own, where the walk
     /// stops. It is live, not copied: nothing is ever written onto a
-    /// descendant's own row because an ancestor's changed. None on the way up
+    /// descendant's own row because an ancestor's changed, and nothing is
+    /// written onto a child's row at filing because its parent happened to be
+    /// Express that day. None on the way up
     /// is not a stop; the walk passes through it to the next ancestor, and only
-    /// a non-None row - or running out of ancestors - ends it. The one place it
-    /// still copies is filing: an issue created under a parent that sets a
-    /// level is born with Express written onto its own row too - the copy
-    /// only ever writes Express, never the parent's actual level, so a child
-    /// filed under a pre-approved parent is born Express, not pre-approved,
-    /// and the live walk then stops at that row rather than reaching the
-    /// ancestor. Redundant rather than wrong when the parent is itself
-    /// Express; a real gap when the parent is pre-approved, closed by
-    /// removing the copy entirely, the task after this one -
-    /// <see cref="Priority"/> never copies at filing at all, which is
-    /// the one real difference between the two.</para>
+    /// a non-None row - or running out of ancestors - ends it.</para>
     ///
     /// <para>It is derived at read, not stored. <c>PriorityTree.EffectivePreApproval</c>
     /// walks this column live, on every <c>GetIssue</c> and every

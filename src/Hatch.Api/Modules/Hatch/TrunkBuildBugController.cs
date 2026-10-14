@@ -77,7 +77,9 @@ public class TrunkBuildBugController(
         var issues = new IssuesController(db, ranks, actors, claims, caller, time, new ProjectAccess(db, actors)) { ControllerContext = ControllerContext };
         var created = await issues.CreateIssueAsync(
             new IssueCreateRequest(project, "bug", $"Build failing on {row.Trunk}", description, null, null, null),
-            priority, ct, express: request?.Express ?? false, statusId: request?.StatusId);
+            priority, ct,
+            preApproval: (request?.Express ?? false) ? PreApprovalLevels.Express : PreApprovalLevels.None,
+            statusId: request?.StatusId);
 
         if (created.Result is not CreatedAtActionResult { Value: IssueDto dto }) return created.Result!;
 

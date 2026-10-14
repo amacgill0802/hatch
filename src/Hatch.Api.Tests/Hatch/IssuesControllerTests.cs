@@ -332,101 +332,6 @@ public class IssuesControllerTests
         Assert.Null(Value(await h.Issues.GetIssue("AER-2", default)).ParentKey);
     }
 
-    // ---- Express, inherited at filing ----
-
-    [Fact]
-    public async Task FiledUnderAnExpressParent_IsBornExpress()
-    {
-        var h = await NewAsync();
-        await h.CreateAsync("epic", "the epic");
-        await h.ExpressAsync("AER-1", true);
-
-        var child = await h.CreateAsync("story", "the story", parentKey: "AER-1");
-
-        Assert.True(child.Express);
-    }
-
-    [Fact]
-    public async Task TheCreatedEvent_NamesTheParentItTookExpressFrom()
-    {
-        var h = await NewAsync();
-        await h.CreateAsync("epic", "the epic");
-        await h.ExpressAsync("AER-1", true);
-
-        await h.CreateAsync("story", "the story", parentKey: "AER-1");
-
-        var e = Assert.Single(await h.EventsAsync("AER-2"));
-        Assert.Equal("AER-1", e.Payload!.Value.GetProperty("expressFrom").GetString());
-    }
-
-    [Fact]
-    public async Task FiledUnderAParentThatIsNotExpress_IsNotExpress()
-    {
-        var h = await NewAsync();
-        await h.CreateAsync("epic", "the epic");
-
-        var child = await h.CreateAsync("story", "the story", parentKey: "AER-1");
-
-        Assert.False(child.Express);
-    }
-
-    [Fact]
-    public async Task FiledWithNoParent_IsNotExpress()
-    {
-        var h = await NewAsync();
-
-        var issue = await h.CreateAsync("task", "a chore");
-
-        Assert.False(issue.Express);
-    }
-
-    [Fact]
-    public async Task ReparentedUnderAnExpressParent_IsMarkedAtOnce()
-    {
-        // Superseded by this task: Express is now the live walk
-        // (PriorityTree.EffectivePreApproval), not the raw column, so
-        // reparenting under an express parent reads express immediately -
-        // see ReparentedUnderAnExpressParent_ReadsExpressAtOnce below. This
-        // whole block is retired next task alongside copy-at-filing.
-        var h = await NewAsync();
-        await h.CreateAsync("epic", "the epic");
-        await h.ExpressAsync("AER-1", true);
-        await h.CreateAsync("task", "a chore");
-
-        var moved = Value(await h.Issues.PatchIssue("AER-2", Patch(parentKey: "AER-1"), default));
-
-        Assert.True(moved.Express);
-    }
-
-    [Fact]
-    public async Task InheritanceIsTheSame_WhetherAKeyOrAPersonFiles()
-    {
-        var h = await NewAsync();
-        await h.CreateAsync("epic", "the epic");
-        await h.ExpressAsync("AER-1", true);
-
-        // Inheritance does not distinguish caller kind - the flag is taken
-        // from the parent regardless of who is filing, so a key filing
-        // children under something a person marked express is exactly how an
-        // express epic's stories run overnight.
-        var child = await h.CreateAsync("story", "the story", parentKey: "AER-1");
-
-        Assert.True(child.Express);
-    }
-
-    [Fact]
-    public async Task UnmarkingTheParent_LeavesAnAlreadyFiledChildAsItWas()
-    {
-        var h = await NewAsync();
-        await h.CreateAsync("epic", "the epic");
-        await h.ExpressAsync("AER-1", true);
-        await h.CreateAsync("story", "the story", parentKey: "AER-1");
-
-        await h.ExpressAsync("AER-1", false);
-
-        Assert.True(Value(await h.Issues.GetIssue("AER-2", default)).Express);
-    }
-
     // ---- Priority, inherited live at read ----
 
     [Fact]
@@ -3812,20 +3717,6 @@ public class IssuesControllerTests
             IssueKey.TryParse(key, out var projectKey, out var number);
             var issue = await Db.Issues.WithKey(projectKey, number).FirstAsync();
             issue.StatusId = statusId;
-            await Db.SaveChangesAsync();
-        }
-
-        /// <summary>
-        /// Written straight to the row, the same as <see cref="AssignAsync"/> -
-        /// what the dedicated route accepts and refuses is
-        /// <c>IssueExpressControllerTests</c>' business, and these tests are
-        /// about what filing under an express parent makes of it.
-        /// </summary>
-        public async Task ExpressAsync(string key, bool express)
-        {
-            IssueKey.TryParse(key, out var projectKey, out var number);
-            var issue = await Db.Issues.WithKey(projectKey, number).FirstAsync();
-            issue.PreApproval = express ? PreApprovalLevels.Express : PreApprovalLevels.None;
             await Db.SaveChangesAsync();
         }
 
