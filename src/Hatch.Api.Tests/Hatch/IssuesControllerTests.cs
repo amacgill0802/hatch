@@ -3677,7 +3677,7 @@ public class IssuesControllerTests
         {
             IssueKey.TryParse(key, out var projectKey, out var number);
             var issue = await Db.Issues.WithKey(projectKey, number).FirstAsync();
-            issue.Express = express;
+            issue.PreApproval = express ? PreApprovalLevels.Express : PreApprovalLevels.None;
             await Db.SaveChangesAsync();
         }
 

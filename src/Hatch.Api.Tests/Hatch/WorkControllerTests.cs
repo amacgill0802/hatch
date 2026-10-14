@@ -7668,7 +7668,7 @@ public class WorkControllerTests
         /// </summary>
         public async Task ExpressAsync(EfHatchIssue issue)
         {
-            issue.Express = true;
+            issue.PreApproval = PreApprovalLevels.Express;
             await Db.SaveChangesAsync();
         }
 

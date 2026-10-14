@@ -110,7 +110,7 @@ public class PlanTests
 
         foreach (var epic in new[] { one, two, three })
         {
-            epic.Express = true;
+            epic.PreApproval = PreApprovalLevels.Express;
             await h.Db.SaveChangesAsync();
         }
 

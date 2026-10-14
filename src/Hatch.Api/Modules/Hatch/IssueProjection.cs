@@ -203,7 +203,7 @@ public static class IssueProjection
                 effective >= PriorityLevels.Expedited,
                 mergeChecks.TryGetValue(issue.Id, out var checks) ? checks : [],
                 buildChecks.TryGetValue(issue.Id, out var builds) ? builds : [],
-                issue.Express,
+                issue.PreApproval >= PreApprovalLevels.Express,
                 PriorityLevels.Name(effective),
                 PriorityLevels.Name(issue.Priority),
                 effectiveFrom,

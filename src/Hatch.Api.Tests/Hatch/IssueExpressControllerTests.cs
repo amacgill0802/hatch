@@ -36,7 +36,7 @@ public class IssueExpressControllerTests
         var marked = await h.ExpressAsync(issue.Key, true);
 
         Assert.True(marked.Express);
-        Assert.True((await h.RowAsync(issue.Key)).Express);
+        Assert.True((await h.RowAsync(issue.Key)).PreApproval >= PreApprovalLevels.Express);
     }
 
     [Fact]
@@ -49,7 +49,7 @@ public class IssueExpressControllerTests
         var unmarked = await h.ExpressAsync(issue.Key, false);
 
         Assert.False(unmarked.Express);
-        Assert.False((await h.RowAsync(issue.Key)).Express);
+        Assert.False((await h.RowAsync(issue.Key)).PreApproval >= PreApprovalLevels.Express);
     }
 
     [Fact]
@@ -73,7 +73,7 @@ public class IssueExpressControllerTests
 
         var e = Assert.Single(await h.EventsAsync(issue.Key));
         Assert.Equal("Nathan", e.Actor);
-        Assert.Equal((false, true), Sides(e));
+        Assert.Equal(("none", "express"), Sides(e));
     }
 
     [Fact]
@@ -87,8 +87,8 @@ public class IssueExpressControllerTests
 
         var events = await h.EventsAsync(issue.Key);
         Assert.Equal(2, events.Count);
-        Assert.Equal((false, true), Sides(events[0]));
-        Assert.Equal((true, false), Sides(events[1]));
+        Assert.Equal(("none", "express"), Sides(events[0]));
+        Assert.Equal(("express", "none"), Sides(events[1]));
     }
 
     // ---- Setting what it already holds ----
@@ -129,11 +129,11 @@ public class IssueExpressControllerTests
         await h.ExpressAsync(issue.Key, true);
 
         // Filing writes its own created event - beside that, this route
-        // writes exactly one express_changed event and nothing naming
+        // writes exactly one pre_approval_changed event and nothing naming
         // priority, which is a different row entirely (IssueExpediteController's).
         var events = Value(await h.Thread.GetEvents(issue.Key, default));
         Assert.DoesNotContain(events, e => e.Kind == EfHatchIssueEvent.PriorityChanged);
-        Assert.Single(events, e => e.Kind == EfHatchIssueEvent.ExpressChanged);
+        Assert.Single(events, e => e.Kind == EfHatchIssueEvent.PreApprovalChanged);
         Assert.Equal(PriorityLevels.Normal, (await h.RowAsync(issue.Key)).Priority);
     }
 
@@ -170,7 +170,7 @@ public class IssueExpressControllerTests
             issue.Key, new IssueMoveRequest(h.DoneId, null, null), default));
 
         Assert.True(moved.Express);
-        Assert.True((await h.RowAsync(issue.Key)).Express);
+        Assert.True((await h.RowAsync(issue.Key)).PreApproval >= PreApprovalLevels.Express);
     }
 
     // ---- The edge that is cut ----
@@ -287,7 +287,7 @@ public class IssueExpressControllerTests
         /// <summary>The flag's own events, oldest first.</summary>
         public async Task<IReadOnlyList<IssueEventDto>> EventsAsync(string key) =>
             Value(await Thread.GetEvents(key, default))
-                .Where(e => e.Kind == EfHatchIssueEvent.ExpressChanged)
+                .Where(e => e.Kind == EfHatchIssueEvent.PreApprovalChanged)
                 .Reverse()
                 .ToList();
     }
@@ -350,11 +350,11 @@ public class IssueExpressControllerTests
             Task.FromResult(Person?.Name ?? Key?.Name ?? Local?.Name ?? CallerIdentity.Unattributed);
     }
 
-    /// <summary>The two sides an <c>express_changed</c> event carries.</summary>
-    private static (bool From, bool To) Sides(IssueEventDto e)
+    /// <summary>The two sides a <c>pre_approval_changed</c> event carries, by name.</summary>
+    private static (string From, string To) Sides(IssueEventDto e)
     {
         var payload = e.Payload!.Value;
-        return (payload.GetProperty("from").GetBoolean(), payload.GetProperty("to").GetBoolean());
+        return (payload.GetProperty("from").GetString()!, payload.GetProperty("to").GetString()!);
     }
 
     private static T Value<T>(ActionResult<T> result) =>

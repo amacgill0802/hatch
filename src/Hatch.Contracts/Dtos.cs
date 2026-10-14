@@ -579,6 +579,42 @@ public static class PriorityLevels
 }
 
 /// <summary>
+/// The three levels an issue's pre-approval can sit at - see
+/// <see cref="EfHatchIssue.PreApproval"/>.
+/// </summary>
+public static class PreApprovalLevels
+{
+    public const int None = 0;
+    public const int Express = 1;
+    public const int PreApproved = 2;
+
+    public const string NoneName = "none";
+    public const string ExpressName = "express";
+    public const string PreApprovedName = "preapproved";
+
+    /// <summary>The level's name, for the wire - see <see cref="TryParse"/> for the reverse.</summary>
+    public static string Name(int level) => level switch
+    {
+        PreApproved => PreApprovedName,
+        Express => ExpressName,
+        _ => NoneName,
+    };
+
+    /// <summary>The name's level, or <see langword="false"/> for anything that is not one of the three.</summary>
+    public static bool TryParse(string? name, out int level)
+    {
+        (level, var ok) = name switch
+        {
+            PreApprovedName => (PreApproved, true),
+            ExpressName => (Express, true),
+            NoneName => (None, true),
+            _ => (None, false),
+        };
+        return ok;
+    }
+}
+
+/// <summary>
 /// Still here. The token is the whole authorization; the line is optional and
 /// cosmetic.
 /// </summary>
