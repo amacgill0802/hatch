@@ -228,16 +228,16 @@ public class IssuesController(
     /// <summary>
     /// The whole of <see cref="CreateIssue"/>, plus the two things a key must
     /// never set for itself: <paramref name="priority"/>, and - when
-    /// <paramref name="express"/> or <paramref name="statusId"/> is given -
-    /// the express flag and the column a person chose. Internal, and called
+    /// <paramref name="preApproval"/> or <paramref name="statusId"/> is given -
+    /// the preapproval level and the column a person chose. Internal, and called
     /// only from <see cref="TrunkBuildBugController"/> - the bug a failing
-    /// trunk's button files is born expedited the way an issue under an express
-    /// parent is born express (<see cref="EfHatchIssue.PreApproval"/>), in the same
-    /// save and with no second event, because expediting at birth is not a
-    /// change from anything.
+    /// trunk's button files is born expedited the way an issue can be born at
+    /// whatever level the caller names (<see cref="EfHatchIssue.PreApproval"/>),
+    /// in the same save and with no second event, because expediting at birth is
+    /// not a change from anything.
     /// </summary>
     internal async Task<ActionResult<IssueDto>> CreateIssueAsync(
-        IssueCreateRequest request, int priority, CancellationToken ct, bool express = false, int? statusId = null)
+        IssueCreateRequest request, int priority, CancellationToken ct, int preApproval = PreApprovalLevels.None, int? statusId = null)
     {
         var title = request.Title?.Trim();
         if (Invalid(title, request.Description, request.Type) is { } invalid) return BadRequest(invalid);
@@ -312,11 +312,6 @@ public class IssuesController(
             var parent = await ResolveParentAsync(request.ParentKey, project.Id, request.Type, null, ct);
             if (parent.Error is { } error) return BadRequest(error);
 
-            // Taken from the parent at filing, and at no other time: an issue
-            // created under an express parent is born express, whoever files
-            // it and however - see EfHatchIssue.PreApproval.
-            var expressFrom = parent.Issue?.PreApproval >= PreApprovalLevels.Express ? parent.Issue : null;
-
             var issue = new EfHatchIssue
             {
                 ProjectId = project.Id,
@@ -331,7 +326,7 @@ public class IssuesController(
                 ReadyAtHasTime = readyAt?.HasTime ?? false,
                 DueAt = dueAt?.At,
                 DueAtHasTime = dueAt?.HasTime ?? false,
-                PreApproval = (express || expressFrom is not null) ? PreApprovalLevels.Express : PreApprovalLevels.None,
+                PreApproval = preApproval,
                 Priority = priority,
                 CreatedBy = actor,
                 CreatedAt = now,
@@ -343,11 +338,7 @@ public class IssuesController(
             // fails here rather than writing a second AER-12 - and the unique
             // index on (ProjectId, Number) is the backstop under that.
             project.NextIssueNumber++;
-            object createdPayload = expressFrom switch
-            {
-                null => new { type = issue.Type, title = issue.Title },
-                { } e => new { type = issue.Type, title = issue.Title, expressFrom = await KeyOfAsync(e, ct) },
-            };
+            object createdPayload = new { type = issue.Type, title = issue.Title };
             issue.Events.Add(Event(actor, EfHatchIssueEvent.Created, createdPayload, now));
             db.Issues.Add(issue);
 
