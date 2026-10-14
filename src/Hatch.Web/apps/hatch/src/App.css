@@ -4629,6 +4629,47 @@ button.hatch-option.chosen {
   color: var(--ink);
 }
 
+.hatch-queue-trains {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin-top: var(--sp-3);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--line);
+}
+
+.hatch-queue-train-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-1);
+}
+
+.hatch-queue-train-project {
+  font-weight: 700;
+}
+
+.hatch-queue-train-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.hatch-queue-train-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-2);
+}
+
+.hatch-queue-train-head-word {
+  font-size: var(--t-label);
+  text-transform: uppercase;
+}
+
 .hatch-queue-foot {
   display: flex;
   flex-direction: column;

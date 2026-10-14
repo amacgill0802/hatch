@@ -299,4 +299,53 @@ describe('QueueModal', () => {
     expect(html).toContain('Reading A');
     expect(html).toContain('own queue');
   });
+
+  it('names the project, shows the row, and says no runner is driving it', () => {
+    const html = render('ready', [entry({ issue: issue({ key: 'AER-1', projectKey: 'AER', mergeWork: { kind: 'merge', sentence: '' } }) })]);
+
+    expect(html).toContain('AER-1');
+    expect(html).toContain('no runner is driving it');
+  });
+
+  it('shows both rows of a two-row train, marking only the head', () => {
+    const head = entry({ issue: issue({ key: 'AER-1', projectKey: 'AER', mergeWork: { kind: 'merge', sentence: '' } }) });
+    const behind = entry({ issue: issue({ key: 'AER-2', projectKey: 'AER', mergeWork: { kind: 'update', sentence: '' } }) });
+    const html = render('ready', [head, behind]);
+
+    expect(html).toContain('AER-1');
+    expect(html).toContain('AER-2');
+    expect(html.match(/hatch-queue-train-head-word/g)).toHaveLength(1);
+  });
+
+  it("names the runner driving a train's project", () => {
+    const row = entry({ issue: issue({ key: 'AER-1', projectKey: 'AER', mergeWork: { kind: 'merge', sentence: '' } }) });
+    const html = render('ready', [row], null, [], () => {}, null, [runner({ name: 'Jeff Winger', drives: ['AER'] })]);
+
+    expect(html).toContain('driven by Jeff Winger');
+  });
+
+  it('separates two projects into their own train blocks', () => {
+    const a = entry({ issue: issue({ key: 'AER-1', projectKey: 'AER', mergeWork: { kind: 'merge', sentence: '' } }) });
+    const b = entry({ issue: issue({ key: 'BER-1', projectKey: 'BER', mergeWork: { kind: 'merge', sentence: '' } }) });
+    const html = render('ready', [a, b]);
+
+    const trainsAt = html.indexOf('hatch-queue-trains');
+    const aerAt = html.indexOf('>AER<', trainsAt);
+    const berAt = html.indexOf('>BER<', trainsAt);
+    const aer1At = html.indexOf('AER-1', trainsAt);
+    const ber1At = html.indexOf('BER-1', trainsAt);
+
+    expect(trainsAt).toBeGreaterThan(-1);
+    expect(aerAt).toBeGreaterThan(-1);
+    expect(berAt).toBeGreaterThan(aerAt);
+    expect(aer1At).toBeGreaterThan(aerAt);
+    expect(aer1At).toBeLessThan(berAt);
+    expect(ber1At).toBeGreaterThan(berAt);
+  });
+
+  it('draws no train section when no row carries mergeWork', () => {
+    const html = render('ready', [entry()]);
+
+    expect(html).not.toContain('hatch-queue-trains');
+  });
 });
