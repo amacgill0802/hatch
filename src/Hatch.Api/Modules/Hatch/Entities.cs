@@ -1798,6 +1798,15 @@ public class EfHatchPlaybook
         tools is { Count: > 0 } ? JsonSerializer.Serialize(tools, Json) : null;
 
     /// <summary>
+    /// Trimmed, blank-dropped, de-duplicated - the same cleanup
+    /// <see cref="NormalizeTypes"/> does, except case is left alone: a rule's
+    /// case matters (<c>Bash</c> is a real tool name), where a type's does
+    /// not.
+    /// </summary>
+    public static IReadOnlyList<string> NormalizeDeniedTools(IReadOnlyList<string>? tools) =>
+        tools is null ? [] : tools.Select(t => t.Trim()).Where(t => t.Length > 0).Distinct().ToList();
+
+    /// <summary>
     /// camelCase, matching the wire - the same reason <see cref="Questions"/>
     /// keeps its own copy rather than sharing one.
     /// </summary>

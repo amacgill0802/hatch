@@ -92,7 +92,8 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
             briefLimit = value;
         }
 
-        if (InvalidDeniedTools(request.DeniedTools) is { } deniedToolsError) return BadRequest(deniedToolsError);
+        var deniedTools = EfHatchPlaybook.NormalizeDeniedTools(request.DeniedTools);
+        if (InvalidDeniedTools(deniedTools) is { } deniedToolsError) return BadRequest(deniedToolsError);
 
         var now = time.GetUtcNow();
         var playbook = new EfHatchPlaybook
@@ -106,7 +107,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
             Effort = effort,
             Budget = budget,
             BriefLimit = briefLimit,
-            DeniedTools = EfHatchPlaybook.WriteDeniedTools(request.DeniedTools),
+            DeniedTools = EfHatchPlaybook.WriteDeniedTools(deniedTools),
             ProjectId = projectId,
             CreatedAt = now,
             UpdatedAt = now,
@@ -170,8 +171,13 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
             briefLimit = value;
         }
 
-        if (InvalidDeniedTools(request.DeniedTools) is { } deniedToolsError) return BadRequest(deniedToolsError);
-        var deniedTools = request.DeniedTools is null ? playbook.DeniedTools : EfHatchPlaybook.WriteDeniedTools(request.DeniedTools);
+        var deniedTools = playbook.DeniedTools;
+        if (request.DeniedTools is not null)
+        {
+            var normalized = EfHatchPlaybook.NormalizeDeniedTools(request.DeniedTools);
+            if (InvalidDeniedTools(normalized) is { } deniedToolsError) return BadRequest(deniedToolsError);
+            deniedTools = EfHatchPlaybook.WriteDeniedTools(normalized);
+        }
 
         playbook.FromStatusId = from;
         playbook.ToStatusId = to;
@@ -280,6 +286,21 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
             : $"a shape is one of {string.Join(", ", EfHatchPlaybook.Shapes)} - not \"{shape}\"";
 
     /// <summary>
+    /// The two size limits, and nothing checked against <see cref="ClaudeTools.BuiltIn"/>
+    /// on purpose: a rule may legitimately name an MCP tool or a <c>Bash(…)</c>
+    /// pattern that list can't enumerate, so an unrecognised name is accepted
+    /// rather than refused.
+    /// </summary>
+    private static string? InvalidDeniedTools(IReadOnlyList<string> tools) => tools switch
+    {
+        { Count: > EfHatchPlaybook.MaxDeniedTools } =>
+            $"a playbook denies at most {EfHatchPlaybook.MaxDeniedTools} tools - not {tools.Count}",
+        _ when tools.Any(t => t.Length > EfHatchPlaybook.MaxToolRuleLength) =>
+            $"a denied tool rule is at most {EfHatchPlaybook.MaxToolRuleLength} characters",
+        _ => null,
+    };
+
+    /// <summary>
     /// A non-null budget to either a cleared (blank) or set value, or the
     /// sentence saying why neither. Called only once the caller already knows
     /// <paramref name="budget"/> is not null - null means something different
@@ -319,41 +340,6 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
 
         return (null, $"a project is a whole number of one or more - not \"{trimmed}\"");
     }
-
-    internal static string? InvalidDeniedTools(IReadOnlyList<string>? rules)
-    {
-        if (rules is null) return null;
-
-        if (rules.Count > EfHatchPlaybook.MaxDeniedTools)
-            return $"a denied-tools list is at most {EfHatchPlaybook.MaxDeniedTools} rules - not {rules.Count}";
-
-        foreach (var rule in rules)
-        {
-            if (rule.Length > EfHatchPlaybook.MaxToolRuleLength)
-                return $"a tool rule is at most {EfHatchPlaybook.MaxToolRuleLength} characters - not \"{rule}\"";
-
-            if (InvalidToolRule(rule))
-                return "a tool rule is a built-in name, \"mcp__…\", or \"*\", each optionally followed " +
-                       $"by one (pattern) - not \"{rule}\"";
-        }
-
-        return null;
-    }
-
-    /// <summary>The rule's name - the part before an optional (pattern) - names a tool, and any parens are balanced and non-empty.</summary>
-    private static bool InvalidToolRule(string rule)
-    {
-        var paren = rule.IndexOf('(');
-        if (paren < 0) return InvalidToolName(rule);
-
-        if (rule[^1] != ')' || rule.Count(c => c == '(') != 1 || rule.Count(c => c == ')') != 1) return true;
-        if (paren == rule.Length - 2) return true; // "Name()" - zero characters inside
-
-        return InvalidToolName(rule[..paren]);
-    }
-
-    private static bool InvalidToolName(string name) =>
-        name != "*" && !name.StartsWith("mcp__", StringComparison.Ordinal) && !ClaudeTools.BuiltIn.Contains(name);
 
     // ---- Reading back ----
 
