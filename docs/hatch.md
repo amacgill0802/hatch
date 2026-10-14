@@ -1803,15 +1803,38 @@ matter under a hundred lines of tidying.
 ### Playbook
 
 `EfHatchPlaybook` — `FromStatusId`, `ToStatusId`, `Types`, `Shape`, `Prompt`,
-`Model`, `Effort`, `ProjectId`. Unique on `(from, to, types, shape, project)`.
+`Model`, `Effort`, `Budget`, `BriefLimit`, `DeniedTools`, `ProjectId`. Unique
+on `(from, to, types, shape, project)`.
 
 What an agent is told, and how much thought to spend, when it moves an issue of
 some type and shape from one column to the next. `Shape` is one of `any`
 (the issue's children are not consulted), `leaf` (it has none) or `parent` (it
-has at least one). `ProjectId` is null on every row written before the column
-existed, and null means the row speaks for every project on the board; a row
-naming one project speaks for that project alone. See
-[the dispatcher](#the-dispatcher).
+has at least one). `DeniedTools` is null or empty for every tool, as today, or
+else a list of Claude Code permission rules in deny position — a bare tool
+name (`Edit`) or a scoped pattern (`Bash(git push *)`). `ProjectId` is null on
+every row written before the column existed, and null means the row speaks
+for every project on the board; a row naming one project speaks for that
+project alone. See [the dispatcher](#the-dispatcher).
+
+**A read-only example, not a shipped list.** `DeniedTools: ["Read", "Edit",
+"Write", "NotebookEdit", "Bash(git add *)", "Bash(git commit *)",
+"Bash(git push *)", "Bash(git checkout *)", "Bash(git switch *)",
+"Bash(git reset *)", "Bash(git restore *)", "Bash(git stash *)",
+"Bash(git merge *)", "Bash(git rebase *)", "Bash(git cherry-pick *)",
+"Bash(git clean *)", "Bash(rm *)", "Bash(mv *)", "Bash(cp *)", "Bash(tee *)",
+"Bash(touch *)", "Bash(sed -i *)", "Bash(hatch move *)", "Bash(hatch start
+*)"]` denies the file tools by their bare name (the file-shaped names in
+`ClaudeTools.BuiltIn`), the git subcommands that write as one
+`Bash(git <subcommand> *)` pattern apiece, the shell writers the same way,
+and the two `hatch` verbs a session could use to move or start a ticket on
+its own. It does not cover everything a tool rule can be asked to stop:
+Claude Code's own documented pattern-matching behaviour is that a `Bash` rule
+matches the command as written and not `sh -c '...'`, a program by its full
+path, or `git -C . push` (quoted on HA-422). And a bare-name deny is narrower
+than it reads — a real run denying `Write` alone did not stop the write it
+named; the session routed around it with a plain `Bash` call instead, because
+the deny list left `Bash` itself untouched (HA-454's own run). A bare-name
+deny removes *that one tool*, not the action everywhere else capable of it.
 
 ## The wall, the roles, and API keys
 
@@ -1957,7 +1980,8 @@ may take.
 
 **Writing a playbook is closed to a key.** The three write verbs on
 `PlaybooksController` carry a plain `[RequireRole(PersonRole.User)]` naming no scope, while the
-read carries the scope like everything else.
+read carries the scope like everything else. `DeniedTools` rides the same
+three verbs and the same person-only cut — it is not a new edge.
 
 **So is writing an issue's override**, and it is the same edge rather than a
 second one: `PATCH /api/hatch/issues/{key}/playbook` sets the model and the
@@ -3807,8 +3831,9 @@ One pass, from the board to the release:
    us: the lease goes straight back, and the walk goes on.
 5. **Reset the workspace**, then spawn. In that order, and after the claim: a
    ticket held is a ticket nothing else will start, and a reset before the claim
-   would be a fetch spent on an increment that never happens. Two things are
-   done at the spawn so that a message to the agent is heard:
+   would be a fetch spent on an increment that never happens. Three things are
+   done at the spawn: two so that a message to the agent is heard, and one
+   limiting what it can reach for:
    - **The hooks.** The runner writes a settings file into a directory of its
      own under the system's temporary directory — outside every checkout, so
      `git status` shows only what the session changed — and hands it to the
@@ -3826,6 +3851,10 @@ One pass, from the board to the release:
      (`WorkDto.Messages`); the prompt prints them under *Said to you since the
      last session*, and the runner marks exactly those ids read immediately
      before it spawns. `work --dry-run` prints the heading and marks nothing.
+   - **The denials.** The spawn carries one `--disallowedTools <rule>` per
+     entry in the matched playbook's `DeniedTools` — for every
+     playbook-started session, headless, attached, conflict and build alike.
+     See [Playbook](#playbook) above.
    For a conflict dispatch the runner then **checks the branch again**, before
    it enters it — see [a conflict increment](#a-conflict-increment-is-judged-by-the-branch-not-by-the-column).
 6. **Heartbeat**, carrying the last line the runner printed — and only when it
