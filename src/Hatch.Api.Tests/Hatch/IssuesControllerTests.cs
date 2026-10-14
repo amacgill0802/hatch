@@ -484,14 +484,13 @@ public class IssuesControllerTests
 
         var child = await h.CreateAsync("story", "the story", parentKey: "AER-1");
 
-        // Copy-at-filing (CreateIssueAsync) only ever writes Express, never
-        // the parent's own level - a PreApproved parent still collapses to
-        // an Express child, whose own row then outranks the ancestor walk.
-        // That collapse is a known gap, matched here rather than fixed -
-        // removing the copy entirely is the task after this one.
-        Assert.Equal(PreApprovalLevels.ExpressName, child.PreApprovalOwn);
-        Assert.Equal(PreApprovalLevels.ExpressName, child.PreApproval);
-        Assert.Null(child.PreApprovalFrom);
+        // Filing no longer copies anything onto the child's own row - "born
+        // expedited" means the read, not the row: the child's own stored
+        // level is None, and GetIssue/SearchIssues read it by walking to the
+        // parent, naming it.
+        Assert.Equal(PreApprovalLevels.NoneName, child.PreApprovalOwn);
+        Assert.Equal(PreApprovalLevels.PreApprovedName, child.PreApproval);
+        Assert.Equal("AER-1", child.PreApprovalFrom);
     }
 
     [Fact]
@@ -530,7 +529,7 @@ public class IssuesControllerTests
         Assert.Null(issue.PreApprovalFrom);
     }
 
-    /// <summary>A three-generation read stops at the Express row copy-at-filing already left on the grandchild, not the PreApproved row at the top.</summary>
+    /// <summary>A three-generation read finds the level set at the top.</summary>
     [Fact]
     public async Task AThreeGenerationRead_StopsAtTheRowCopyAtFilingAlreadyWrote()
     {
@@ -542,9 +541,9 @@ public class IssuesControllerTests
 
         var found = Value(await h.Issues.GetIssue("AER-3", default));
 
-        Assert.Equal(PreApprovalLevels.ExpressName, found.PreApproval);
-        Assert.Equal(PreApprovalLevels.ExpressName, found.PreApprovalOwn);
-        Assert.Null(found.PreApprovalFrom);
+        Assert.Equal(PreApprovalLevels.PreApprovedName, found.PreApproval);
+        Assert.Equal(PreApprovalLevels.NoneName, found.PreApprovalOwn);
+        Assert.Equal("AER-1", found.PreApprovalFrom);
         Assert.Equal(grandchild.Key, found.Key);
     }
 
@@ -580,7 +579,7 @@ public class IssuesControllerTests
         Assert.Equal("AER-1", moved.PreApprovalFrom);
     }
 
-    /// <summary>Unmarking the parent does not change what an already-filed child reads - copy-at-filing already wrote the child's own row, which the walk never looks past.</summary>
+    /// <summary>Unmarking the parent changes what an already-filed child reads, immediately - there is no own-row copy for the walk to look past.</summary>
     [Fact]
     public async Task UnmarkingThePreApprovedParent_DoesNotChangeAnAlreadyFiledChildsOwnCopy()
     {
@@ -592,8 +591,8 @@ public class IssuesControllerTests
         await h.PreApprovalAsync("AER-1", PreApprovalLevels.None);
 
         var found = Value(await h.Issues.GetIssue("AER-2", default));
-        Assert.Equal(PreApprovalLevels.ExpressName, found.PreApproval);
-        Assert.Equal(PreApprovalLevels.ExpressName, found.PreApprovalOwn);
+        Assert.Equal(PreApprovalLevels.NoneName, found.PreApproval);
+        Assert.Equal(PreApprovalLevels.NoneName, found.PreApprovalOwn);
         Assert.Null(found.PreApprovalFrom);
     }
 
