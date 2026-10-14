@@ -102,6 +102,37 @@ describe('menu bar', () => {
     expect(bar.openId).toBeNull();
   });
 
+  it('a click on a hover-opened menu leaves it open, and leaves it open again', () => {
+    const { bar, advance } = harness();
+    bar.pointerEnter('a', true);
+    advance(120);
+    expect(bar.openId).toBe('a');
+    bar.toggle('a');
+    expect(bar.openId).toBe('a');
+    bar.toggle('a');
+    expect(bar.openId).toBe('a');
+  });
+
+  it('a click inside the hover delay opens at once, in that one click', () => {
+    const { bar, advance } = harness();
+    bar.pointerEnter('a', true);
+    advance(60);
+    bar.toggle('a');
+    expect(bar.openId).toBe('a');
+    advance(500);
+    expect(bar.openId).toBe('a');
+  });
+
+  it('a click that opened a menu still closes it on a second click', () => {
+    const { bar, advance } = harness();
+    bar.pointerEnter('a', true);
+    advance(60);
+    bar.toggle('a');
+    expect(bar.openId).toBe('a');
+    bar.toggle('a');
+    expect(bar.openId).toBeNull();
+  });
+
   it('close(id) for a menu that is not open does nothing', () => {
     const { bar } = harness();
     bar.open('a');

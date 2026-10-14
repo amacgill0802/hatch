@@ -18,6 +18,12 @@ export interface MenuBarOptions {
   onChange?: (openId: string | null) => void;
 }
 
+/** How the open menu came to be open. A press on a menu already open *by
+    hover* is a no-op rather than a close - the pointer is the only authority
+    over a hover-enabled panel - while a press or a keypress still toggles,
+    since each is the only way in (and out) its gesture has. */
+type OpenedBy = 'hover' | 'press' | 'key';
+
 export interface MenuBar {
   readonly openId: string | null;
   isOpen: (id: string) => boolean;
@@ -25,7 +31,8 @@ export interface MenuBar {
       hover: a tap is a click, and must not also be an intent to open. */
   pointerEnter: (id: string, hoverCapable: boolean) => void;
   pointerLeave: (id: string) => void;
-  /** Click or tap. */
+  /** Click or tap. A hover-opened menu can only be opened this way, never
+      closed: the pointer already decided it is open. */
   toggle: (id: string) => void;
   /** Keyboard: immediate. */
   open: (id: string) => void;
@@ -39,6 +46,7 @@ export function createMenuBar(options: MenuBarOptions): MenuBar {
   const openDelay = options.openDelay ?? OPEN_DELAY_MS;
   const closeDelay = options.closeDelay ?? CLOSE_DELAY_MS;
   let openId: string | null = null;
+  let openedBy: OpenedBy | null = null;
   let pending: unknown = null;
   let hasPending = false;
   const listeners = new Set<() => void>();
@@ -61,9 +69,10 @@ export function createMenuBar(options: MenuBarOptions): MenuBar {
     }, ms);
   }
 
-  function set(next: string | null) {
+  function set(next: string | null, by: OpenedBy | null) {
     if (next === openId) return;
     openId = next;
+    openedBy = next === null ? null : by;
     options.onChange?.(openId);
     listeners.forEach((listener) => listener());
   }
@@ -80,30 +89,37 @@ export function createMenuBar(options: MenuBarOptions): MenuBar {
       // Already in the bar with one open: switch at once, so the pointer
       // crossing to the next trigger never shows two panels or none.
       if (openId !== null) {
-        set(id);
+        set(id, 'hover');
         return;
       }
-      schedule(() => set(id), openDelay);
+      schedule(() => set(id, 'hover'), openDelay);
     },
     pointerLeave(id) {
       if (openId === id) {
-        schedule(() => set(null), closeDelay);
+        schedule(() => set(null, null), closeDelay);
       } else {
         // Only an open of this menu can be pending; leaving cancels it.
         cancel();
       }
     },
     toggle(id) {
+      // Cancels a hover-open still pending for this trigger too, so the
+      // click that lands inside the delay is what opens it.
       cancel();
-      set(openId === id ? null : id);
+      if (openId === id) {
+        if (openedBy === 'hover') return;
+        set(null, null);
+        return;
+      }
+      set(id, 'press');
     },
     open(id) {
       cancel();
-      set(id);
+      set(id, 'key');
     },
     close(id) {
       cancel();
-      if (id === undefined || openId === id) set(null);
+      if (id === undefined || openId === id) set(null, null);
     },
     subscribe(listener) {
       listeners.add(listener);

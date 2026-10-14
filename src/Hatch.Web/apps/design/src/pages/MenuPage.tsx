@@ -33,7 +33,7 @@ export function MenuPage() {
 
       <GallerySection
         title="Hover versus click"
-        note="Hovering opens after about 120ms, under a pointer that can hover. Moving to the next trigger switches at once, so two are never open; leaving closes after about 200ms, and crossing the gap to the panel does not count as leaving. A click or tap toggles - in devtools touch emulation, hover does nothing and a tap opens, a second tap closes."
+        note="Hovering opens after about 120ms, under a pointer that can hover. Moving to the next trigger switches at once, so two are never open; leaving closes after about 200ms, and crossing the gap to the panel does not count as leaving. A click on a trigger hover already opened just leaves it open, so it cannot fight the hover that showed it; a click inside the open delay opens it at once. In devtools touch emulation, hover does nothing and a tap opens, a second tap closes."
       >
         <div className="stage-page menu-stage">
           <Menu.Bar>
