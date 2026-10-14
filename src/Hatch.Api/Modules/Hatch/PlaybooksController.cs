@@ -92,6 +92,9 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
             briefLimit = value;
         }
 
+        var deniedTools = EfHatchPlaybook.NormalizeDeniedTools(request.DeniedTools);
+        if (InvalidDeniedTools(deniedTools) is { } deniedToolsError) return BadRequest(deniedToolsError);
+
         var now = time.GetUtcNow();
         var playbook = new EfHatchPlaybook
         {
@@ -104,6 +107,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
             Effort = effort,
             Budget = budget,
             BriefLimit = briefLimit,
+            DeniedTools = EfHatchPlaybook.WriteDeniedTools(deniedTools),
             ProjectId = projectId,
             CreatedAt = now,
             UpdatedAt = now,
@@ -167,6 +171,14 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
             briefLimit = value;
         }
 
+        var deniedTools = playbook.DeniedTools;
+        if (request.DeniedTools is not null)
+        {
+            var normalized = EfHatchPlaybook.NormalizeDeniedTools(request.DeniedTools);
+            if (InvalidDeniedTools(normalized) is { } deniedToolsError) return BadRequest(deniedToolsError);
+            deniedTools = EfHatchPlaybook.WriteDeniedTools(normalized);
+        }
+
         playbook.FromStatusId = from;
         playbook.ToStatusId = to;
         playbook.Types = types;
@@ -175,6 +187,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
         playbook.Effort = effort;
         playbook.Budget = budget;
         playbook.BriefLimit = briefLimit;
+        playbook.DeniedTools = deniedTools;
         playbook.ProjectId = projectId;
         playbook.UpdatedAt = time.GetUtcNow();
 
@@ -271,6 +284,21 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
         EfHatchPlaybook.IsValidShape(shape)
             ? null
             : $"a shape is one of {string.Join(", ", EfHatchPlaybook.Shapes)} - not \"{shape}\"";
+
+    /// <summary>
+    /// The two size limits, and nothing checked against <see cref="ClaudeTools.BuiltIn"/>
+    /// on purpose: a rule may legitimately name an MCP tool or a <c>Bash(…)</c>
+    /// pattern that list can't enumerate, so an unrecognised name is accepted
+    /// rather than refused.
+    /// </summary>
+    private static string? InvalidDeniedTools(IReadOnlyList<string> tools) => tools switch
+    {
+        { Count: > EfHatchPlaybook.MaxDeniedTools } =>
+            $"a playbook denies at most {EfHatchPlaybook.MaxDeniedTools} tools - not {tools.Count}",
+        _ when tools.Any(t => t.Length > EfHatchPlaybook.MaxToolRuleLength) =>
+            $"a denied tool rule is at most {EfHatchPlaybook.MaxToolRuleLength} characters",
+        _ => null,
+    };
 
     /// <summary>
     /// A non-null budget to either a cleared (blank) or set value, or the

@@ -314,6 +314,98 @@ public class PlaybooksControllerTests
         Assert.Null((await h.ReadAsync(row.Id)).ProjectId);
     }
 
+    // ---- DeniedTools ----
+
+    [Fact]
+    public async Task ADeniedTools_CanBeSetOnCreate()
+    {
+        var h = await NewAsync();
+
+        var created = await h.CreateAsync(deniedTools: ["Bash"]);
+
+        Assert.Equal(["Bash"], created.DeniedTools);
+    }
+
+    [Fact]
+    public async Task ANullDeniedToolsOnCreate_MeansNoDeniedTools()
+    {
+        var h = await NewAsync();
+
+        var created = await h.CreateAsync();
+
+        Assert.Empty(created.DeniedTools);
+    }
+
+    [Fact]
+    public async Task ADeniedTools_IsSetAndReadBack()
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync();
+
+        var patched = await h.SetAsync(row.Id, deniedTools: ["Bash", "WebFetch"]);
+
+        Assert.Equal(["Bash", "WebFetch"], patched.DeniedTools);
+        Assert.Equal(["Bash", "WebFetch"], (await h.ReadAsync(row.Id)).DeniedTools);
+    }
+
+    [Fact]
+    public async Task AnEmptyList_ClearsDeniedTools()
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync();
+        await h.SetAsync(row.Id, deniedTools: ["Bash"]);
+
+        var cleared = await h.SetAsync(row.Id, deniedTools: []);
+
+        Assert.Empty(cleared.DeniedTools);
+    }
+
+    [Fact]
+    public async Task PatchingSomethingElse_WithDeniedToolsOmitted_LeavesItUnchanged()
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync();
+        await h.SetAsync(row.Id, deniedTools: ["Bash"]);
+
+        var patched = Value(await h.Playbooks.PatchPlaybook(
+            row.Id, new PlaybookPatchRequest(null, null, null, "a new prompt", null, null), default));
+
+        Assert.Equal("a new prompt", patched.Prompt);
+        Assert.Equal(["Bash"], patched.DeniedTools);
+    }
+
+    [Fact]
+    public async Task ATooManyDeniedTools_IsRefused_AndWritesNothing()
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync();
+        var tooMany = Enumerable.Range(0, EfHatchPlaybook.MaxDeniedTools + 1).Select(i => $"Tool{i}").ToList();
+
+        var refusal = await h.Playbooks.PatchPlaybook(
+            row.Id, new PlaybookPatchRequest(null, null, null, null, null, null, DeniedTools: tooMany), default);
+
+        Assert.Equal(
+            $"a playbook denies at most {EfHatchPlaybook.MaxDeniedTools} tools - not {tooMany.Count}",
+            Reason(refusal.Result));
+        Assert.Empty((await h.ReadAsync(row.Id)).DeniedTools);
+    }
+
+    [Fact]
+    public async Task ADeniedToolRuleTooLong_IsRefused_AndWritesNothing()
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync();
+        var tooLong = new string('a', EfHatchPlaybook.MaxToolRuleLength + 1);
+
+        var refusal = await h.Playbooks.PatchPlaybook(
+            row.Id, new PlaybookPatchRequest(null, null, null, null, null, null, DeniedTools: [tooLong]), default);
+
+        Assert.Equal(
+            $"a denied tool rule is at most {EfHatchPlaybook.MaxToolRuleLength} characters",
+            Reason(refusal.Result));
+        Assert.Empty((await h.ReadAsync(row.Id)).DeniedTools);
+    }
+
     // ---- Harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 9, 2, 12, 0, 0, TimeSpan.Zero);
@@ -325,13 +417,17 @@ public class PlaybooksControllerTests
         public required int InProgress { get; init; }
         public required int ProjectA { get; init; }
 
-        public async Task<PlaybookDto> CreateAsync(string? budget = null, string? briefLimit = null, string? projectId = null) =>
+        public async Task<PlaybookDto> CreateAsync(
+            string? budget = null, string? briefLimit = null, string? projectId = null, IReadOnlyList<string>? deniedTools = null) =>
             Created(await Playbooks.CreatePlaybook(
-                new PlaybookCreateRequest(Todo, InProgress, [], "do it", "sonnet", "high", budget, briefLimit, ProjectId: projectId), default));
+                new PlaybookCreateRequest(Todo, InProgress, [], "do it", "sonnet", "high", budget, briefLimit,
+                    ProjectId: projectId, DeniedTools: deniedTools), default));
 
-        public async Task<PlaybookDto> SetAsync(int id, string? budget = null, string? briefLimit = null, string? projectId = null) =>
+        public async Task<PlaybookDto> SetAsync(
+            int id, string? budget = null, string? briefLimit = null, string? projectId = null, IReadOnlyList<string>? deniedTools = null) =>
             Value(await Playbooks.PatchPlaybook(
-                id, new PlaybookPatchRequest(null, null, null, null, null, null, budget, briefLimit, ProjectId: projectId), default));
+                id, new PlaybookPatchRequest(null, null, null, null, null, null, budget, briefLimit,
+                    ProjectId: projectId, DeniedTools: deniedTools), default));
 
         public async Task<PlaybookDto> ReadAsync(int id) =>
             Value(await Playbooks.GetPlaybooks(default)).Single(p => p.Id == id);
