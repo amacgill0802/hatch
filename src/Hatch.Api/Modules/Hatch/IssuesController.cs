@@ -179,6 +179,7 @@ public class IssuesController(
         foreach (var i in rows)
         {
             var (effective, effectiveFrom) = priorities.Effective(i.Id);
+            var (effectivePreApproval, effectivePreApprovalFrom) = priorities.EffectivePreApproval(i.Id);
 
             cards.Add(new IssueCardDto(
                 IssueKey.Format(i.ProjectKey, i.Number),
@@ -196,10 +197,13 @@ public class IssuesController(
                 Assignee: await IssueProjection.ToAssigneeAsync(actors, i.AssigneePersonId, i.AssigneeApiKeyId, ct),
                 Claim: claims.Project(i.Claim, now),
                 Expedited: effective >= PriorityLevels.Expedited,
-                Express: i.PreApproval >= PreApprovalLevels.Express,
+                Express: effectivePreApproval >= PreApprovalLevels.Express,
                 Priority: PriorityLevels.Name(effective),
                 PriorityOwn: PriorityLevels.Name(i.Priority),
                 PriorityFrom: effectiveFrom,
+                PreApproval: PreApprovalLevels.Name(effectivePreApproval),
+                PreApprovalOwn: PreApprovalLevels.Name(i.PreApproval),
+                PreApprovalFrom: effectivePreApprovalFrom,
                 StalledAt: i.StalledAt,
                 StalledWhy: i.StalledWhy,
                 Held: i.Held,

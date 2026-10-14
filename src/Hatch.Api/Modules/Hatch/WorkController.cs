@@ -437,14 +437,15 @@ public class WorkController(
         var sendBackStreak = Columns.Implementation(statuses) is { } implementation
             ? await SendBackStreak.ForIssueAsync(db, issue.Id, implementation.Name, ct)
             : 0;
-        var hopKind = to is null ? null : Dispatch.HopKind(issue, from, to, family, statuses, wip, parent, playbook, sendBackStreak, claims.StallResumeLimit);
+        var gate = await DependencyGate.ForAsync(db, statuses, ct);
+        var hopKind = to is null ? null : Dispatch.HopKind(issue, from, to, family, statuses, wip, parent, playbook, sendBackStreak, claims.StallResumeLimit, gate.EffectivePreApproval(issue.Id).Level);
         var hop = hopKind is not null;
         var letGo = await LetGo.ForIssueAsync(db, issue.Id, ct);
         var blocked = Dispatch.Blocked(
             issue, from, to, playbook, waiting, letGo, sendBackStreak,
             null, // a hop takes no ready-date fold of its own, and no economy or low fold either - see Dispatch.Blocked's loop parameter
             null,
-            await DependencyGate.ForAsync(db, statuses, ct),
+            gate,
             family,
             new ClaimGate(claims, now, null, await claims.LineageAsync(db, now, ct)),
             Columns.Implementation(statuses),
@@ -752,6 +753,7 @@ public class WorkController(
             .OrderBy(i => i.Rank).ThenBy(i => i.Id)
             .Select(i => new
             {
+                i.Id,
                 ProjectKey = i.Project!.Key,
                 i.Number, i.Type, i.Title, i.StatusId, i.Rank,
                 i.ReadyAt, i.ReadyAtHasTime, i.DueAt, i.DueAtHasTime,
@@ -765,6 +767,8 @@ public class WorkController(
 
         var childCards = new List<IssueCardDto>(children.Count);
         foreach (var c in children)
+        {
+            var (effectivePreApproval, effectivePreApprovalFrom) = gate.EffectivePreApproval(c.Id);
             childCards.Add(new IssueCardDto(
                 IssueKey.Format(c.ProjectKey, c.Number),
                 c.ProjectKey,
@@ -778,12 +782,16 @@ public class WorkController(
                 Assignee: await IssueProjection.ToAssigneeAsync(actors, c.AssigneePersonId, c.AssigneeApiKeyId, ct),
                 Claim: claims.Project(c.Claim, claimed.Now),
                 Expedited: c.Priority >= PriorityLevels.Expedited,
-                Express: c.PreApproval >= PreApprovalLevels.Express,
+                Express: effectivePreApproval >= PreApprovalLevels.Express,
                 Priority: PriorityLevels.Name(c.Priority),
+                PreApproval: PreApprovalLevels.Name(effectivePreApproval),
+                PreApprovalOwn: PreApprovalLevels.Name(c.PreApproval),
+                PreApprovalFrom: effectivePreApprovalFrom,
                 StalledAt: c.StalledAt,
                 StalledWhy: c.StalledWhy,
                 Held: c.Held,
                 PullRequestUrl: c.PullRequestUrl));
+        }
 
         var playbook = to is null
             ? null
@@ -816,7 +824,7 @@ public class WorkController(
         var sendBackStreak = Columns.Implementation(statuses) is { } implementation
             ? await SendBackStreak.ForIssueAsync(db, issue.Id, implementation.Name, ct)
             : 0;
-        var hopKind = to is null ? null : Dispatch.HopKind(issue, from, to, family, statuses, wip, hopParent, playbook, sendBackStreak, claims.StallResumeLimit);
+        var hopKind = to is null ? null : Dispatch.HopKind(issue, from, to, family, statuses, wip, hopParent, playbook, sendBackStreak, claims.StallResumeLimit, gate.EffectivePreApproval(issue.Id).Level);
         var hop = hopKind is not null;
         var letGo = await LetGo.ForIssueAsync(db, issue.Id, ct);
         var sentBack = await SentBack.ForIssueAsync(db, issue.Id, ct);

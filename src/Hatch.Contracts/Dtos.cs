@@ -277,6 +277,19 @@ public record AssigneeDto(string Kind, Guid Id, string Name);
 /// The ancestor <paramref name="Priority"/> was inherited from, or null when
 /// the effective level is this issue's own, or Normal.
 /// </param>
+/// <param name="PreApproval">
+/// The effective level's name - see <see cref="PreApprovalLevels"/> -
+/// <c>"none"</c>, <c>"express"</c> or <c>"preapproved"</c>. Walked live, at
+/// read, to the nearest ancestor - including this issue itself - that is not
+/// None; never stored or copied. Trailing and defaulted for the reason
+/// <paramref name="OpenQuestions"/> is, though every list that draws a card
+/// fills it.
+/// </param>
+/// <param name="PreApprovalOwn">The level this issue's own row carries, regardless of what it inherits - see <see cref="EfHatchIssue.PreApproval"/>.</param>
+/// <param name="PreApprovalFrom">
+/// The ancestor <paramref name="PreApproval"/> was inherited from, or null
+/// when the effective level is this issue's own, or None.
+/// </param>
 public record IssueCardDto(
     string Key,
     string ProjectKey,
@@ -295,6 +308,9 @@ public record IssueCardDto(
     string Priority = PriorityLevels.NormalName,
     string PriorityOwn = PriorityLevels.NormalName,
     string? PriorityFrom = null,
+    string PreApproval = PreApprovalLevels.NoneName,
+    string PreApprovalOwn = PreApprovalLevels.NoneName,
+    string? PreApprovalFrom = null,
     DateTimeOffset? StalledAt = null,
     string? StalledWhy = null,
     bool Held = false,
@@ -397,6 +413,17 @@ public record IssueClaimDto(
 /// The ancestor <paramref name="Priority"/> was inherited from, or null when
 /// the effective level is this issue's own, or Normal.
 /// </param>
+/// <param name="PreApproval">
+/// The effective level's name - see <see cref="PreApprovalLevels"/> -
+/// <c>"none"</c>, <c>"express"</c> or <c>"preapproved"</c>. Walked live, at
+/// read, to the nearest ancestor - including this issue itself - that is not
+/// None; never stored or copied.
+/// </param>
+/// <param name="PreApprovalOwn">The level this issue's own row carries, regardless of what it inherits - see <see cref="EfHatchIssue.PreApproval"/>.</param>
+/// <param name="PreApprovalFrom">
+/// The ancestor <paramref name="PreApproval"/> was inherited from, or null
+/// when the effective level is this issue's own, or None.
+/// </param>
 /// <param name="WipLimit">
 /// How many of an epic's stories may be in progress at once, or null for
 /// <see cref="IssueWipLimitRequest.DefaultLimit"/> - meaningful on an epic and
@@ -449,6 +476,9 @@ public record IssueDto(
     string Priority = PriorityLevels.NormalName,
     string PriorityOwn = PriorityLevels.NormalName,
     string? PriorityFrom = null,
+    string PreApproval = PreApprovalLevels.NoneName,
+    string PreApprovalOwn = PreApprovalLevels.NoneName,
+    string? PreApprovalFrom = null,
     int? WipLimit = null,
     DateTimeOffset? StalledAt = null,
     string? StalledWhy = null,

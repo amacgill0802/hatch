@@ -381,8 +381,13 @@ public class IssuesControllerTests
     }
 
     [Fact]
-    public async Task ReparentedUnderAnExpressParent_IsNotMarked()
+    public async Task ReparentedUnderAnExpressParent_IsMarkedAtOnce()
     {
+        // Superseded by this task: Express is now the live walk
+        // (PriorityTree.EffectivePreApproval), not the raw column, so
+        // reparenting under an express parent reads express immediately -
+        // see ReparentedUnderAnExpressParent_ReadsExpressAtOnce below. This
+        // whole block is retired next task alongside copy-at-filing.
         var h = await NewAsync();
         await h.CreateAsync("epic", "the epic");
         await h.ExpressAsync("AER-1", true);
@@ -390,7 +395,7 @@ public class IssuesControllerTests
 
         var moved = Value(await h.Issues.PatchIssue("AER-2", Patch(parentKey: "AER-1"), default));
 
-        Assert.False(moved.Express);
+        Assert.True(moved.Express);
     }
 
     [Fact]
@@ -560,6 +565,149 @@ public class IssuesControllerTests
             Assert.Equal(PriorityLevels.NormalName, c.Priority);
             Assert.Equal(c.Priority, c.PriorityOwn);
             Assert.Null(c.PriorityFrom);
+        });
+    }
+
+    // ---- PreApproval, inherited live at read ----
+
+    [Fact]
+    public async Task FiledUnderAPreApprovedParent_IsBornExpress()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the epic");
+        await h.PreApprovalAsync("AER-1", PreApprovalLevels.PreApproved);
+
+        var child = await h.CreateAsync("story", "the story", parentKey: "AER-1");
+
+        // Copy-at-filing (CreateIssueAsync) only ever writes Express, never
+        // the parent's own level - a PreApproved parent still collapses to
+        // an Express child, whose own row then outranks the ancestor walk.
+        // That collapse is a known gap, matched here rather than fixed -
+        // removing the copy entirely is the task after this one.
+        Assert.Equal(PreApprovalLevels.ExpressName, child.PreApprovalOwn);
+        Assert.Equal(PreApprovalLevels.ExpressName, child.PreApproval);
+        Assert.Null(child.PreApprovalFrom);
+    }
+
+    [Fact]
+    public async Task TheCreatedEvent_NeverCarriesAPreApprovalFromShapedKey()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the epic");
+        await h.PreApprovalAsync("AER-1", PreApprovalLevels.PreApproved);
+
+        await h.CreateAsync("story", "the story", parentKey: "AER-1");
+
+        var e = Assert.Single(await h.EventsAsync("AER-2"));
+        Assert.False(e.Payload!.Value.TryGetProperty("preApprovalFrom", out _));
+    }
+
+    [Fact]
+    public async Task FiledUnderAParentThatIsNotPreApproved_IsNotPreApproved()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the epic");
+
+        var child = await h.CreateAsync("story", "the story", parentKey: "AER-1");
+
+        Assert.Equal(PreApprovalLevels.NoneName, child.PreApproval);
+        Assert.Null(child.PreApprovalFrom);
+    }
+
+    [Fact]
+    public async Task FiledWithNoParent_IsNotPreApproved()
+    {
+        var h = await NewAsync();
+
+        var issue = await h.CreateAsync("task", "a chore");
+
+        Assert.Equal(PreApprovalLevels.NoneName, issue.PreApproval);
+        Assert.Null(issue.PreApprovalFrom);
+    }
+
+    /// <summary>A three-generation read stops at the Express row copy-at-filing already left on the grandchild, not the PreApproved row at the top.</summary>
+    [Fact]
+    public async Task AThreeGenerationRead_StopsAtTheRowCopyAtFilingAlreadyWrote()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the epic");
+        await h.PreApprovalAsync("AER-1", PreApprovalLevels.PreApproved);
+        await h.CreateAsync("story", "the story", parentKey: "AER-1");
+        var grandchild = await h.CreateAsync("task", "the task", parentKey: "AER-2");
+
+        var found = Value(await h.Issues.GetIssue("AER-3", default));
+
+        Assert.Equal(PreApprovalLevels.ExpressName, found.PreApproval);
+        Assert.Equal(PreApprovalLevels.ExpressName, found.PreApprovalOwn);
+        Assert.Null(found.PreApprovalFrom);
+        Assert.Equal(grandchild.Key, found.Key);
+    }
+
+    /// <summary>Reparenting changes what is inherited at once, both ways.</summary>
+    [Fact]
+    public async Task ReparentedUnderAPreApprovedParent_ReadsPreApprovedAtOnce()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the epic");
+        await h.PreApprovalAsync("AER-1", PreApprovalLevels.PreApproved);
+        await h.CreateAsync("task", "a chore");
+
+        var moved = Value(await h.Issues.PatchIssue("AER-2", Patch(parentKey: "AER-1"), default));
+        Assert.Equal(PreApprovalLevels.PreApprovedName, moved.PreApproval);
+        Assert.Equal("AER-1", moved.PreApprovalFrom);
+
+        var movedBack = Value(await h.Issues.PatchIssue("AER-2", Patch(parentKey: ""), default));
+        Assert.Equal(PreApprovalLevels.NoneName, movedBack.PreApproval);
+        Assert.Null(movedBack.PreApprovalFrom);
+    }
+
+    /// <summary>Reparenting under an express parent reads it at once too.</summary>
+    [Fact]
+    public async Task ReparentedUnderAnExpressParent_ReadsExpressAtOnce()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the epic");
+        await h.PreApprovalAsync("AER-1", PreApprovalLevels.Express);
+        await h.CreateAsync("task", "a chore");
+
+        var moved = Value(await h.Issues.PatchIssue("AER-2", Patch(parentKey: "AER-1"), default));
+        Assert.Equal(PreApprovalLevels.ExpressName, moved.PreApproval);
+        Assert.Equal("AER-1", moved.PreApprovalFrom);
+    }
+
+    /// <summary>Unmarking the parent does not change what an already-filed child reads - copy-at-filing already wrote the child's own row, which the walk never looks past.</summary>
+    [Fact]
+    public async Task UnmarkingThePreApprovedParent_DoesNotChangeAnAlreadyFiledChildsOwnCopy()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the epic");
+        await h.PreApprovalAsync("AER-1", PreApprovalLevels.PreApproved);
+        await h.CreateAsync("story", "the story", parentKey: "AER-1");
+
+        await h.PreApprovalAsync("AER-1", PreApprovalLevels.None);
+
+        var found = Value(await h.Issues.GetIssue("AER-2", default));
+        Assert.Equal(PreApprovalLevels.ExpressName, found.PreApproval);
+        Assert.Equal(PreApprovalLevels.ExpressName, found.PreApprovalOwn);
+        Assert.Null(found.PreApprovalFrom);
+    }
+
+    /// <summary>A board with no inheritance in play reads preApprovalOwn and preApproval as the same value.</summary>
+    [Fact]
+    public async Task ABoardWithNoInheritance_ReadsPreApprovalOwnAndPreApprovalAsTheSame()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the epic");
+        await h.CreateAsync("story", "the story", parentKey: "AER-1");
+        await h.CreateAsync("task", "a chore");
+
+        var cards = Value(await h.Issues.SearchIssues(null, null, null, null, null, null, default));
+
+        Assert.All(cards, c =>
+        {
+            Assert.Equal(PreApprovalLevels.NoneName, c.PreApproval);
+            Assert.Equal(c.PreApproval, c.PreApprovalOwn);
+            Assert.Null(c.PreApprovalFrom);
         });
     }
 
@@ -3692,6 +3840,20 @@ public class IssuesControllerTests
             IssueKey.TryParse(key, out var projectKey, out var number);
             var issue = await Db.Issues.WithKey(projectKey, number).FirstAsync();
             issue.Priority = level;
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// Written straight to the row, the same as <see cref="PriorityAsync"/> -
+        /// <see cref="ExpressAsync"/> only takes a bool and cannot set
+        /// <see cref="PreApprovalLevels.PreApproved"/>, which this inheritance
+        /// suite needs.
+        /// </summary>
+        public async Task PreApprovalAsync(string key, int level)
+        {
+            IssueKey.TryParse(key, out var projectKey, out var number);
+            var issue = await Db.Issues.WithKey(projectKey, number).FirstAsync();
+            issue.PreApproval = level;
             await Db.SaveChangesAsync();
         }
 

@@ -165,6 +165,7 @@ public static class IssueProjection
         {
             var projectKey = issue.Project?.Key ?? projectKeys[issue.ProjectId];
             var (effective, effectiveFrom) = priorities.Effective(issue.Id);
+            var (effectivePreApproval, effectivePreApprovalFrom) = priorities.EffectivePreApproval(issue.Id);
 
             MergeWorkDto? mergeWork = null;
             if (issue.StatusId == mergesId)
@@ -203,10 +204,13 @@ public static class IssueProjection
                 effective >= PriorityLevels.Expedited,
                 mergeChecks.TryGetValue(issue.Id, out var checks) ? checks : [],
                 buildChecks.TryGetValue(issue.Id, out var builds) ? builds : [],
-                issue.PreApproval >= PreApprovalLevels.Express,
+                effectivePreApproval >= PreApprovalLevels.Express,
                 PriorityLevels.Name(effective),
                 PriorityLevels.Name(issue.Priority),
                 effectiveFrom,
+                PreApprovalLevels.Name(effectivePreApproval),
+                PreApprovalLevels.Name(issue.PreApproval),
+                effectivePreApprovalFrom,
                 issue.WipLimit,
                 issue.StalledAt,
                 issue.StalledWhy,

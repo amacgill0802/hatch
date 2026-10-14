@@ -117,6 +117,7 @@ public class BoardController(
         var cards = issues.Select(i =>
         {
             var (effective, effectiveFrom) = priorities.Effective(i.Id);
+            var (effectivePreApproval, effectivePreApprovalFrom) = priorities.EffectivePreApproval(i.Id);
             return new IssueCardDto(
                 IssueKey.Format(i.ProjectKey, i.Number),
                 i.ProjectKey,
@@ -131,10 +132,13 @@ public class BoardController(
                 assignees[i.Id],
                 claims.Project(i.Claim, now),
                 effective >= PriorityLevels.Expedited,
-                i.PreApproval >= PreApprovalLevels.Express,
+                effectivePreApproval >= PreApprovalLevels.Express,
                 PriorityLevels.Name(effective),
                 PriorityLevels.Name(i.Priority),
                 effectiveFrom,
+                PreApproval: PreApprovalLevels.Name(effectivePreApproval),
+                PreApprovalOwn: PreApprovalLevels.Name(i.PreApproval),
+                PreApprovalFrom: effectivePreApprovalFrom,
                 StalledAt: i.StalledAt,
                 StalledWhy: i.StalledWhy,
                 Held: i.Held,

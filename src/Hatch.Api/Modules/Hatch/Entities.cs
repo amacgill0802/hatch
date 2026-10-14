@@ -721,7 +721,7 @@ public class EfHatchIssue
     /// stops. It is live, not copied: nothing is ever written onto a
     /// descendant's own row because an ancestor's changed, and nothing is
     /// written onto a child's row at filing because its parent happened to be
-    /// Emergency that day - see <see cref="Express"/> for the one field that
+    /// Emergency that day - see <see cref="PreApproval"/> for the one field that
     /// still does work that way, and why the two differ. Normal on the way up
     /// is not a stop; the walk passes through it to the next ancestor, and only
     /// a non-Normal row - or running out of ancestors - ends it.</para>
@@ -760,12 +760,31 @@ public class EfHatchIssue
     /// unattended, and a key that could set it could carry its own ticket
     /// through the night unattended.</para>
     ///
-    /// <para>Taken from the parent at filing, and at no other time: an issue
-    /// created under an express parent is born express, whoever files it and
-    /// however. Reparenting an issue under an express parent does not mark it,
-    /// and reparenting one away does not unmark it - the flag is a fact about
-    /// how an issue came to exist, not a fact that follows its parent
-    /// around.</para>
+    /// <para>Inheritance. A level set here is live on everything beneath this
+    /// issue that sets none of its own - every child, every grandchild, down
+    /// to the first descendant that carries a level of its own, where the walk
+    /// stops. It is live, not copied: nothing is ever written onto a
+    /// descendant's own row because an ancestor's changed. None on the way up
+    /// is not a stop; the walk passes through it to the next ancestor, and only
+    /// a non-None row - or running out of ancestors - ends it. The one place it
+    /// still copies is filing: an issue created under a parent that sets a
+    /// level is born with Express written onto its own row too - the copy
+    /// only ever writes Express, never the parent's actual level, so a child
+    /// filed under a pre-approved parent is born Express, not pre-approved,
+    /// and the live walk then stops at that row rather than reaching the
+    /// ancestor. Redundant rather than wrong when the parent is itself
+    /// Express; a real gap when the parent is pre-approved, closed by
+    /// removing the copy entirely, the task after this one -
+    /// <see cref="Priority"/> never copies at filing at all, which is
+    /// the one real difference between the two.</para>
+    ///
+    /// <para>It is derived at read, not stored. <c>PriorityTree.EffectivePreApproval</c>
+    /// walks this column live, on every <c>GetIssue</c> and every
+    /// <c>SearchIssues</c>, to the nearest ancestor - including the issue
+    /// itself - whose own level is not None. Reparenting changes what an issue
+    /// inherits at once, both ways: moved under a pre-approved epic, it reads
+    /// pre-approved on the next request with no write of its own; moved back
+    /// out, it reads whatever it reads next.</para>
     /// </remarks>
     public int PreApproval { get; set; }
 
