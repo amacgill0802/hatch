@@ -16,7 +16,19 @@ namespace Hatch.Api.Tests;
 /// skips out loud rather than failing or silently passing when that build
 /// has not run, exactly as it skips out loud when there is no database for
 /// the host to start against.</para>
+///
+/// <para>In <see cref="Jobs.QuartzSchedulerCollection"/> for the reason that
+/// collection gives: <c>ManifestFactory</c> boots a real host, and
+/// <c>AddQuartzHostedService</c> rebinds the process-wide
+/// <c>Quartz.Logging.LogProvider</c> to that host's own
+/// <c>ILoggerFactory</c>. Left out of the collection, this raced
+/// <c>JobsInitTests</c>'s and <c>SchedulerCheckoutTests</c>'s direct
+/// <c>GetScheduler</c> calls in a parallel collection, which resolved a
+/// logger off this host's factory after it disposed - the same
+/// <c>ObjectDisposedException</c> the collection was already written to
+/// prevent, just not here.</para>
 /// </summary>
+[Collection(Jobs.QuartzSchedulerCollection.Name)]
 public class ManifestContentTypeTests
 {
     [SkippableFact]
