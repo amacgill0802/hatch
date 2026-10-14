@@ -1,7 +1,7 @@
 /* Drawing a pass over the queue: the sentence each row says, the marker it
    carries, and the tally a header line reads off. */
 
-import type { IssueCard, QueueEntry } from '../types';
+import type { IssueCard, QueueEntry, Runner } from '../types';
 import { conflictedChecks } from './mergeCheck';
 import { failedBuilds } from './buildCheck';
 import { HttpError } from './errors';
@@ -102,4 +102,51 @@ export function isRefusedRunner(err: unknown, askedAsRunner: boolean): boolean {
     apart, so a row's issue may not be among `cards` at all. */
 export function queueCard(entry: QueueEntry, cards: readonly IssueCard[]): IssueCard | undefined {
   return cards.find((c) => c.key === entry.issue.key);
+}
+
+/** One project's merge train: the rows carrying `mergeWork`, in the order the
+    queue already carries them (the dispatcher's own priority order, which
+    this must not re-sort), the key of the row that is this train's head, and
+    who drives it. Mirrors `Dispatch.Train`'s own grouping and head rule,
+    since `IssueProjection.ToDtosAsync` never sets `mergeWork.isHead` - see
+    the ticket this patterns, HA-508. */
+export interface MergeTrain {
+  projectKey: string;
+  rows: readonly QueueEntry[];
+  /** The key of this train's head row, or null if every row is hold/pushback. */
+  headKey: string | null;
+  driver: string | null;
+}
+
+/** Groups every queue row carrying `mergeWork` into its project's train, in
+    first-appearance order, and names each train's head and driver. */
+export function mergeTrains(queue: readonly QueueEntry[], runners: readonly Runner[]): MergeTrain[] {
+  const order: string[] = [];
+  const rows = new Map<string, QueueEntry[]>();
+  for (const row of queue) {
+    if (row.issue.mergeWork == null) continue;
+    const key = row.issue.projectKey;
+    if (!rows.has(key)) {
+      rows.set(key, []);
+      order.push(key);
+    }
+    rows.get(key)!.push(row);
+  }
+
+  return order.map((projectKey) => {
+    const projectRows = rows.get(projectKey)!;
+    const head = projectRows.find((r) => r.issue.mergeWork!.kind !== 'hold' && r.issue.mergeWork!.kind !== 'pushback');
+    return {
+      projectKey,
+      rows: projectRows,
+      headKey: head?.issue.key ?? null,
+      driver: runners.find((r) => r.drives.includes(projectKey))?.name ?? null,
+    };
+  });
+}
+
+/** The driver clause a train's row reads, matching the tone `runners.ts`'s
+    `drivesLabel` already set. */
+export function trainDriverWords(driver: string | null): string {
+  return driver === null ? 'no runner is driving it' : `driven by ${driver}`;
 }

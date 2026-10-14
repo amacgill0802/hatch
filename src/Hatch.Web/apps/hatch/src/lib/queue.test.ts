@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { anyAboveNormal, anyClaimed, isRefusedRunner, queueCard, queueMarker, queueTally, queueWords } from './queue';
+import {
+  anyAboveNormal,
+  anyClaimed,
+  isRefusedRunner,
+  mergeTrains,
+  queueCard,
+  queueMarker,
+  queueTally,
+  queueWords,
+  trainDriverWords,
+} from './queue';
 import { HttpError } from './errors';
-import type { BuildCheck, Issue, IssueCard, IssueClaim, MergeCheck, QueueEntry, Status } from '../types';
+import type { BuildCheck, Issue, IssueCard, IssueClaim, MergeCheck, QueueEntry, Runner, Status } from '../types';
 
 const status = (over: Partial<Status> = {}): Status => ({
   id: 1,
@@ -319,5 +329,97 @@ describe('queueCard', () => {
     const row = entry({ issue: issue({ key: 'AER-9' }) });
 
     expect(queueCard(row, [card({ key: 'AER-1' })])).toBeUndefined();
+  });
+});
+
+const runner = (over: Partial<Runner> = {}): Runner => ({
+  name: 'Jeff Winger',
+  kind: 'loop',
+  firstSeenAt: '2026-09-09T12:00:00Z',
+  lastSeenAt: '2026-09-09T12:00:00Z',
+  claimKey: null,
+  line: null,
+  lineAt: null,
+  state: 'running',
+  under: null,
+  repositories: [],
+  drives: [],
+  clones: null,
+  mine: null,
+  where: null,
+  maxRuns: null,
+  maxSpend: null,
+  untilAt: null,
+  goneAfterSeconds: 300,
+  exhaustedUntil: null,
+  ...over,
+});
+
+describe('mergeTrains', () => {
+  it('groups one project\'s rows in order and marks the first as head', () => {
+    const head = entry({ issue: issue({ key: 'AER-1', mergeWork: { kind: 'merge', sentence: 'merging' } }) });
+    const behind = entry({ issue: issue({ key: 'AER-2', mergeWork: { kind: 'update', sentence: 'updating' } }) });
+
+    const trains = mergeTrains([head, behind], []);
+
+    expect(trains).toHaveLength(1);
+    expect(trains[0].rows).toEqual([head, behind]);
+    expect(trains[0].headKey).toBe('AER-1');
+  });
+
+  it('skips a held row ranked first in favor of the clean row behind it', () => {
+    const held = entry({ issue: issue({ key: 'AER-1', mergeWork: { kind: 'hold', sentence: 'held' } }) });
+    const clean = entry({ issue: issue({ key: 'AER-2', mergeWork: { kind: 'merge', sentence: 'merging' } }) });
+
+    const trains = mergeTrains([held, clean], []);
+
+    expect(trains[0].headKey).toBe('AER-2');
+  });
+
+  it('has no head when every row in the project is hold or pushback', () => {
+    const held = entry({ issue: issue({ key: 'AER-1', mergeWork: { kind: 'hold', sentence: 'held' } }) });
+    const pushedBack = entry({ issue: issue({ key: 'AER-2', mergeWork: { kind: 'pushback', sentence: 'pushed back' } }) });
+
+    const trains = mergeTrains([held, pushedBack], []);
+
+    expect(trains[0].headKey).toBeNull();
+  });
+
+  it('keeps two projects\' rows separate, each in input order, trains in first-appearance order', () => {
+    const a1 = entry({ issue: issue({ key: 'AER-1', projectKey: 'AER', mergeWork: { kind: 'merge', sentence: '' } }) });
+    const b1 = entry({ issue: issue({ key: 'BER-1', projectKey: 'BER', mergeWork: { kind: 'merge', sentence: '' } }) });
+    const a2 = entry({ issue: issue({ key: 'AER-2', projectKey: 'AER', mergeWork: { kind: 'update', sentence: '' } }) });
+
+    const trains = mergeTrains([a1, b1, a2], []);
+
+    expect(trains).toHaveLength(2);
+    expect(trains[0].projectKey).toBe('AER');
+    expect(trains[0].rows).toEqual([a1, a2]);
+    expect(trains[1].projectKey).toBe('BER');
+    expect(trains[1].rows).toEqual([b1]);
+  });
+
+  it('returns no trains when no row carries mergeWork', () => {
+    expect(mergeTrains([entry(), entry()], [])).toEqual([]);
+  });
+
+  it('names the runner whose drives lists the project, and null with no match', () => {
+    const a = entry({ issue: issue({ key: 'AER-1', projectKey: 'AER', mergeWork: { kind: 'merge', sentence: '' } }) });
+    const b = entry({ issue: issue({ key: 'BER-1', projectKey: 'BER', mergeWork: { kind: 'merge', sentence: '' } }) });
+
+    const trains = mergeTrains([a, b], [runner({ drives: ['AER'] })]);
+
+    expect(trains.find((t) => t.projectKey === 'AER')?.driver).toBe('Jeff Winger');
+    expect(trains.find((t) => t.projectKey === 'BER')?.driver).toBeNull();
+  });
+});
+
+describe('trainDriverWords', () => {
+  it('names the driver', () => {
+    expect(trainDriverWords('Jeff Winger')).toBe('driven by Jeff Winger');
+  });
+
+  it('says no runner is driving it when there is none', () => {
+    expect(trainDriverWords(null)).toBe('no runner is driving it');
   });
 });
