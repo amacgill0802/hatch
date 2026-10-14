@@ -43,6 +43,7 @@ public class PlanController(
         if (issue is null) return NotFound();
 
         var tree = await Rollup.LoadAsync(db, ct);
+        var priorities = await PriorityTree.ForAsync(db, ct);
 
         var children = await db.Issues.AsNoTracking()
             .Where(i => i.ParentId == issue.Id)
@@ -80,6 +81,8 @@ public class PlanController(
 
         var rows = new List<ChildRollupDto>(children.Count);
         foreach (var c in children)
+        {
+            var (effectivePreApproval, effectivePreApprovalFrom) = priorities.EffectivePreApproval(c.Id);
             rows.Add(new ChildRollupDto(
                 new IssueCardDto(
                     IssueKey.Format(c.ProjectKey, c.Number),
@@ -94,14 +97,18 @@ public class PlanController(
                     Assignee: await IssueProjection.ToAssigneeAsync(actors, c.AssigneePersonId, c.AssigneeApiKeyId, ct),
                     Claim: claims.Project(c.Claim, now),
                     Expedited: c.Priority >= PriorityLevels.Expedited,
-                    Express: c.PreApproval >= PreApprovalLevels.Express,
+                    Express: effectivePreApproval >= PreApprovalLevels.Express,
                     Priority: PriorityLevels.Name(c.Priority),
+                    PreApproval: PreApprovalLevels.Name(effectivePreApproval),
+                    PreApprovalOwn: PreApprovalLevels.Name(c.PreApproval),
+                    PreApprovalFrom: effectivePreApprovalFrom,
                     StalledAt: c.StalledAt,
                     StalledWhy: c.StalledWhy,
                     Held: c.Held,
                     PullRequestUrl: c.PullRequestUrl),
                 tree.IsLeaf(c.Id),
                 tree.Of(c.Id)));
+        }
 
         return new IssueRollupDto(parentKey, tree.Of(issue.Id), rows);
     }
@@ -127,6 +134,7 @@ public class PlanController(
     public async Task<ActionResult<PlanDto>> GetPlan([FromQuery] int? projectId, CancellationToken ct)
     {
         var tree = await Rollup.LoadAsync(db, ct);
+        var priorities = await PriorityTree.ForAsync(db, ct);
 
         var epics = await InProject(db.Issues.AsNoTracking().Where(i => i.Type == Epic), projectId)
             .Select(i => new
@@ -215,6 +223,7 @@ public class PlanController(
                 if (!drawn.Add(id)) continue;
 
                 var row = byId[id];
+                var (effectivePreApproval, effectivePreApprovalFrom) = priorities.EffectivePreApproval(id);
 
                 entries.Add(new PlanEntryDto(
                     new IssueCardDto(
@@ -230,8 +239,11 @@ public class PlanController(
                         Assignee: assignees[id],
                         Claim: claims.Project(row.Claim, now),
                         Expedited: row.Priority >= PriorityLevels.Expedited,
-                        Express: row.PreApproval >= PreApprovalLevels.Express,
+                        Express: effectivePreApproval >= PreApprovalLevels.Express,
                         Priority: PriorityLevels.Name(row.Priority),
+                        PreApproval: PreApprovalLevels.Name(effectivePreApproval),
+                        PreApprovalOwn: PreApprovalLevels.Name(row.PreApproval),
+                        PreApprovalFrom: effectivePreApprovalFrom,
                         StalledAt: row.StalledAt,
                         StalledWhy: row.StalledWhy,
                         Held: row.Held,

@@ -212,6 +212,17 @@ export interface IssueCard {
       opposite of `expedited` - so nothing here sorts either. See
       IssueCardDto.Express. */
   express: boolean;
+  /** The level's name - `'none'`, `'express'` or `'preapproved'` - see
+      IssueCardDto.PreApproval and PreApprovalLevels. Walked live to the
+      nearest ancestor that is not none. */
+  preApproval: 'none' | 'express' | 'preapproved';
+  /** The level this issue's own row carries, regardless of what it inherits.
+      See IssueCardDto.PreApprovalOwn. */
+  preApprovalOwn: 'none' | 'express' | 'preapproved';
+  /** The ancestor `preApproval` was inherited from, or null when the
+      effective level is this issue's own, or none. See
+      IssueCardDto.PreApprovalFrom. */
+  preApprovalFrom: string | null;
   /** When an increment last left this ticket where it found it, or null.
       See IssueCardDto.StalledAt. */
   stalledAt: string | null;
@@ -410,10 +421,21 @@ export interface Issue {
   priorityFrom: string | null;
   /** Carried past a column marked *Express skips* with no session, as long as
       it has no unanswered question - the opposite shape from `expedited`: a
-      gate-passer, not a sort key. Taken from the parent at filing and at no
-      other time. Readable by anybody a dispatch reaches and writable only by
-      a person, through its own route - see IssueExpressController. */
+      gate-passer, not a sort key. Derived from the effective pre-approval
+      level - the one `preApproval` names - as
+      `effective >= PreApprovalLevels.Express`. Readable by anybody a dispatch
+      reaches and writable only by a person, through its own route - see
+      IssueExpressController. */
   express: boolean;
+  /** The level's name - see IssueCard.preApproval and IssueDto.PreApproval. */
+  preApproval: 'none' | 'express' | 'preapproved';
+  /** The level this issue's own row carries, regardless of what it inherits.
+      See IssueCard.preApprovalOwn and IssueDto.PreApprovalOwn. */
+  preApprovalOwn: 'none' | 'express' | 'preapproved';
+  /** The ancestor `preApproval` was inherited from, or null when the
+      effective level is this issue's own, or none. See
+      IssueCard.preApprovalFrom and IssueDto.PreApprovalFrom. */
+  preApprovalFrom: string | null;
   /** When an increment last left this ticket where it found it, or null.
       See IssueCard.stalledAt and IssueDto.StalledAt. */
   stalledAt: string | null;

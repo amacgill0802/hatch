@@ -233,7 +233,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                     var built = builds.TryGetValue(issue.Id, out var foundBuilds) ? foundBuilds : [];
                     var parent = family.ParentOf(issue.Id);
                     var sendBackStreak = sendBackStreaks?.GetValueOrDefault(issue.Id, 0) ?? 0;
-                    var hopKind = HopKind(issue, status, to, family, statuses, wip, parent, playbook, sendBackStreak, claimed.Claims!.StallResumeLimit);
+                    var hopKind = HopKind(issue, status, to, family, statuses, wip, parent, playbook, sendBackStreak, claimed.Claims!.StallResumeLimit, gate.EffectivePreApproval(issue.Id).Level);
                     var hop = hopKind is not null;
                     var hopUnder = hopKind == HopKinds.Under ? parent?.Key : null;
                     var letGo = issue.StalledAt is not null ? letGoCounts?.GetValueOrDefault(issue.Id, 0) ?? 0 : 0;
@@ -978,11 +978,11 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     public static string? HopKind(
         EfHatchIssue issue, EfHatchStatus from, EfHatchStatus? to, FamilyGate family,
         List<EfHatchStatus> statuses, WipSection? wip, FamilyGate.Parent? parent,
-        EfHatchPlaybook? playbook, int sendBackStreak, int sendBackStreakLimit)
+        EfHatchPlaybook? playbook, int sendBackStreak, int sendBackStreakLimit, int effectivePreApproval)
     {
         var crosses = to is not null && to.Id != from.Id;
 
-        if (crosses && issue.PreApproval >= PreApprovalLevels.Express && from.ExpressSkips) return HopKinds.Express;
+        if (crosses && effectivePreApproval >= PreApprovalLevels.Express && from.ExpressSkips) return HopKinds.Express;
 
         if (crosses && wip is not null)
         {
@@ -1229,22 +1229,22 @@ public sealed class PriorityTree
     /// <summary>An empty tree, for a caller that needs the shape but has nothing loaded - so <c>DependencyGate.None</c> needs no dictionary literal of its own.</summary>
     public static readonly PriorityTree Empty = new(new());
 
-    private readonly Dictionary<long, (long? ParentId, string Key, int Priority)> _rows;
+    private readonly Dictionary<long, (long? ParentId, string Key, int Priority, int PreApproval)> _rows;
 
-    internal PriorityTree(Dictionary<long, (long?, string, int)> rows) => _rows = rows;
+    internal PriorityTree(Dictionary<long, (long?, string, int, int)> rows) => _rows = rows;
 
     public static async Task<PriorityTree> ForAsync(HatchContext db, CancellationToken ct)
     {
         var rows = await db.Issues.AsNoTracking()
-            .Select(i => new { i.Id, i.ParentId, i.Priority, ProjectKey = i.Project!.Key, i.Number })
+            .Select(i => new { i.Id, i.ParentId, i.Priority, i.PreApproval, ProjectKey = i.Project!.Key, i.Number })
             .ToListAsync(ct);
 
         return new PriorityTree(rows.ToDictionary(
             r => r.Id,
-            r => ((long?)r.ParentId, IssueKey.Format(r.ProjectKey, r.Number), r.Priority)));
+            r => ((long?)r.ParentId, IssueKey.Format(r.ProjectKey, r.Number), r.Priority, r.PreApproval)));
     }
 
-    internal bool TryGet(long id, out (long? ParentId, string Key, int Priority) row) => _rows.TryGetValue(id, out row);
+    internal bool TryGet(long id, out (long? ParentId, string Key, int Priority, int PreApproval) row) => _rows.TryGetValue(id, out row);
 
     /// <summary>
     /// The priority live on this issue: its own, if set, or the nearest
@@ -1265,6 +1265,27 @@ public sealed class PriorityTree
         }
 
         return (PriorityLevels.Normal, null);
+    }
+
+    /// <summary>
+    /// The pre-approval live on this issue: its own, if set, or the nearest
+    /// ancestor's that is not None. <c>FromKey</c> is null when the level
+    /// found is the issue's own, or when the walk never leaves None.
+    /// </summary>
+    public (int Level, string? FromKey) EffectivePreApproval(long issueId)
+    {
+        var seen = new HashSet<long>();
+        long? at = issueId;
+
+        while (at is { } id && seen.Add(id))
+        {
+            if (TryGet(id, out var row) && row.PreApproval != PreApprovalLevels.None)
+                return (row.PreApproval, id == issueId ? null : row.Key);
+
+            at = TryGet(id, out var found) ? found.ParentId : null;
+        }
+
+        return (PreApprovalLevels.None, null);
     }
 }
 
@@ -1359,6 +1380,9 @@ public sealed class DependencyGate
 
     /// <summary>The priority live on this issue - see <see cref="PriorityTree.Effective"/>.</summary>
     public (int Level, string? FromKey) Effective(long issueId) => _tree.Effective(issueId);
+
+    /// <summary>The pre-approval live on this issue - see <see cref="PriorityTree.EffectivePreApproval"/>.</summary>
+    public (int Level, string? FromKey) EffectivePreApproval(long issueId) => _tree.EffectivePreApproval(issueId);
 }
 
 /// <summary>
