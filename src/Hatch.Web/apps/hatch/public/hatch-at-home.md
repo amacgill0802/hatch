@@ -327,13 +327,35 @@ to turn them on."
 
 **5. What a merge looks like on the ticket.** Once a pull request is
 approved — moved into the column from step 1 — and its branch holds the
-trunk with a passing build, the next poll interval merges it with no
-session, no agent and nothing spent. It leaves one comment on the ticket,
-`Merged its pull request at <sha>, as <runner>.`, and the terminal where the
-runner is running shows its own line for the same event: `<key> pull
-request merged -> <column>`.
+trunk with a passing build, the merge train notices and merges it with no
+session, no agent and nothing spent, on its own clock — a few seconds apart
+by default, separate from the poll that rereads the build and conflict
+checks in the first place. It leaves one comment on the ticket, `Merged its
+pull request at <sha>, as <runner>.`, and the terminal where the runner is
+running shows its own line for the same event: `<key> pull request merged
+-> <column>`.
 
-**6. What to do when a row holds.** Some things stop an approved pull
+**6. More than one approved ticket in the same project.** Approve two or
+more at once and they do not race each other through: they queue as a
+**train**, one per project, ordered the same way the board already orders
+everything else — expedited before normal, then by rank. Only the train's
+*head* is the one being acted on; everything behind it is waiting its turn,
+not held up by anything of its own.
+
+See it in two places. The web's work queue groups a project's approved
+tickets together, labels the head, and names the runner driving that
+project's train beside it. `hatch queue`'s own plain text says the same
+thing on a waiting row's own line, in full: `"... - waiting its turn behind
+HA-12, position 2 in the train"`.
+
+Only one runner acts on a given project's train at a time — not every
+runner you have pointed at the board, but the one the control plane elected
+to drive it. See which on the Runners page, beside that runner's own row:
+`driving HA, AER`, or `driving nothing` if nothing of yours has a driver
+right now. You do not configure this yourself, even running two or more
+runners against the same board — it is the election's own call to make.
+
+**7. What to do when a row holds.** Some things stop an approved pull
 request from merging, and they show up rather than sit silent: the nav
 bar's attention panel grows a section, **Approved, not merging**, between
 *Pull requests to review* and *Questions to answer* — each row names the
