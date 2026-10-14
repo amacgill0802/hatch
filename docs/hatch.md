@@ -3343,6 +3343,59 @@ run on its own clock, independently of
 [the poll](#checking-the-branches-in-review) that reports the merge and
 build checks `MergeWork.Judge` reads in the first place.
 
+#### The merge train
+
+**One train per project.** `Dispatch.Train` (`Dispatch.cs:370-396`) groups a
+project's merges-column rows by `ProjectId` (`.GroupBy(i => i.ProjectId)`,
+`:377`) and returns one `TrainSlot` (`Position`, `IsHead`, `HeadKey` — the
+record at `:341`) per row, computed once per pass inside `ScanAsync`
+(`:177-186`) rather than asked per row, so two rows in the same column never
+disagree about whose turn it is.
+
+**The order is the dispatcher's, not the column's rank.** Rows are ordered by
+`effective[i.Id].Level` descending, then `Rank`, then `Id` (`:379-383`) — the
+same priority tiering `ScanAsync`'s own six-pass walk uses everywhere else on
+the board, so an expedited row in the merge column goes first even behind a
+normal row with a lower `Rank`.
+
+**The head, and why a held row is stepped over.** The head is the first row
+in that order whose `MergeWork.Judge` kind is not `Hold` or `Pushback`
+(`Dispatch.cs:385`) — the first row not stuck on a closed pull request, an
+ambiguous or missing branch, or an unsettled no-checks-yet window (the
+judge's own list, already above in this same section, items 1/4/5/12). Every
+other row in that project's column gets `IsHead: false` plus the head's own
+key; `Blocked` (`:767-770`) turns that into the sentence an otherwise-
+actionable row shows instead of acting on: `"{judgement} - waiting its turn
+behind {headKey}, position {n} in the train"`. That sentence is also what
+`hatch queue` prints for that row, in plain text, with no separate "train"
+field anywhere in `QueueEntryDto`.
+
+**The driver, and how the heartbeat elects one.** `Runners.DriversAsync`
+(`Runners.cs:183-215`) elects, per project, the longest-live loop that holds
+a checkout of it — `Dispatch.HoldsCheckout`, the same rule
+`WorkController.GetReview` uses for its own eligibility, so the two can
+never disagree. Live means `LastSeenAt` within `Hatch:RunnerGoneAfterSeconds`
+(default 90) of now, and a `once` runner is never a candidate, since its own
+`BeatAsync` throws the instruction away (`Runners.cs:188-190`). Ties go to
+the oldest `FirstSeenAt`, then `Name` ordinally (`:208`) — deliberately
+stable, so a project's driver only moves once it actually drops out of live.
+The election rides the heartbeat: `Drives` on `RunnerDto`/`RunnerInstructionDto`
+(`Dtos.cs:2318-2343, 2452-2463`) carries the elected project keys back, and
+the CLI learns them into `ReadoutState.SetDrives`/`Drives`
+(`Readout.cs:95-104`, folded on every real heartbeat at `GoToWork.cs:889`),
+which gates every one of `MergeTrain`'s four halves (`MergeTrain.cs:161, 258,
+370, 470`): a runner acts only on a project it was elected to drive.
+
+**Its own interval, beside the poll's.** `MergeTrain.Start(runtime,
+TimeSpan.FromSeconds(mergeInterval))` (`GoToWork.cs:812`) runs `TickAsync`
+once, then waits `--merge-interval` seconds (default 5, `:466`) —
+independent of `--interval` (default 60, `:465`), which paces the poll that
+reads build and merge-conflict verdicts. Cross-reference
+[Checking the branches in review](#checking-the-branches-in-review), which
+already says the pull-request, merge and update halves "run on their own
+clock... rather than this poll's" (`:4358-4361`) without naming the clock —
+this new section is that explanation.
+
 ### The one path past the terminal guard
 
 Nothing above ever lands an issue in a terminal column — that is what
@@ -4358,7 +4411,8 @@ an issue.
 **The pull request half, asked of `gh` and keyed on the issue.** This half, and
 the two after it, run on their own clock — `MergeTrain`'s, independent of
 `--interval` — rather than this poll's, which is why their code lives apart
-from it; the shape this paragraph describes still holds for all three. The
+from it; the shape this paragraph describes still holds for all three. See
+[The merge train](#the-merge-train) for that clock itself. The
 three halves above are keyed on `(path, baseBranch)`, because a merge verdict
 and a build verdict are per repository. A pull request is not: `PullRequestUrl`
 is one field on one issue however many repositories its project binds, so this
@@ -5386,9 +5440,11 @@ so the trail says who did what without anybody being asked to record it.
 - **Move work into a protected column.** Only an owner or approver can, the
   same gate [the one permission](#one-permission-beyond-the-role) describes —
   but once an issue is there with `MergesPullRequest` ticked, merging it is
-  the poll's, not a click the operator makes on the forge. The column itself
-  is not terminal, so nothing above is broken: the move in is still a
-  person's, only the merge out is not.
+  [the merge train](#the-merge-train)'s, not a click the operator makes on
+  the forge. The column itself is not terminal, so nothing above is broken:
+  the move in is still a person's, only the merge out is not — and the train
+  still makes that move while this runner is paused or out of usage, since it
+  spends nothing a session would (`GoToWork.cs:947-950, 995-997`, HA-463).
 - **Shelve work in a [deferred](#status) column.** Whether something is worth
   doing at all is the same kind of call, and it is refused the same way: `hatch
   move` will not take a ticket there, and no pass dispatches one out of there.
