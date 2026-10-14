@@ -172,6 +172,35 @@ authority is [`Entities.cs`](../src/Hatch.Api/Modules/Hatch/Entities.cs), which
 carries the per-field reasoning; this is the shape and the decisions worth
 having in one place.
 
+### Migration order
+
+[`HatchContext`](../src/Hatch.Api/Modules/Hatch/HatchContext.cs) owns its own
+migration history, applied from its own
+[`Modules/Hatch/Migrations/`](../src/Hatch.Api/Modules/Hatch/Migrations/)
+folder against its own `__EFMigrationsHistory` rows - distinct from the
+unrelated `AppDbContext`'s home-automation migrations at
+[`Migrations/`](../src/Hatch.Api/Migrations/). `Program.cs` calls
+`MigrateAsync` once per registered module context, `HatchContext` included, in
+a loop (`Program.cs:384-387`), only in migrate mode, ahead of any serving
+replica.
+
+EF Core's `MigrateAsync` reads `__EFMigrationsHistory` - one row per applied
+`MigrationId` - and applies every migration in its assembly whose
+`MigrationId` is not already a row there, in ascending `MigrationId` order:
+the id, not the merge commit that landed it, decides the order. So two
+branches that each add a migration, merged into trunk in either order, both
+apply correctly - a migration created first but merged second is still
+applied in its own id's place, never skipped or reordered by merge order.
+
+What a migration-order worry actually finds is a different file: two
+branches that both touch
+[`HatchContextModelSnapshot.cs`](../src/Hatch.Api/Modules/Hatch/Migrations/HatchContextModelSnapshot.cs)
+produce a real merge or semantic conflict there - caught today by
+`ModelSnapshotTests.TheModelHasNoChangesItsSnapshotDoesNotKnowAbout`
+(`Hatch.Api.Tests/Modules/ModelSnapshotTests.cs:37`), which fails the moment a
+context's live model and its stored snapshot disagree, the same way HA-150's
+`HasDefaultValue` on `Playbooks.Shape` once did.
+
 ### Project
 
 `EfHatchProject` — `Key` (unique, `^[A-Z][A-Z0-9]{1,5}$`), `Name`,
