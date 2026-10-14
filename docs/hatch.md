@@ -2420,8 +2420,9 @@ neither is true and loud the moment either is, and pressing it hands over the
 links that unblock them.
 
 The panel draws two groups, in this order: **Human** — trunk builds that fail,
-then pull requests to review, then questions to answer — and **Agent** —
-branches that conflict, then branch builds that fail. A pull request only ever appears under one of the two:
+then pull requests to review, then pull requests approved but not merging,
+then questions to answer — and **Agent** — branches that conflict, then
+branch builds that fail. A pull request only ever appears under one of the two:
 one the loop is still working through a conflict or a red build on is not a
 person's to look at yet, so it moves out of the pull-request section and into
 the group naming what is holding it back, rather than sitting in both. A
@@ -2475,9 +2476,29 @@ answer worth having, and it is the one it gives most of the time.
   ],
   "exhaustedRunners": [
     { "name": "host:/checkouts/one", "where": "host:/checkouts/one", "exhaustedUntil": "2026-09-28T23:40:00Z" }
+  ],
+  "approvedHeld": [
+    { "key": "AER-15", "title": "A story stuck in the merge column", "type": "story",
+      "pullRequestUrl": "https://forge.example/pulls/15",
+      "sentence": "conflicts with main" }
+  ],
+  "approvedWaiting": [
+    { "key": "AER-16", "title": "A story about to merge", "type": "story",
+      "pullRequestUrl": "https://forge.example/pulls/16",
+      "kind": "merge", "sentence": "merging now" }
   ]
 }
 ```
+
+`approvedHeld` is every merge-column issue the judge called **hold** or
+**pushback** — nothing in that column is an agent's to fix, so a row
+there is a person's, every time. `approvedWaiting` is everything else —
+**merge**, **update**, **pending** — the loop is still progressing those
+on its own. `attentionCount` counts the first group towards the badge and
+leaves the second out, for exactly that reason. The empty state, when
+nothing is held, reads *Nothing approved has stopped merging.* The issue
+page's own chip draws only for a **hold** verdict, never a **pushback**
+one, even though this panel counts both the same way.
 
 One endpoint rather than two, and that is the design rather than a convenience.
 The control's loudness is a single number; two polls can be a poll interval
