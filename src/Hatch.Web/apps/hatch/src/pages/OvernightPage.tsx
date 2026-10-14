@@ -1,9 +1,11 @@
+import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, EmptyState, PageHeader, Table } from '@hatch/ui';
-import { getOvernight } from '../api/client';
+import { getOvernight, markOvernightSeen } from '../api/client';
 import { TypeBadge } from '../components/TypeBadge';
 import { beneathLabel, nightHeading, overnightEmptyWords } from '../lib/overnight';
 import { useLoaded } from '../lib/useLoaded';
+import { useOvernightContext } from '../lib/useOvernightContext';
 import type { OvernightDto } from '../types';
 
 /**
@@ -13,6 +15,21 @@ import type { OvernightDto } from '../types';
  */
 export function OvernightPage() {
   const { data, error } = useLoaded<OvernightDto>(getOvernight);
+  const { reload } = useOvernightContext();
+
+  /* Reading this page is what counts as "read", whether or not the row data
+     above happens to load - independent of useLoaded's own read, and run once
+     regardless of how many times this effect's own dependency changes.
+     Marks the night seen, then reloads the nav's own badge so it goes quiet
+     here, now, with no page reload - for everybody looking at it. */
+  useEffect(() => {
+    void markOvernightSeen()
+      .then(() => reload())
+      .catch(() => {
+        // Silent, matching useOvernight.ts: a failed mark leaves the control
+        // exactly as lit as it was.
+      });
+  }, [reload]);
 
   return (
     <div className="hatch-page">

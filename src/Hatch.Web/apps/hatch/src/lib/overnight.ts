@@ -28,3 +28,20 @@ export function nightHeading(dto: Pick<OvernightDto, 'from' | 'to' | 'count'>): 
 export function beneathLabel(descendantCount: number): string {
   return descendantCount === 0 ? 'none beneath' : `${descendantCount} beneath`;
 }
+
+/** Resting or loud, matching attention.ts's own AttentionTone. */
+export type OvernightTone = 'rest' | 'asking';
+
+/** Loud only while the newest night holds rows this reader has not seen.
+    `dto === null` (before the first poll answers) reads as 0 unseen, rest -
+    not a third state, the same as attentionTone's own note. */
+export const overnightTone = (dto: OvernightDto | null): OvernightTone =>
+  (dto?.unseen ?? 0) > 0 ? 'asking' : 'rest';
+
+/** What the control is called, in words - the whole of what a screen reader
+    gets, and half of what makes the loud state legible without colour. */
+export function overnightLabel(dto: OvernightDto | null): string {
+  const unseen = dto?.unseen ?? 0;
+  if (unseen === 0) return 'Nothing new since you last read the overnight page';
+  return unseen === 1 ? '1 issue landed overnight, unread' : `${unseen} issues landed overnight, unread`;
+}
