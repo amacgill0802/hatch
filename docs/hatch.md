@@ -1901,6 +1901,23 @@ named; the session routed around it with a plain `Bash` call instead, because
 the deny list left `Bash` itself untouched (HA-454's own run). A bare-name
 deny removes *that one tool*, not the action everywhere else capable of it.
 
+### Overnight seen
+
+`EfHatchOvernightSeen` — `PersonId` (a bare `Guid` rather than a foreign key,
+for the reason `EfHatchProjectMember.PersonId` is one: Hatch owns its own
+schema and migration history, and a constraint into `public.People` is the
+compile-time coupling `Modules/README.md` exists to prevent), `SeenAt`.
+
+One reader's own mark on [the overnight](#the-overnight) page — when they last
+read it, nothing more. Set only by `POST /api/hatch/overnight/seen`, a
+person's call and nothing else's: a program or a keyless runner naming itself
+with the runner header is refused the same way
+(`OvernightController.NotAPerson`). No body — a person has only their own
+mark to set — and a second call replaces the first rather than adding a row.
+
+**Strictly later than the mark, not later-or-equal, decides unseen** — a
+landing at exactly the mark is the mark, not after it.
+
 ## The wall, the roles, and API keys
 
 Hatch ships its own wall, off by default (`HATCH_AUTH` in `compose.yaml`), with
@@ -2798,6 +2815,64 @@ function that could. A work log row is written by the dispatcher with an API
 key, and `POST /api/hatch/issues/{key}/work-log` refuses a person outright — see
 `IssueWorkLogController.NotAKey`.
 
+## The overnight
+
+The leaderboard says what the nights cost. The overnight page says **what the
+loop actually landed** — the one read nothing else on the board collapses
+into: a card's own status, a trunk's own build, an open question each say one
+thing about one issue, and none of them say what came in together while
+nobody was watching.
+
+The page is at `/overnight` in the Hatch app, under **Agents** in the primary
+nav, beside the Leaderboard. It holds one table, the newest night in it —
+epics, then bugs, then stories, then tasks; within a type, most descendants
+first, then newest first — behind one read and one write:
+
+```
+GET  /api/hatch/overnight
+POST /api/hatch/overnight/seen
+```
+
+`GET` answers `OvernightDto`: `from`, `to`, `count`, the ordered `rows`, and
+`unseen` — this reader's own count of how many of those rows they have not
+looked at yet (see [Overnight seen](#overnight-seen)). `POST` sets that mark
+to now; the page fires it the moment it is opened, independent of whether the
+row data itself has loaded, so reading the page is what counts as reading it,
+and it reloads the nav control below rather than waiting on a page reload.
+With nothing ever landed, the page draws an empty state rather than a table.
+
+**Lands** is the moment an issue reaches a terminal column
+(`EfHatchStatus.IsTerminal`) — read off the newest `status_changed`
+[event](#issue-event) on the issue. **A night** is `Overnight.QuietGap` —
+four hours, named as a constant so an operator who wants a different gap
+knows where to look — and the newest night is the run of landings nearest
+the newest one, split off by any gap bigger than that constant on either
+side (`Overnight.NewestNight`): two landings exactly four hours apart are one
+night; four hours and one tick apart, two. The fold is pure and synchronous,
+computed only from landing instants, with no reference to whether a loop was
+running — worth saying plainly, because this document already uses "night"
+several dozen times elsewhere for a different thing: one `go-to-work` run's
+own lifetime, start to whichever of its stop conditions fires (a bound, three
+failures, the board asking it to stop). The two usually coincide, because
+that lifetime is exactly what produces a run of landings with no four-hour
+gap in it, but they are not the same computation — a person moving cards by
+hand with no loop running at all still produces a night by this page's
+definition, and a loop idling on a quiet board for over four hours without
+landing anything splits what was one continuous process run into two nights
+by this one, even though nothing about the loop itself ended. Said once here,
+so a careful reader of this same document is not left reconciling the two
+senses of the word silently.
+
+**Not a session.** The leaderboard's session is one agent increment — one row
+in `hatch.work_log_entries`, written at the end of one spawn, carrying a
+cost. A night is coarser and carries no cost accounting of its own: several
+increments across several tickets, or zero (a hand-moved card lands too),
+over however long the loop kept landing something, with no tokens and no
+notional USD anywhere in `Overnight.Landing` or `OvernightDto`.
+
+**Agents → Overnight**'s own nav control carries `unseen` beside the page:
+quiet while it is `0`, a lit mark and the count otherwise — and opening the
+page is what clears it, the same `POST` above.
 
 ## The dispatcher
 
