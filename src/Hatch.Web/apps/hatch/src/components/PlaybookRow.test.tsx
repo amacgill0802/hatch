@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { PlaybookRow } from './PlaybookRow';
-import type { Playbook, Project } from '../types';
+import type { Playbook, Project, Status } from '../types';
 
 const BASE: Playbook = {
   id: 1,
@@ -22,6 +22,11 @@ const BASE: Playbook = {
   projectKey: null,
   projectName: null,
 };
+
+const STATUSES: Status[] = [
+  { id: 1, name: 'To Do', sortOrder: 1, isTerminal: false, isDeferred: false, isWip: false, expressSkips: false, parentPulls: false, agentFiles: false, isImplementation: false, isProtected: false, mergesPullRequest: false, color: '#888888' },
+  { id: 2, name: 'In Progress', sortOrder: 2, isTerminal: false, isDeferred: false, isWip: false, expressSkips: false, parentPulls: false, agentFiles: false, isImplementation: false, isProtected: false, mergesPullRequest: false, color: '#888888' },
+];
 
 const ONE_PROJECT: Project[] = [
   {
@@ -50,7 +55,7 @@ const noop = () => undefined;
 describe('PlaybookRow', () => {
   it('names the transition by its two ends', () => {
     const html = renderToStaticMarkup(
-      <PlaybookRow playbook={BASE} projects={ONE_PROJECT} onEdit={noop} onDelete={noop} />,
+      <PlaybookRow playbook={BASE} projects={ONE_PROJECT} statuses={STATUSES} onEdit={noop} onDelete={noop} />,
     );
     expect(html).toContain('To Do');
     expect(html).toContain('In Progress');
@@ -59,73 +64,95 @@ describe('PlaybookRow', () => {
   it('names a review playbook by its one column, not an arrow', () => {
     const playbook: Playbook = { ...BASE, toStatusId: BASE.fromStatusId, toStatusName: BASE.fromStatusName };
     const html = renderToStaticMarkup(
-      <PlaybookRow playbook={playbook} projects={ONE_PROJECT} onEdit={noop} onDelete={noop} />,
+      <PlaybookRow playbook={playbook} projects={ONE_PROJECT} statuses={STATUSES} onEdit={noop} onDelete={noop} />,
     );
     expect(html).toContain('review playbook');
+    expect(html).not.toContain('hatch-playbook-arrow');
   });
 
-  it('shows "any" for empty types, and the list joined otherwise', () => {
+  it('shows "any" for empty types, and a badge per type otherwise', () => {
     const anyHtml = renderToStaticMarkup(
-      <PlaybookRow playbook={BASE} projects={ONE_PROJECT} onEdit={noop} onDelete={noop} />,
+      <PlaybookRow playbook={BASE} projects={ONE_PROJECT} statuses={STATUSES} onEdit={noop} onDelete={noop} />,
     );
     expect(anyHtml).toContain('any');
+    expect(anyHtml).not.toContain('hatch-badge');
 
     const typed: Playbook = { ...BASE, types: ['task', 'bug'] };
     const html = renderToStaticMarkup(
-      <PlaybookRow playbook={typed} projects={ONE_PROJECT} onEdit={noop} onDelete={noop} />,
+      <PlaybookRow playbook={typed} projects={ONE_PROJECT} statuses={STATUSES} onEdit={noop} onDelete={noop} />,
     );
-    expect(html).toContain('task, bug');
+    expect(html).toContain('hatch-badge');
+    expect(html).toContain('task');
+    expect(html).toContain('bug');
   });
 
-  it('shows "any" for empty denied tools, and the list joined otherwise', () => {
-    const anyHtml = renderToStaticMarkup(
-      <PlaybookRow playbook={BASE} projects={ONE_PROJECT} onEdit={noop} onDelete={noop} />,
-    );
-    expect(anyHtml).toContain('any');
-
-    const denied: Playbook = { ...BASE, deniedTools: ['Bash', 'WebFetch'] };
+  it('shows the model and effort as plain text', () => {
     const html = renderToStaticMarkup(
-      <PlaybookRow playbook={denied} projects={ONE_PROJECT} onEdit={noop} onDelete={noop} />,
+      <PlaybookRow playbook={BASE} projects={ONE_PROJECT} statuses={STATUSES} onEdit={noop} onDelete={noop} />,
     );
-    expect(html).toContain('Bash, WebFetch');
-  });
-
-  it('shows the shape, model and effort', () => {
-    const html = renderToStaticMarkup(
-      <PlaybookRow playbook={BASE} projects={ONE_PROJECT} onEdit={noop} onDelete={noop} />,
-    );
-    expect(html).toContain('>any<');
     expect(html).toContain('sonnet');
     expect(html).toContain('medium');
   });
 
-  it('draws no project column with a single project', () => {
+  it('draws no project info with a single project', () => {
     const html = renderToStaticMarkup(
-      <PlaybookRow playbook={BASE} projects={ONE_PROJECT} onEdit={noop} onDelete={noop} />,
+      <PlaybookRow playbook={BASE} projects={ONE_PROJECT} statuses={STATUSES} onEdit={noop} onDelete={noop} />,
     );
     expect(html).not.toContain('All projects');
+    expect(html).not.toContain('role="img"');
   });
 
   it('shows "All projects" for a board-wide row, with multiple projects', () => {
     const html = renderToStaticMarkup(
-      <PlaybookRow playbook={BASE} projects={TWO_PROJECTS} onEdit={noop} onDelete={noop} />,
+      <PlaybookRow playbook={BASE} projects={TWO_PROJECTS} statuses={STATUSES} onEdit={noop} onDelete={noop} />,
     );
     expect(html).toContain('All projects');
   });
 
-  it('names the project for a scoped row, with multiple projects', () => {
+  it("draws the project's mark for a scoped row, with multiple projects", () => {
     const scoped: Playbook = { ...BASE, projectId: 1, projectKey: 'AER', projectName: 'Aerospace' };
     const html = renderToStaticMarkup(
-      <PlaybookRow playbook={scoped} projects={TWO_PROJECTS} onEdit={noop} onDelete={noop} />,
+      <PlaybookRow playbook={scoped} projects={TWO_PROJECTS} statuses={STATUSES} onEdit={noop} onDelete={noop} />,
     );
-    expect(html).toContain('AER — Aerospace');
+    expect(html).toContain('role="img"');
+    expect(html).toContain('aria-label="Aerospace"');
+    expect(html).toContain('AER');
+    expect(html).not.toContain('All projects');
   });
 
-  it('has an ungated Delete button, unlike ProjectRow', () => {
+  it('draws no Shape, Budget, Brief limit or Denied tools', () => {
+    const playbook: Playbook = {
+      ...BASE,
+      shape: 'leaf',
+      budget: 5,
+      briefLimit: 4000,
+      deniedTools: ['Bash', 'WebFetch'],
+    };
     const html = renderToStaticMarkup(
-      <PlaybookRow playbook={BASE} projects={ONE_PROJECT} onEdit={noop} onDelete={noop} />,
+      <PlaybookRow playbook={playbook} projects={ONE_PROJECT} statuses={STATUSES} onEdit={noop} onDelete={noop} />,
+    );
+    expect(html).not.toContain('leaf');
+    expect(html).not.toContain('>5<');
+    expect(html).not.toContain('4000');
+    expect(html).not.toContain('Bash');
+    expect(html).not.toContain('WebFetch');
+  });
+
+  it('has an ungated Delete button, outside the open button', () => {
+    const html = renderToStaticMarkup(
+      <PlaybookRow playbook={BASE} projects={ONE_PROJECT} statuses={STATUSES} onEdit={noop} onDelete={noop} />,
     );
     const deleteButton = /<button[^>]*>Delete<\/button>/.exec(html)![0];
     expect(deleteButton).not.toContain('disabled');
+  });
+
+  it('opens with a real, focusable button distinct from Delete', () => {
+    const html = renderToStaticMarkup(
+      <PlaybookRow playbook={BASE} projects={ONE_PROJECT} statuses={STATUSES} onEdit={noop} onDelete={noop} />,
+    );
+    const openButton = /<button[^>]*class="hatch-playbook-row-open"[^>]*>/.exec(html);
+    expect(openButton).not.toBeNull();
+    expect(openButton![0]).toContain('aria-label="Edit To Do to In Progress"');
+    expect(html.match(/<button/g)?.length).toBe(2);
   });
 });

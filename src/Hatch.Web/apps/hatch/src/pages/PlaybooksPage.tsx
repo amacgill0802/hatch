@@ -79,12 +79,8 @@ export function PlaybooksPage() {
                 <th>Transition</th>
                 {hasMultipleProjects(projects) && <th>Project</th>}
                 <th>Types</th>
-                <th>Shape</th>
                 <th>Model</th>
                 <th>Effort</th>
-                <th>Budget (M tokens)</th>
-                <th>Brief limit (chars)</th>
-                <th>Denied tools</th>
                 <th />
               </tr>
             </thead>
@@ -94,6 +90,7 @@ export function PlaybooksPage() {
                   key={playbook.id}
                   playbook={playbook}
                   projects={projects}
+                  statuses={statuses ?? []}
                   onEdit={() => setEditing(playbook)}
                   onDelete={() => void act(() => deletePlaybook(playbook.id))}
                 />
