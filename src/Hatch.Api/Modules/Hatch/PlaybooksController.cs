@@ -286,19 +286,43 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
             : $"a shape is one of {string.Join(", ", EfHatchPlaybook.Shapes)} - not \"{shape}\"";
 
     /// <summary>
-    /// The two size limits, and nothing checked against <see cref="ClaudeTools.BuiltIn"/>
-    /// on purpose: a rule may legitimately name an MCP tool or a <c>Bash(…)</c>
-    /// pattern that list can't enumerate, so an unrecognised name is accepted
-    /// rather than refused.
+    /// The two size limits, then each rule's name - the part before an optional
+    /// <c>(pattern)</c> - checked against <see cref="ClaudeTools.BuiltIn"/>, <c>mcp__…</c>
+    /// and <c>*</c>, with any <c>(pattern)</c> suffix required to be single, balanced
+    /// and non-empty.
     /// </summary>
-    private static string? InvalidDeniedTools(IReadOnlyList<string> tools) => tools switch
+    private static string? InvalidDeniedTools(IReadOnlyList<string> tools)
     {
-        { Count: > EfHatchPlaybook.MaxDeniedTools } =>
-            $"a playbook denies at most {EfHatchPlaybook.MaxDeniedTools} tools - not {tools.Count}",
-        _ when tools.Any(t => t.Length > EfHatchPlaybook.MaxToolRuleLength) =>
-            $"a denied tool rule is at most {EfHatchPlaybook.MaxToolRuleLength} characters",
-        _ => null,
-    };
+        if (tools.Count > EfHatchPlaybook.MaxDeniedTools)
+            return $"a playbook denies at most {EfHatchPlaybook.MaxDeniedTools} tools - not {tools.Count}";
+
+        foreach (var rule in tools)
+        {
+            if (rule.Length > EfHatchPlaybook.MaxToolRuleLength)
+                return $"a denied tool rule is at most {EfHatchPlaybook.MaxToolRuleLength} characters";
+
+            if (InvalidToolRule(rule))
+                return "a tool rule is a built-in name, \"mcp__…\", or \"*\", each optionally followed " +
+                       $"by one (pattern) - not \"{rule}\"";
+        }
+
+        return null;
+    }
+
+    /// <summary>The rule's name - the part before an optional (pattern) - names a tool, and any parens are balanced and non-empty.</summary>
+    private static bool InvalidToolRule(string rule)
+    {
+        var paren = rule.IndexOf('(');
+        if (paren < 0) return InvalidToolName(rule);
+
+        if (rule[^1] != ')' || rule.Count(c => c == '(') != 1 || rule.Count(c => c == ')') != 1) return true;
+        if (paren == rule.Length - 2) return true; // "Name()" - zero characters inside
+
+        return InvalidToolName(rule[..paren]);
+    }
+
+    private static bool InvalidToolName(string name) =>
+        name != "*" && !name.StartsWith("mcp__", StringComparison.Ordinal) && !ClaudeTools.BuiltIn.Contains(name);
 
     /// <summary>
     /// A non-null budget to either a cleared (blank) or set value, or the
