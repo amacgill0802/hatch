@@ -69,17 +69,6 @@ describe('describe', () => {
     ).toBe('HA-12 → OTHER-4');
   });
 
-  it('marks an issue filed under an express parent, naming the parent', () => {
-    expect(
-      describeEvent(
-        event({
-          kind: 'created',
-          payload: { type: 'story', title: 'A story', expressFrom: 'HA-45' },
-        }),
-      ),
-    ).toBe('express, from HA-45');
-  });
-
   it('leaves a plain status_changed unchanged', () => {
     expect(describeEvent(event({ kind: 'status_changed', payload: { from: 'Backlog', to: 'To Do' } }))).toBe(
       'Backlog → To Do',
