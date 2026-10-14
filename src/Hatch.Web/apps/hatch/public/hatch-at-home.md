@@ -275,6 +275,14 @@ the rest of what it takes — one increment, the loop, the bounds that stop it,
 and the reads that spend nothing. The Runner page carries the same reference,
 beneath the download.
 
+## The morning after a night
+
+The loop keeps working after you stop watching it. The next morning, open
+**Agents → Overnight** to see what it landed while you were away - biggest
+deliveries first. The small control beside it in the nav carries a count the
+moment there is something there you have not looked at, and goes quiet again
+once you have opened the page.
+
 ## Letting the loop merge for you
 
 The runner above opens a pull request and leaves it in review — it never
