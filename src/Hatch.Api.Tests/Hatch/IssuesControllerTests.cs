@@ -476,7 +476,7 @@ public class IssuesControllerTests
     // ---- PreApproval, inherited live at read ----
 
     [Fact]
-    public async Task FiledUnderAPreApprovedParent_IsBornExpress()
+    public async Task FiledUnderAPreApprovedParent_IsBornPreApproved()
     {
         var h = await NewAsync();
         await h.CreateAsync("epic", "the epic");
@@ -484,10 +484,9 @@ public class IssuesControllerTests
 
         var child = await h.CreateAsync("story", "the story", parentKey: "AER-1");
 
-        // Filing no longer copies anything onto the child's own row - "born
-        // expedited" means the read, not the row: the child's own stored
-        // level is None, and GetIssue/SearchIssues read it by walking to the
-        // parent, naming it.
+        // "Born pre-approved" now means the read, not the row: the child's own
+        // stored level is None, and GetIssue/SearchIssues read pre-approved by
+        // walking to the parent, naming it.
         Assert.Equal(PreApprovalLevels.NoneName, child.PreApprovalOwn);
         Assert.Equal(PreApprovalLevels.PreApprovedName, child.PreApproval);
         Assert.Equal("AER-1", child.PreApprovalFrom);
@@ -504,6 +503,19 @@ public class IssuesControllerTests
 
         var e = Assert.Single(await h.EventsAsync("AER-2"));
         Assert.False(e.Payload!.Value.TryGetProperty("preApprovalFrom", out _));
+    }
+
+    [Fact]
+    public async Task TheCreatedEvent_NeverCarriesExpressFrom()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the epic");
+        await h.PreApprovalAsync("AER-1", PreApprovalLevels.Express);
+
+        await h.CreateAsync("story", "the story", parentKey: "AER-1");
+
+        var e = Assert.Single(await h.EventsAsync("AER-2"));
+        Assert.False(e.Payload!.Value.TryGetProperty("expressFrom", out _));
     }
 
     [Fact]
@@ -531,7 +543,7 @@ public class IssuesControllerTests
 
     /// <summary>A three-generation read finds the level set at the top.</summary>
     [Fact]
-    public async Task AThreeGenerationRead_StopsAtTheRowCopyAtFilingAlreadyWrote()
+    public async Task AThreeGenerationRead_FindsThePreApprovedLevelSetAtTheTop()
     {
         var h = await NewAsync();
         await h.CreateAsync("epic", "the epic");
@@ -581,7 +593,7 @@ public class IssuesControllerTests
 
     /// <summary>Unmarking the parent changes what an already-filed child reads, immediately - there is no own-row copy for the walk to look past.</summary>
     [Fact]
-    public async Task UnmarkingThePreApprovedParent_DoesNotChangeAnAlreadyFiledChildsOwnCopy()
+    public async Task UnmarkingThePreApprovedParent_ChangesWhatAnAlreadyFiledChildReads()
     {
         var h = await NewAsync();
         await h.CreateAsync("epic", "the epic");
@@ -3720,7 +3732,7 @@ public class IssuesControllerTests
         }
 
         /// <summary>
-        /// Written straight to the row, the same as <see cref="ExpressAsync"/> -
+        /// Written straight to the row, the same as <see cref="AssignAsync"/> -
         /// what the dedicated route accepts and refuses is
         /// <c>IssueExpediteControllerTests</c>' business, and these tests are
         /// about what filing under an emergency parent makes of it.
@@ -3734,10 +3746,7 @@ public class IssuesControllerTests
         }
 
         /// <summary>
-        /// Written straight to the row, the same as <see cref="PriorityAsync"/> -
-        /// <see cref="ExpressAsync"/> only takes a bool and cannot set
-        /// <see cref="PreApprovalLevels.PreApproved"/>, which this inheritance
-        /// suite needs.
+        /// Written straight to the row, the same as <see cref="PriorityAsync"/>.
         /// </summary>
         public async Task PreApprovalAsync(string key, int level)
         {
