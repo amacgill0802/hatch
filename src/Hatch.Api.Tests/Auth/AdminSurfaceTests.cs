@@ -294,6 +294,12 @@ public class AdminSurfaceTests
         // issue its own thread would refuse to.
         "ActivityController.GetActivity",
 
+        // What landed in the newest night, across every issue rather than
+        // about one - Hatch-scoped and open to a person the same way
+        // WorkLogController's and ActivityController's reads are. See
+        // OvernightController.
+        "OvernightController.GetOvernight",
+
         // Playbooks are guarded twice over. Reading one is Hatch-scoped like
         // the rest; writing one names no scope at all, so an API key is
         // refused - a playbook chooses the next agent's instructions, its
