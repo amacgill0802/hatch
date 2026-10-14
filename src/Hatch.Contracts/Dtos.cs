@@ -1962,6 +1962,32 @@ public record WorkLogSessionsDto(
     DateTimeOffset? LastSessionAt,
     IReadOnlyList<WorkLogSessionDto> Sessions);
 
+// ---- Overnight ----
+
+/// <summary>
+/// What landed in the newest night - see <c>Overnight.NewestNight</c> for what
+/// a night is and where it is cut.
+/// </summary>
+/// <param name="From">When the night's earliest landing landed, or null when nothing has ever landed.</param>
+/// <param name="To">When the night's newest landing landed, or null when nothing has ever landed.</param>
+/// <param name="Count">How many issues landed - the same as <c>Rows.Count</c>, carried so a client does not have to count the list to draw the headline.</param>
+/// <param name="Rows">Epics, then bugs, then stories, then tasks; within one type, most descendants first. Empty when nothing has ever landed.</param>
+public record OvernightDto(
+    DateTimeOffset? From,
+    DateTimeOffset? To,
+    int Count,
+    IReadOnlyList<OvernightRowDto> Rows);
+
+/// <summary>One issue that landed in the night, as a row draws it.</summary>
+/// <param name="DescendantCount">Every issue below this one, at any depth - see <c>Rollup.Tree.DescendantCount</c>.</param>
+public record OvernightRowDto(
+    string Key,
+    string Type,
+    string Title,
+    string ProjectKey,
+    DateTimeOffset LandedAt,
+    int DescendantCount);
+
 // ---- Runners ----
 
 /// <summary>

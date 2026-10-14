@@ -78,6 +78,12 @@ below is what the prompt does not carry.
 - **What you leave is put right, but never pushed, for you.** The loop aborts
   a half-done merge and stashes the rest, recoverably. A tree it cannot
   reset ends the night, so clear a conflict before you stop.
+- **The merge train runs beside you.** An approved pull request - yours or
+  another ticket's - can merge with no increment and no session the moment
+  its branch is current and its build is green: see
+  [the merge train](docs/hatch.md#the-merge-train). A ticket you are
+  working may already be merged under you by the time you next look at it,
+  and that is not a race to fix - it is the design.
 - **A ticket that does not move is a stall.** The first in a row is let go
   quietly, with a comment saying why; the second is marked stalled and sits
   fifteen minutes before the board resumes it on its own, until it has
