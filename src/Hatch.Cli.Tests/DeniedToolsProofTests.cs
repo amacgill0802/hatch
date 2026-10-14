@@ -47,6 +47,32 @@ public sealed class DeniedToolsProofTests(ITestOutputHelper log)
     }
 
     /// <summary>
+    /// No known-correct outcome here - this fact makes no claim about what the
+    /// CLI does with a name <c>--disallowedTools</c> does not recognise. The
+    /// `await` returning at all (rather than the run hanging) is the whole
+    /// assertion, backed by <see cref="RunClaudeAsync"/>'s own 120s timeout.
+    /// </summary>
+    [SkippableFact]
+    public async Task AnUnknownName_Behaviour()
+    {
+        var bin = FindClaude();
+        Skip.IfNot(bin is not null, "no claude CLI reachable - set HATCH_CLAUDE_BIN or install claude on PATH");
+
+        var dir = Directory.CreateTempSubdirectory("hatch-denied-tools-unknown-");
+        try
+        {
+            var result = await RunClaudeAsync(bin!, dir.FullName, ["Frobnicate"], log);
+
+            log.WriteLine($"exit code: {result.ExitCode}");
+            log.WriteLine($"proof.txt exists: {result.ProofFileExists}");
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    /// <summary>
     /// The same two steps as <see cref="ClaudeSessionRunner.TryFind"/>, which is
     /// private - this test re-does them rather than reaching in.
     /// </summary>
