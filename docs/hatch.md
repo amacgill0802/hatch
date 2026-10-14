@@ -3204,6 +3204,111 @@ merges and builds cleanly is never touched. Re-running a failed check is not
 here either: a flaky check is a failure, and an increment that only re-runs one
 leaves the tip where it was, which is a stall.
 
+### The approval column
+
+A column ticked `MergesPullRequest` is a merge column (see [Status](#status)
+for the flag itself): the one place on the board a runner poll merges an
+issue's own pull request, current and green, with no session. Nothing names
+it; everything measures it.
+
+**The geometry.** `Columns.Merges` (`Columns.cs:112-113`) finds the one
+column a person ticked `MergesPullRequest` on, the same way
+[`Columns.AwaitingReview`](#the-issue-in-review-whose-branch-conflicts-or-whose-build-failed-is-dispatched-to-review)
+is found — off the board, never off a name. `AwaitingReview`
+(`:98-105`) itself steps back over any protected column it meets walking left
+from the first terminal one, so inserting a merge column — `Approved`,
+say, between `In Review` and `Done` — does not make the dispatcher mistake it
+for the review column: review is still whatever stands immediately left of
+it. `Columns.Target` (`:77-80`) is why the review column's own advance never
+lands a session in the merge column either: it dispatches a column to
+itself, rather than past it, exactly when the next column is terminal **or**
+protected, and a merge column is always protected (below). `In Review`
+advancing therefore stays `In Review`, the same self-dispatch
+[the conflict-and-build section](#the-issue-in-review-whose-branch-conflicts-or-whose-build-failed-is-dispatched-to-review)
+already describes, not a step into the column beside it.
+
+**The gate.** A merge column is always `IsProtected` as well — ticking
+`MergesPullRequest` requires it (see [Status](#status)) — so every
+move into one answers to `IssuesController.ProtectedMoveRefusalAsync`
+(`:1106-1117`) before anything else runs: `"moving work into a protected
+column is an owner's or approver's call, not an agent's"` for a program,
+`"only an owner or approver of {key} may move work into \"{name}\""` for a
+person or a key without the role. Inside `Dispatch.Blocked`
+(`Dispatch.cs:756-772`), the merge column's own judgement is asked *ahead of*
+that generic refusal — a `from.MergesPullRequest` branch returns the judge's
+sentence (below) before the method ever reaches the plain `"the next column
+is \"{name}\", and only its approvers move work there"` it gives every other
+protected column further down the same method (`:778-779`). `hatch move`
+carries the same speed bump at the client (`IssueCommands.cs:222-227`):
+`"hatch: \"{name}\" is a protected column - only its approvers move a ticket
+there (CLAUDE.md)"`. The browser mirrors both gates, in the same order, in
+one function — `protectedColumns.ts`'s `moveBlocked`: `"Only an owner or
+approver may move work in here"` checked first, so a caller who clears it
+still meets the second. That second check rides beside the protected gate
+rather than inside it: `IssuesController.MergeColumnRefusal` (`:1119-1123`),
+a plain `400` for a move into the merges column on an issue with no pull
+request recorded — `"\"{name}\" merges the pull request, and this issue has
+none recorded"` — mirrored in the browser as `"This column merges the pull
+request, and this issue has none"`.
+
+**The judge.** `MergeWork.Judge` decides what an issue standing in the merge
+column is waiting on, the way
+[`ReviewWork.Judge`](#the-issue-in-review-whose-branch-conflicts-or-whose-build-failed-is-dispatched-to-review)
+decides it for the review column — except its sentence is never null: unlike
+a clean, unremarkable branch in review, nothing in this column is ever clear
+for an agent, since the whole point of the column (HA-289) is that no agent
+runs here. `Dispatch.Blocked` asks it for every column ticked
+`MergesPullRequest`, ahead of the terminal and protected checks above, so a
+session is never spawned there — the sentence is reported, not acted on. In
+the order the judge checks them:
+
+1. Its pull request already closed without merging: **hold**, *"its pull
+   request was closed without merging"*.
+2. No runner has checked its branch against the trunk yet: **pending**,
+   *"no runner has checked its branch against `<trunk>` yet"*.
+3. Any counted verdict `conflicted`: **pushback**, *"its branch conflicts
+   with the trunk - back to `<review>` to fix it"*.
+4. Any counted verdict `ambiguous` — more than one branch on origin named for
+   it: **hold**, *"more than one branch on origin is named for it - delete
+   the ones that are not its branch"*.
+5. Every counted verdict `none` — no branch on origin named for it at all:
+   **hold**, *"no branch on origin is named for it"*.
+6. A clean branch whose build, read about that same merge check's own sha,
+   is `failed`: **pushback**, *"its build on `<sha>` failed - back to
+   `<review>` to fix it"*.
+7. Clean but not holding the trunk: **update**, *"bringing its branch
+   current from `<trunk>`"*.
+8. A build about that sha still `pending`: **pending**, *"its build on
+   `<sha>` is still running"*.
+9. A build read, but about a different sha than the merge check's own:
+   **pending**, *"no runner has read its build on `<sha>` yet"*.
+10. Holding the trunk, with no build checks at all yet: **pending**, *"its
+    branch holds `<trunk>` - no checks have run on it yet"*.
+11. Every counted build `passed`: **merge**, *"its branch holds `<trunk>`
+    and its build passes"*.
+12. Holding the trunk with no checks run at all: **pending** inside
+    `MergeWork.SettleWindow` (ten minutes, the same settling a push's checks
+    are given elsewhere), **hold** past it — both *"its branch holds
+    `<trunk>` and no checks ran on it"*.
+
+**Pushback is built, not deferred.** `POST /work/{key}/pushback`
+(`WorkController.cs:575-642`, `WorkController.PushbackWork`) carries an issue
+standing in the merge column back to the review column on its own say-so: it
+takes no verdict from its caller, re-reads the issue's own stored merge and
+build checks, calls `MergeWork.Judge` itself, and acts only when the kind
+comes back `pushback` — anything else is a `409` carrying the judge's own
+sentence instead. Its destination is
+[`Columns.AwaitingReview`](#the-issue-in-review-whose-branch-conflicts-or-whose-build-failed-is-dispatched-to-review),
+refused where the board has none or where that column is the merge column
+itself. The comment it writes on the issue is the judge's own sentence,
+capitalized with a period appended — *"Its branch conflicts with the trunk -
+back to In Review to fix it."* `MergeTrain.PushbackApprovedAsync`
+(`MergeTrain.cs:463-496`) calls it once a tick, for every issue in the merge
+column whose judged kind is `pushback` — one of `MergeTrain`'s own halves,
+run on its own clock, independently of
+[the poll](#checking-the-branches-in-review) that reports the merge and
+build checks `MergeWork.Judge` reads in the first place.
+
 ### The one path past the terminal guard
 
 Nothing above ever lands an issue in a terminal column — that is what
