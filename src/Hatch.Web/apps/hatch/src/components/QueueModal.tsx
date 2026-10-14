@@ -1,5 +1,14 @@
 import { Button, EmptyState, Field, Modal, Text } from '@hatch/ui';
-import { anyAboveNormal, anyClaimed, queueCard, queueMarker, queueTally, queueWords } from '../lib/queue';
+import {
+  anyAboveNormal,
+  anyClaimed,
+  mergeTrains,
+  queueCard,
+  queueMarker,
+  queueTally,
+  queueWords,
+  trainDriverWords,
+} from '../lib/queue';
 import { ClaimBadge } from './ClaimBadge';
 import { Choice } from './Choice';
 import { TypeBadge } from './TypeBadge';
@@ -42,6 +51,7 @@ export function QueueModal({
   const showMarker = anyAboveNormal(queue);
   const showClaim = anyClaimed(queue);
   const tally = queueTally(queue);
+  const trains = mergeTrains(queue, runners);
 
   return (
     <Modal
@@ -126,6 +136,34 @@ export function QueueModal({
             );
           })}
         </ul>
+      )}
+
+      {status === 'ready' && trains.length > 0 && (
+        <div className="hatch-queue-trains">
+          {trains.map((train) => (
+            <div className="hatch-queue-train" key={train.projectKey}>
+              <div className="hatch-queue-train-title">
+                <span className="hatch-queue-train-project">{train.projectKey}</span>
+                <Text tone="muted" className="hatch-queue-train-driver">
+                  {trainDriverWords(train.driver)}
+                </Text>
+              </div>
+              <ul className="hatch-queue-train-rows">
+                {train.rows.map((row) => (
+                  <li key={row.issue.key} className="hatch-queue-train-row">
+                    <span className="hatch-card-key">{row.issue.key}</span>
+                    {row.issue.key === train.headKey && (
+                      <Text tone="muted" className="hatch-queue-train-head-word">
+                        Head
+                      </Text>
+                    )}
+                    <span className="hatch-queue-words">{queueWords(row)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
       )}
     </Modal>
   );
