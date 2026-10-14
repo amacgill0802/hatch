@@ -1438,6 +1438,7 @@ export interface OvernightDto {
   to: string | null;
   count: number;
   rows: OvernightRowDto[];
+  unseen: number;
 }
 
 /** One issue that landed that night, with how many issues sit beneath it. */

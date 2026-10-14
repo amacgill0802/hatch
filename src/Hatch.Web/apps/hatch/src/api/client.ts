@@ -596,6 +596,7 @@ export interface WorkLogSessionQuery {
 // ---- Overnight ----
 
 export const getOvernight = () => fetchJson<OvernightDto>('/api/hatch/overnight');
+export const markOvernightSeen = () => fetchJson<void>('/api/hatch/overnight/seen', { method: 'POST' });
 
 // ---- People ----
 //

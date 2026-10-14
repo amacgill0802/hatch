@@ -7,7 +7,9 @@ import { ConfirmationsProvider } from './components/Confirmations';
 import { NavAttention } from './components/NavAttention';
 import { NavBuild } from './components/NavBuild';
 import { NavLocalPerson } from './components/NavLocalPerson';
+import { NavOvernight } from './components/NavOvernight';
 import { NavUtilization } from './components/NavUtilization';
+import { OvernightProvider } from './components/OvernightProvider';
 import { PrimaryNav } from './components/PrimaryNav';
 import { PullToRefresh } from './components/PullToRefresh';
 import { BoardPage } from './pages/BoardPage';
@@ -36,7 +38,9 @@ export function App() {
   return (
     <MeProvider>
       <AttentionProvider>
-        <AppShell />
+        <OvernightProvider>
+          <AppShell />
+        </OvernightProvider>
       </AttentionProvider>
     </MeProvider>
   );
@@ -70,6 +74,10 @@ function AppShell() {
                   reading - a fresh install, and anybody who has never run
                   one, are both in that state. */}
               <NavUtilization />
+              {/* What the loop landed overnight, this reader's own unread
+                  mark - a thing to go and look at, not to do, which is why it
+                  sits beside the attention control rather than inside it. */}
+              <NavOvernight />
               {/* Last, at the right end of the bar: whether the loop is
                   waiting on a person. Unlike the one above it this always draws
                   something - "nothing is waiting" is an answer, and it is the
