@@ -1,14 +1,19 @@
 using Hatch.Api.Ef;
 using Hatch.Api.Modules.Hatch;
+using Hatch.Api.Services.Auth;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Time.Testing;
 
 namespace Hatch.Api.Tests.Hatch;
 
 /// <summary>
-/// <c>GET /api/hatch/overnight</c>, wired against the in-memory database -
-/// the two queries and the <see cref="Rollup"/> call that feed
-/// <see cref="Overnight.NewestNight"/>, which <see cref="OvernightTests"/>
-/// already pins on its own.
+/// <c>GET /api/hatch/overnight</c> and <c>POST /api/hatch/overnight/seen</c>,
+/// wired against the in-memory database - the two queries and the
+/// <see cref="Rollup"/> call that feed <see cref="Overnight.NewestNight"/>,
+/// which <see cref="OvernightTests"/> already pins on its own, plus the
+/// person-only write and the mark it leaves behind.
 /// </summary>
 public class OvernightControllerTests
 {
@@ -73,6 +78,76 @@ public class OvernightControllerTests
         Assert.Equal(new OvernightDto(null, null, 0, []), result);
     }
 
+    [Fact]
+    public async Task AReaderWithNoMarkAtAll_SeesEveryRowUnseen()
+    {
+        var h = await NewAsync();
+        await h.LandAsync("task", "a", h.Shipped, Now);
+        await h.LandAsync("task", "b", h.Shipped, Now);
+
+        var result = await h.GetOvernightAsync();
+
+        Assert.Equal(result.Count, result.Unseen);
+    }
+
+    [Fact]
+    public async Task PostSeen_ThenGetOvernight_ReportsNothingUnseen()
+    {
+        var h = await NewAsync();
+        await h.LandAsync("task", "a", h.Shipped, Now);
+
+        await h.PostSeenAsync();
+        var result = await h.GetOvernightAsync();
+
+        Assert.Equal(0, result.Unseen);
+    }
+
+    [Fact]
+    public async Task ALandingAfterTheMark_MakesUnseenNonzeroAgain()
+    {
+        var h = await NewAsync();
+        await h.LandAsync("task", "a", h.Shipped, Now);
+        await h.PostSeenAsync();
+
+        h.Time.Advance(TimeSpan.FromMinutes(1));
+        await h.LandAsync("task", "b", h.Shipped, Now + TimeSpan.FromMinutes(1));
+
+        var result = await h.GetOvernightAsync();
+
+        Assert.Equal(1, result.Unseen);
+    }
+
+    [Fact]
+    public async Task PostSeen_IsRefusedToAKey()
+    {
+        var h = await NewAsync();
+        h.Caller.Key = new EfApiKey
+        {
+            Name = "hatch",
+            Hash = [1],
+            Prefix = "hatch_ak_x",
+            Scopes = [ApiKeyScopes.Hatch],
+            CreatedAt = Now,
+        };
+
+        var refused = Assert.IsType<ObjectResult>(await h.Controller.PostSeen(CancellationToken.None));
+
+        Assert.Equal(StatusCodes.Status403Forbidden, refused.StatusCode);
+        Assert.Equal("marking the night as seen is the operator's, not an agent's", refused.Value);
+    }
+
+    [Fact]
+    public async Task PostSeen_IsRefusedToAKeylessRunnerToo()
+    {
+        var h = await NewAsync();
+        h.Caller.Local = new Actor(ActorKind.Key, LocalCaller.RunnerIdFor("host:/src"), "host:/src");
+
+        var refused = Assert.IsType<ObjectResult>(await h.Controller.PostSeen(CancellationToken.None));
+
+        Assert.Equal(StatusCodes.Status403Forbidden, refused.StatusCode);
+        Assert.Equal("marking the night as seen is the operator's, not an agent's", refused.Value);
+    }
+
     private static async Task<Harness> NewAsync()
     {
         var db = new HatchContext(
@@ -87,20 +162,56 @@ public class OvernightControllerTests
         db.AddRange(project, todo, inProgress, shipped);
         await db.SaveChangesAsync();
 
+        var time = new FakeTimeProvider(Now);
+        var caller = new StubCaller();
+        var actors = new StubActorDirectory();
+        var person = actors.AddPerson("Ada");
+        actors.Principal = person;
+
         return new Harness
         {
             Db = db,
-            Controller = new OvernightController(db),
+            Controller = new OvernightController(db, caller, actors, time),
+            Caller = caller,
+            Time = time,
             ProjectId = project.Id,
             InProgress = inProgress.Id,
             Shipped = shipped.Id,
         };
     }
 
+    /// <summary>Whoever the test says is calling: a person, a key, or local mode's third lane.</summary>
+    private sealed class StubCaller : ICallerIdentity
+    {
+        public EfPerson? Person { get; set; }
+
+        public EfApiKey? Key { get; set; }
+
+        public Actor? Local { get; set; }
+
+        public Task<EfAuthGrant?> GrantAsync(CancellationToken ct) => Task.FromResult<EfAuthGrant?>(null);
+
+        public Task<Guid?> PersonIdAsync(CancellationToken ct) => Task.FromResult(Person?.Id);
+
+        public Task<EfPerson?> PersonAsync(CancellationToken ct) => Task.FromResult(Person);
+
+        public Task<EfApiKey?> ApiKeyAsync(CancellationToken ct) => Task.FromResult(Key);
+
+        public Task<Actor?> LocalAsync(CancellationToken ct) => Task.FromResult(Local);
+
+        public Task<bool> IsProgramAsync(CancellationToken ct) =>
+            Task.FromResult(Key is not null || Local is { Kind: ActorKind.Key });
+
+        public Task<string> ActorNameAsync(CancellationToken ct) =>
+            Task.FromResult(Person?.Name ?? Key?.Name ?? Local?.Name ?? CallerIdentity.Unattributed);
+    }
+
     private sealed class Harness
     {
         public required HatchContext Db { get; init; }
         public required OvernightController Controller { get; init; }
+        public required StubCaller Caller { get; init; }
+        public required FakeTimeProvider Time { get; init; }
         public required int ProjectId { get; init; }
         public required int InProgress { get; init; }
         public required int Shipped { get; init; }
@@ -165,6 +276,9 @@ public class OvernightControllerTests
 
         public async Task<OvernightDto> GetOvernightAsync() =>
             Value(await Controller.GetOvernight(CancellationToken.None));
+
+        public async Task PostSeenAsync() =>
+            Assert.IsType<NoContentResult>(await Controller.PostSeen(CancellationToken.None));
     }
 
     private static T Value<T>(Microsoft.AspNetCore.Mvc.ActionResult<T> result) =>

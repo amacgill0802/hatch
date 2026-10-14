@@ -198,6 +198,27 @@ public class EfHatchProjectMember
 }
 
 /// <summary>
+/// The last instant one reader read the Overnight page - one row per person,
+/// never a browser's cookie, so a badge cleared on a phone is cleared on the
+/// desktop too.
+/// </summary>
+[Table("OvernightSeen")]
+[Index(nameof(PersonId), IsUnique = true)]
+public class EfHatchOvernightSeen
+{
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public int Id { get; set; }
+
+    /// <summary>
+    /// A bare <see cref="Guid"/> and not a foreign key, for the reason
+    /// <see cref="EfHatchProjectMember.PersonId"/> is one.
+    /// </summary>
+    public Guid PersonId { get; set; }
+
+    public required DateTimeOffset SeenAt { get; set; }
+}
+
+/// <summary>
 /// One project's logo, stored as bytes in Postgres rather than as a path into a
 /// volume.
 ///
