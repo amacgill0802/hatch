@@ -79,7 +79,7 @@ export function PlaybookRow({
             <Text tone="muted" as="span">any</Text>
           )}
 
-          <span>
+          <span className="hatch-playbook-model-effort">
             {playbook.model} {playbook.effort}
           </span>
         </button>

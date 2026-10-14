@@ -3000,6 +3000,47 @@ input.hatch-inline-title-input {
   padding: var(--sp-3) 0;
 }
 
+/* The row's own open button fills its <td> and takes the table's cell padding
+   itself, so the <td> gives up its half - otherwise the two would double up. */
+.hatch-table td:has(.hatch-playbook-row-open) {
+  padding: 0;
+}
+
+.hatch-playbook-row-open {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  padding: var(--sp-2-5) var(--sp-3);
+  background: none;
+  border: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.hatch-playbook-row-open:hover,
+.hatch-playbook-row-open:focus-visible {
+  background: var(--primary-bg);
+}
+
+/* The trailing model/effort text steps down so the transition, project and
+   types read as the row's real subject. */
+.hatch-playbook-model-effort {
+  font-size: var(--t-label);
+  color: var(--muted);
+}
+
+/* A muted separator between a transition's two StatusPills, distinct from the
+   bare arrow glyph Confirmations.tsx and BulkPage.tsx use elsewhere - this is
+   a local rule for this row only. */
+.hatch-playbook-arrow {
+  font-size: var(--t-label);
+  color: var(--muted);
+  padding: 0 var(--sp-1);
+}
+
 /* ---- Questions ----
 
    An unanswered question is the one thing on a board that nothing else can get
