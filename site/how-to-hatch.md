@@ -97,6 +97,11 @@ The rules:
   agent that could edit its own instructions could raise its own budget, and
   that failure is unbounded spend rather than a wrong answer. If a playbook is
   wrong, an agent says so on the ticket and stops.
+- **A playbook can deny its session the tools it would otherwise have.** A
+  bare name (`Edit`) removes that tool entirely; a scoped pattern like
+  `Bash(git push *)` leaves `Bash` itself available and refuses only the
+  matching command. Unset or empty denies nothing, which is every playbook
+  before this existed.
 
 The first week with a new board is retuning playbooks from the Playbooks page
 after watching a run go badly. That is the only way anybody ever finds the

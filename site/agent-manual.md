@@ -457,6 +457,10 @@ the reason `work` is a command an operator types. The prompt goes in on
 stdin. Attached (`-i`) drops `-p`, the permission mode and the output format,
 and passes the prompt as an argument, because stdin is the terminal.
 
+Where the matched playbook sets `DeniedTools`, the base arguments above gain
+one `--disallowedTools <rule>` per entry — through every path through
+`Base()`, headless and attached alike.
+
 The session's `PATH` gets the runner's own directory prepended, when the
 running executable is named `hatch`, so `hatch` inside the session is the
 binary that spawned it. Cancellation kills the whole process tree, then waits
