@@ -4321,10 +4321,13 @@ for that pair is known. The terminal hears about a change the same way —
 `hatch: main build on 1a2b3c4 failed (api, CI)` — naming the trunk rather than
 an issue.
 
-**The pull request half, asked of `gh` and keyed on the issue.** The three
-halves above are keyed on `(path, baseBranch)`, because a merge verdict and a
-build verdict are per repository. A pull request is not: `PullRequestUrl` is
-one field on one issue however many repositories its project binds, so this
+**The pull request half, asked of `gh` and keyed on the issue.** This half, and
+the two after it, run on their own clock — `MergeTrain`'s, independent of
+`--interval` — rather than this poll's, which is why their code lives apart
+from it; the shape this paragraph describes still holds for all three. The
+three halves above are keyed on `(path, baseBranch)`, because a merge verdict
+and a build verdict are per repository. A pull request is not: `PullRequestUrl`
+is one field on one issue however many repositories its project binds, so this
 half iterates the `/api/hatch/work/review` answer itself rather than the
 per-checkout targets the others build, and reads each issue's pull request
 once regardless of how many repositories its project names — the checkout is
@@ -4336,17 +4339,72 @@ three different things — a merge, a close, and a branch never pushed — none 
 which `gh` confuses. On `merged` it calls the route that advances the issue
 out of review, with the url it read; a `409` is the row having moved under it
 between the read and the write, the same as [the hop](#the-hop) - a line at
-most, and the poll walks on to the next issue. On `open`, `closed` or
-`unknown` it does nothing - a closed-without-merging pull request is a real
-stuck state and is not this half's to surface. **There is no stored verdict
-and no window logic like `NoneWindow`**: an open pull request is asked about
-every interval, by design, since noticing the merge promptly is the point, and
-a merged one advances the issue out of review - so `/api/hatch/work/review`
-stops returning it and nothing asks again. The terminal hears about a change
-only - `hatch: HA-12 pull request merged -> Done` - and a quiet interval says
-nothing. A `gh` that cannot answer is one line per checkout, the same as the
-build half, and a board that predates the route answers `404`, which is asked
-again next interval.
+most, and the poll walks on to the next issue. On `open` it does nothing - see
+below for why that is by design. On `closed` a review-column row (`MergeWork`
+null) is left alone too, the same as `open`: a closed-without-merging pull
+request there is a real stuck state and is not this half's to surface. A
+merge-column row
+(`MergeWork` not null) is the one exception, and only where this runner is the
+one this project's merge train is elected to - see the note after the two
+halves below: there, `closed` calls `/work/{key}/closed` once, which records
+`PullRequestClosedAt` the first time and moves nothing, and comments once -
+"Its pull request was closed without merging." - deduplicated by issue key, so
+a quiet interval after says nothing again. `unknown` does nothing either way.
+**There is no stored verdict and no window logic like `NoneWindow`**: an open
+pull request is asked about every interval, by design, since noticing the
+merge promptly is the point, and a merged one advances the issue out of review
+- so `/api/hatch/work/review` stops returning it and nothing asks again. The
+terminal hears about a change only - `hatch: HA-12 pull request merged ->
+Done` - and a quiet interval says nothing. A `gh` that cannot answer is one
+line per checkout, the same as the build half, and a board that predates the
+route answers `404`, which is asked again next interval.
+
+**The approved-merge half.** For every row the merge column holds that the
+judge marked **merge** and that is the merge train's own head for its project
+(`MergeWork.IsHead` - the one row of a project's merge column eligible to act
+at a time, named once per pass so two rows in the same column never disagree
+about whose turn it is), this half re-reads the pull request's live state with
+`gh` first, the same read the half
+above takes. One `gh` already reports closed is left for the half above, which
+has handled it or will next. One whose head has moved past the sha the judge
+last called clean is reported once per sha - "Its pull request's head is now
+{headSha}, not the {judgedSha} this runner approved to merge - skipping until
+a fresh verdict says it is clean again." - and skipped until a fresh verdict
+agrees it is still clean. Otherwise it runs `gh pr merge <url> --merge --admin
+--match-head-commit <sha>`; a refusal is reported the same way, once per sha -
+"gh would not merge its pull request - {why}". A merge that goes through calls
+`/work/{key}/merged`, the same route [the one path past the terminal
+guard](#the-one-path-past-the-terminal-guard) already documents an operator's
+own report of a merge taking, comments "Merged its pull request at {sha}, as
+{runner}.", and prints the same `hatch: HA-12 pull request merged -> Done`
+line the half above prints for its own advance.
+
+**The branch-update half.** The same shape, for every row the merge column
+holds marked **update** and the train's own head: re-read the pull request,
+leave a closed one for the half above, and report a stale head once per sha
+the same way - "Its pull request's head is now {headSha}, not the {judgedSha}
+this runner approved to bring current - skipping until a fresh verdict says it
+is clean again." Bringing the branch current here is not
+[`IWorkspace.Sync`](#the-workspace-between-increments) - that is a different
+mechanism entirely, the local, no-worktree `git merge-tree` and `commit-tree`
+push a session's own hand-back uses when leaving a pull request that has
+fallen behind. This half instead asks the forge directly, with no local
+checkout touched at all: `PUT repos/{owner}/{repo}/pulls/{number}/update-branch`,
+with `expected_head_sha` set to the sha the judge called clean. Three outcomes
+follow: updated comments "Brought its branch current with {trunk}, as
+{runner}." and prints `hatch: HA-12 branch brought current with main` to the
+terminal - no sha in either, since bringing a branch current is reported by
+project and trunk, not by commit; conflicted comments "Its branch does not
+merge cleanly with {trunk} - nothing was pushed." with no file list, unlike the
+conflict `IWorkspace.Sync` reports elsewhere; anything else - the forge
+unreachable, the account refused - is one `complain` line on the terminal
+only, said again next interval the way a transient failure is, and nothing on
+the ticket.
+
+The merge-column exception just above, and both halves after it, run only
+where this runner is the one a heartbeat answer elected to drive this
+project's merge train: a choice made for a runner, never by it, and not this
+section's to explain further.
 
 ### When an increment does nothing
 
