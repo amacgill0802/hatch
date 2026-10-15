@@ -43,6 +43,11 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
 
         var exhausted = await ExhaustedRunnersAsync(ct);
 
+        // Only the ancestor walk MergeWork.Judge needs below, for a
+        // pre-approved review row - not the full DependencyGate, which this
+        // endpoint has no dependency-gating need for.
+        var tree = await PriorityTree.ForAsync(db, ct);
+
         // A repository's trunk is nobody's issue, so this does not wait on
         // there being a review column at all - a person's row here even on a
         // board too short to have one. The same failing rule the branch builds
@@ -77,6 +82,7 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
                 i.Type,
                 i.Title,
                 i.PullRequestUrl,
+                i.PullRequestClosedAt,
             })
             .ToListAsync(ct);
 
@@ -178,10 +184,24 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
                     : clean.Count > 0 && clean.All(m => m.HoldsTrunk == true) ? true
                     : null;
 
+                // A pre-approved row the judge would carry on its own - merge
+                // it, update its branch, or is still waiting on a runner to
+                // check it - is not a person's business any more, so it is
+                // not a row here at all. One the judge still holds stays, with
+                // the same sentence the merge column would show for it.
+                string? heldSentence = null;
+                if (tree.EffectivePreApproval(i.Id).Level == PreApprovalLevels.PreApproved)
+                {
+                    var judged = MergeWork.Judge(repos, merges, builds, i.PullRequestClosedAt, time.GetUtcNow(), review.Name);
+                    if (judged.Kind is WorkKinds.Merge or WorkKinds.Update or WorkKinds.Pending) return null;
+                    heldSentence = judged.Sentence;
+                }
+
                 return new ReviewDto(
                     IssueKey.Format(i.ProjectKey, i.Number), i.Title, i.Type, i.PullRequestUrl!,
-                    buildState, holdsTrunk, clean.FirstOrDefault()?.Trunk);
+                    buildState, holdsTrunk, clean.FirstOrDefault()?.Trunk, heldSentence);
             })
+            .OfType<ReviewDto>()
             .ToList();
 
         var withoutPr = inReview.Count(i => string.IsNullOrWhiteSpace(i.PullRequestUrl));
