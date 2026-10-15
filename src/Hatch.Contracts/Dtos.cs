@@ -21,7 +21,8 @@ namespace Hatch.Contracts;
 public record ProjectDto(
     int Id, string Key, string Name, int IssueCount, DateTimeOffset CreatedAt, string? Color, string? Icon,
     IReadOnlyList<ProjectRepositoryDto> Repositories, DateTimeOffset? LogoUpdatedAt,
-    IReadOnlyList<ProjectMemberDto> Members, bool CanApprove, bool CanAdminister);
+    IReadOnlyList<ProjectMemberDto> Members, bool CanApprove, bool CanAdminister,
+    string Landing = Landings.PullRequest, bool ChecksRequired = true);
 
 /// <summary>A stored image, as the markdown that shows it will name it: <c>/api/hatch/images/{id}</c>.</summary>
 public record ImageDto(Guid Id);
@@ -66,6 +67,10 @@ public record ProjectMemberDto(Guid PersonId, string Name, string Role);
 
 /// <summary>A role to set a member to - <c>"owner"</c> or <c>"approver"</c>, nothing else.</summary>
 public record ProjectMemberWriteRequest(string Role);
+
+/// <summary>A write to a project's landing settings - <c>null</c> on either field leaves it alone.</summary>
+/// <param name="Landing">One of <see cref="Landings"/>.</param>
+public record ProjectLandingWriteRequest(string? Landing, bool? ChecksRequired);
 
 // ---- Statuses ----
 
@@ -2132,6 +2137,21 @@ public static class MergeVerdicts
     public const string Ambiguous = "ambiguous";
 
     public static readonly IReadOnlyList<string> All = [Clean, Conflicted, None, Ambiguous];
+}
+
+/// <summary>
+/// How a project expects its work to reach the trunk - the two shapes a
+/// project can require of a finished issue.
+/// </summary>
+public static class Landings
+{
+    /// <summary>A pull request, reviewed and merged by a person or the merge train.</summary>
+    public const string PullRequest = "pull-request";
+
+    /// <summary>Pushed straight to the trunk, with no pull request in between.</summary>
+    public const string Trunk = "trunk";
+
+    public static readonly IReadOnlyList<string> All = [PullRequest, Trunk];
 }
 
 /// <summary>

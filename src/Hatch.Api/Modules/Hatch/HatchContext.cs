@@ -207,6 +207,15 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
             e.Property(w => w.ModelUsage).HasColumnType("jsonb");
         });
 
+        // Matches AddProjectLanding's own defaultValue, for the same reason as
+        // IsCheck above: EnsureCreated must leave the same column default a
+        // sequential migration run would.
+        modelBuilder.Entity<EfHatchProject>(e =>
+        {
+            e.Property(p => p.Landing).HasDefaultValue(Landings.PullRequest);
+            e.Property(p => p.ChecksRequired).HasDefaultValue(true);
+        });
+
         // Cascade with the project: a project can only be deleted empty of
         // issues, and its bindings are not a reason to keep it around, so they
         // go with it rather than blocking the delete the way issues do.
