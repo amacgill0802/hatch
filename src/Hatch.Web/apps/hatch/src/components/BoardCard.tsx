@@ -3,7 +3,6 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { ProjectMark, markVars } from '@hatch/ui';
 import { ClaimBadge } from './ClaimBadge';
-import { TypeBadge } from './TypeBadge';
 import { MomentChip } from './MomentChip';
 import { projectLogoUrl } from '../lib/projectLogo';
 import { isPlainClick } from '../lib/pointer';
@@ -38,6 +37,18 @@ const askingClass = (card: IssueCard) => (card.openQuestions > 0 ? ' asking' : '
     drawn, including the preview under the cursor - a card being moved is
     exactly the card where knowing which one goes first matters. */
 const priorityClass = (card: IssueCard) => (card.priority === 'normal' ? '' : ` ${card.priority}`);
+
+/** Whether the marks row has anything to draw - the same register the
+    assignee chip already used alone, now covering the whole row: a card
+    with none of these carries no empty row. */
+const hasMarks = (card: IssueCard) =>
+  card.priority !== 'normal' ||
+  card.express ||
+  !!card.claim ||
+  card.openQuestions > 0 ||
+  card.held ||
+  !!card.stalledAt ||
+  !!card.assignee;
 
 /**
  * One card. A <Link> as well as a draggable, so middle-click, copy-link and
@@ -129,96 +140,96 @@ function CardFace({ card, waiting, terminal, project }: Required<Omit<CardProps,
         >
           {card.key}
         </span>
-        <TypeBadge type={card.type} />
-        {/* This one first. On the face beside the type rather than pushed to
-            the end of the head, because it is a fact about which card to read
-            next and the eye is already at the left edge - where the stripe in
-            App.css is drawing the same thing at arm's length. */}
-        {card.priority !== 'normal' && (
-          <span
-            className={`hatch-card-expedited${card.priority !== 'expedited' ? ` ${card.priority}` : ''}`}
-            title={
-              card.priority === 'emergency'
-                ? 'Emergency - the highest priority, first above everything expedited'
-                : card.priority === 'expedited'
-                  ? 'Expedited - this one goes first'
-                  : card.priority === 'low'
-                    ? 'Low - reached after everything normal, and only while the session window is on pace'
-                    : card.priority === 'economy'
-                      ? 'Economy - worked only with usage that would otherwise go spare'
-                      : 'Paused - a person set this aside; the loop leaves it where it stands'
-            }
-          >
-            {card.priority === 'emergency'
-              ? '🚨'
-              : card.priority === 'expedited'
-                ? '↑'
-                : card.priority === 'low'
-                  ? '↓'
-                  : card.priority === 'economy'
-                    ? '🌙'
-                    : '⏸'}
-          </span>
-        )}
-        {/* Express, beside expedite and drawn the same way - its own glyph and
-            no stripe, because the stripe on the card is expedite's alone. A
-            card that is both carries both marks. */}
-        {card.express && (
-          <span
-            className="hatch-card-express"
-            title="Express - carried past a column marked Express skips, with no session"
-          >
-            »
-          </span>
-        )}
-        {/* Something is holding this one right now. On the face rather than on
-            the page, so the drag preview carries it too - a card being moved is
-            exactly the card where knowing a runner is mid-increment on it
-            matters. */}
-        <ClaimBadge claim={card.claim} />
-        {/* Drawn on the card and not only on the issue page, because a question
-            nobody can see is a question nobody answers - and this card is the
-            reason the column below it has stopped moving. */}
-        {card.openQuestions > 0 && (
-          <span
-            className="hatch-card-asking"
-            title={`${card.openQuestions} unanswered question${card.openQuestions === 1 ? '' : 's'}`}
-          >
-            ?{card.openQuestions > 1 && <span className="hatch-card-asking-count">{card.openQuestions}</span>}
-          </span>
-        )}
-        {/* Its own badge, distinct from the asking one above - after HA-341 a
-            held or stalled issue is no longer a question, and a reader who
-            sees the asking badge should still be able to trust that somebody
-            is actually being asked something. Held takes precedence, the same
-            order markState resolves in, so a card never wears both. */}
-        {card.held && (
-          <span className="hatch-card-held" title={`Held${card.stalledWhy ? ` - ${card.stalledWhy}` : ''}`}>
-            🔒
-          </span>
-        )}
-        {!card.held && card.stalledAt && (
-          <span className="hatch-card-stalled" title={`Stalled${card.stalledWhy ? ` - ${card.stalledWhy}` : ''}`}>
-            ⏳
-          </span>
-        )}
-        {/* Nothing at all where there is no assignee - not an empty chip and
-            not a dash. Most of the board owns nothing, and a placeholder on
-            every card would be noise the eye has to skip past to find the
-            three that do. */}
-        {card.assignee && (
-          <span
-            className="hatch-card-assignee"
-            title={
-              card.assignee.kind === 'person'
-                ? `Assigned to ${card.assignee.name} - an unattended pass leaves it alone`
-                : `Assigned to the API key ${card.assignee.name}`
-            }
-          >
-            {card.assignee.name}
-          </span>
-        )}
       </div>
+      {hasMarks(card) && (
+        <div className="hatch-card-marks">
+          {/* This one first - a fact about which card to read next. */}
+          {card.priority !== 'normal' && (
+            <span
+              className={`hatch-card-expedited${card.priority !== 'expedited' ? ` ${card.priority}` : ''}`}
+              title={
+                card.priority === 'emergency'
+                  ? 'Emergency - the highest priority, first above everything expedited'
+                  : card.priority === 'expedited'
+                    ? 'Expedited - this one goes first'
+                    : card.priority === 'low'
+                      ? 'Low - reached after everything normal, and only while the session window is on pace'
+                      : card.priority === 'economy'
+                        ? 'Economy - worked only with usage that would otherwise go spare'
+                        : 'Paused - a person set this aside; the loop leaves it where it stands'
+              }
+            >
+              {card.priority === 'emergency'
+                ? '🚨'
+                : card.priority === 'expedited'
+                  ? '↑'
+                  : card.priority === 'low'
+                    ? '↓'
+                    : card.priority === 'economy'
+                      ? '🌙'
+                      : '⏸'}
+            </span>
+          )}
+          {/* Express, beside expedite and drawn the same way - its own glyph and
+              no stripe, because the stripe on the card is expedite's alone. A
+              card that is both carries both marks. */}
+          {card.express && (
+            <span
+              className="hatch-card-express"
+              title="Express - carried past a column marked Express skips, with no session"
+            >
+              »
+            </span>
+          )}
+          {/* Something is holding this one right now. On the face rather than on
+              the page, so the drag preview carries it too - a card being moved is
+              exactly the card where knowing a runner is mid-increment on it
+              matters. */}
+          <ClaimBadge claim={card.claim} />
+          {/* Drawn on the card and not only on the issue page, because a question
+              nobody can see is a question nobody answers - and this card is the
+              reason the column below it has stopped moving. */}
+          {card.openQuestions > 0 && (
+            <span
+              className="hatch-card-asking"
+              title={`${card.openQuestions} unanswered question${card.openQuestions === 1 ? '' : 's'}`}
+            >
+              ?{card.openQuestions > 1 && <span className="hatch-card-asking-count">{card.openQuestions}</span>}
+            </span>
+          )}
+          {/* Its own badge, distinct from the asking one above - after HA-341 a
+              held or stalled issue is no longer a question, and a reader who
+              sees the asking badge should still be able to trust that somebody
+              is actually being asked something. Held takes precedence, the same
+              order markState resolves in, so a card never wears both. */}
+          {card.held && (
+            <span className="hatch-card-held" title={`Held${card.stalledWhy ? ` - ${card.stalledWhy}` : ''}`}>
+              🔒
+            </span>
+          )}
+          {!card.held && card.stalledAt && (
+            <span className="hatch-card-stalled" title={`Stalled${card.stalledWhy ? ` - ${card.stalledWhy}` : ''}`}>
+              ⏳
+            </span>
+          )}
+          {/* Nothing at all where there is no assignee - not an empty chip and
+              not a dash. Most of the board owns nothing, and a placeholder on
+              every card would be noise the eye has to skip past to find the
+              three that do. */}
+          {card.assignee && (
+            <span
+              className="hatch-card-assignee"
+              title={
+                card.assignee.kind === 'person'
+                  ? `Assigned to ${card.assignee.name} - an unattended pass leaves it alone`
+                  : `Assigned to the API key ${card.assignee.name}`
+              }
+            >
+              {card.assignee.name}
+            </span>
+          )}
+        </div>
+      )}
       <div className="hatch-card-title" title={card.title}>
         {truncate(card.title)}
       </div>
