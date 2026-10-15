@@ -126,7 +126,7 @@ public class StatusesController(HatchContext db, ICallerIdentity caller) : Contr
     /// more field on <see cref="PatchStatus"/>, because that route is open to a
     /// key: this one decides which columns the loop may carry an express issue
     /// past with nobody reading it first, the same kind of power
-    /// <see cref="IssueExpressController"/> guards on the issue itself.
+    /// <see cref="IssuePreApprovalController"/> guards on the issue itself.
     /// </summary>
     [HttpPut("{id:int}/express-skips")]
     [RequireRole(PersonRole.User)]
