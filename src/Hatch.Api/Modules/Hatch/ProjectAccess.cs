@@ -4,13 +4,15 @@ using Microsoft.EntityFrameworkCore;
 namespace Hatch.Api.Modules.Hatch;
 
 /// <summary>
-/// The two questions a move gate asks about the caller: is this person an
-/// owner of the project, and may this person approve on it.
+/// The questions a move gate asks about the caller: is this person an
+/// owner of the project, may this person approve on it, and may this person
+/// move an issue into a given status at all.
 /// </summary>
 public interface IProjectAccess
 {
     Task<bool> IsOwnerAsync(int projectId, CancellationToken ct);
     Task<bool> CanApproveAsync(int projectId, CancellationToken ct);
+    Task<bool> CanMoveIntoAsync(int projectId, EfHatchStatus status, CancellationToken ct);
 }
 
 /// <summary>
@@ -26,6 +28,9 @@ public class ProjectAccess(HatchContext db, IActorDirectory actors) : IProjectAc
 
     public async Task<bool> CanApproveAsync(int projectId, CancellationToken ct) =>
         await HasRoleAsync(projectId, ProjectMemberRole.Owner, ct) || await HasRoleAsync(projectId, ProjectMemberRole.Approver, ct);
+
+    public async Task<bool> CanMoveIntoAsync(int projectId, EfHatchStatus status, CancellationToken ct) =>
+        !status.IsProtected || await CanApproveAsync(projectId, ct);
 
     private async Task<bool> HasRoleAsync(int projectId, string role, CancellationToken ct)
     {

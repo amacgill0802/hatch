@@ -85,6 +85,68 @@ public class ProjectAccessTests
         Assert.False(await h.Access.CanApproveAsync(h.ProjectId, default));
     }
 
+    [Fact]
+    public async Task AnUnprotectedStatus_AnyoneMayMoveInto_EvenWithNoCallerSet()
+    {
+        var h = await NewAsync();
+        var unprotected = new EfHatchStatus { Name = "Todo", SortOrder = 10, IsProtected = false };
+
+        Assert.True(await h.Access.CanMoveIntoAsync(h.ProjectId, unprotected, default));
+    }
+
+    [Fact]
+    public async Task AProtectedStatus_AnOwnerMayMoveInto()
+    {
+        var h = await NewAsync();
+        var ada = h.Actors.AddPerson("Ada");
+        h.Actors.Me = ada;
+        await h.AddMemberAsync(ada.Id, ProjectMemberRole.Owner);
+        var column = new EfHatchStatus { Name = "Done", SortOrder = 40, IsProtected = true };
+
+        Assert.True(await h.Access.CanMoveIntoAsync(h.ProjectId, column, default));
+    }
+
+    [Fact]
+    public async Task AProtectedStatus_AnApproverMayMoveInto()
+    {
+        var h = await NewAsync();
+        var ada = h.Actors.AddPerson("Ada");
+        h.Actors.Me = ada;
+        await h.AddMemberAsync(ada.Id, ProjectMemberRole.Approver);
+        var column = new EfHatchStatus { Name = "Done", SortOrder = 40, IsProtected = true };
+
+        Assert.True(await h.Access.CanMoveIntoAsync(h.ProjectId, column, default));
+    }
+
+    [Fact]
+    public async Task AProtectedStatus_ANonMemberPerson_MayNotMoveInto()
+    {
+        var h = await NewAsync();
+        var ada = h.Actors.AddPerson("Ada");
+        h.Actors.Me = ada;
+        var column = new EfHatchStatus { Name = "Done", SortOrder = 40, IsProtected = true };
+
+        Assert.False(await h.Access.CanMoveIntoAsync(h.ProjectId, column, default));
+    }
+
+    /// <summary>
+    /// A key is never an owner or approver (HA-289), so it is never let into a
+    /// protected column - proved the same way as
+    /// <see cref="AKey_IsNeitherOwnerNorApprover_EvenWithAMatchingRow"/>, with a
+    /// membership row that cannot happen in practice and is still read as false.
+    /// </summary>
+    [Fact]
+    public async Task AProtectedStatus_AKey_MayNotMoveInto_EvenWithAMatchingRow()
+    {
+        var h = await NewAsync();
+        var claude = h.Actors.AddKey("Claude");
+        h.Actors.Me = claude;
+        await h.AddMemberAsync(claude.Id, ProjectMemberRole.Owner);
+        var column = new EfHatchStatus { Name = "Done", SortOrder = 40, IsProtected = true };
+
+        Assert.False(await h.Access.CanMoveIntoAsync(h.ProjectId, column, default));
+    }
+
     // ---- Harness ----
 
     private sealed class Harness
