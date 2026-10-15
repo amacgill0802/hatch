@@ -438,7 +438,8 @@ public class WorkController(
             ? await SendBackStreak.ForIssueAsync(db, issue.Id, implementation.Name, ct)
             : 0;
         var gate = await DependencyGate.ForAsync(db, statuses, ct);
-        var hopKind = to is null ? null : Dispatch.HopKind(issue, from, to, family, statuses, wip, parent, playbook, sendBackStreak, claims.StallResumeLimit, gate.EffectivePreApproval(issue.Id).Level, merged, built, now);
+        var (preApprovalLevel, preApprovalFromKey) = gate.EffectivePreApproval(issue.Id);
+        var hopKind = to is null ? null : Dispatch.HopKind(issue, from, to, family, statuses, wip, parent, playbook, sendBackStreak, claims.StallResumeLimit, preApprovalLevel, merged, built, now);
         var hop = hopKind is not null;
         var rowTo = hopKind == HopKinds.Approve ? Columns.Advance(statuses, from) : to;
         var letGo = await LetGo.ForIssueAsync(db, issue.Id, ct);
@@ -482,6 +483,23 @@ public class WorkController(
             Payload = payload,
             At = now,
         });
+
+        if (hopKind == HopKinds.Approve)
+        {
+            var sentence = MergeWork.Judge(
+                issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
+                merged, built, issue.PullRequestClosedAt, now).Sentence;
+            db.Comments.Add(new EfHatchComment
+            {
+                IssueId = issue.Id,
+                Author = actor,
+                Body = preApprovalFromKey is null
+                    ? $"Approved by its pre-approval on its own row: {sentence}."
+                    : $"Approved by its pre-approval from {preApprovalFromKey}: {sentence}.",
+                CreatedAt = now,
+            });
+        }
+
         issue.Rank = await ranks.BottomAsync(target.Id, ct);
         issue.StatusId = target.Id;
         issue.UpdatedAt = now;
