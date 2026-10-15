@@ -529,6 +529,7 @@ export type IssueEventKind =
   | 'assignee_changed'
   | 'priority_changed'
   | 'express_changed'
+  | 'pre_approval_changed'
   | 'wip_limit_changed'
   | 'dependency_added'
   | 'dependency_removed'
