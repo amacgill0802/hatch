@@ -14,7 +14,7 @@ namespace Hatch.Api.Tests.Hatch;
 /// allowed to clear - and the property the whole design rests on, which is
 /// that an API key cannot set one.
 /// </summary>
-public class IssueExpressControllerTests
+public class IssuePreApprovalControllerTests
 {
     // ---- Marking, and unmarking ----
 
@@ -223,8 +223,6 @@ public class IssueExpressControllerTests
         Assert.True(board.Issues.Single(c => c.Key == issue.Key).Express);
     }
 
-    // ---- No float ----
-
     /// <summary>
     /// The opposite of expedite's own test here: express is a gate-passer, not
     /// a sort key, so a card carrying it sits exactly where it would sit
@@ -243,6 +241,21 @@ public class IssueExpressControllerTests
         Assert.Equal(["AER-1", "AER-2", last.Key], await h.ColumnAsync(h.InboxId));
     }
 
+    [Fact]
+    public async Task AKeylessRunnerWhereTheWallIsOff_IsTheSame403()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+        h.Caller.Local = new Actor(ActorKind.Key, Guid.NewGuid(), "a-runner");
+
+        var refusal = await h.Express.PutIssueExpress(issue.Key, new ExpressRequest(true), default);
+
+        Assert.Equal(403, ((ObjectResult)refusal.Result!).StatusCode);
+        Assert.False((await h.RowAsync(issue.Key)).PreApproval >= PreApprovalLevels.Express);
+    }
+
+    // ---- The legacy alias ----
+
     // ---- Harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 9, 2, 12, 0, 0, TimeSpan.Zero);
@@ -250,14 +263,18 @@ public class IssueExpressControllerTests
     private sealed class Harness
     {
         public required HatchContext Db { get; init; }
+        public required StubCallerIdentity Caller { get; init; }
+        public required StubActorDirectory Actors { get; init; }
         public required IssuePreApprovalController Express { get; init; }
         public required IssuesController Issues { get; init; }
         public required BoardController Board { get; init; }
         public required IssueThreadController Thread { get; init; }
+        public required StatusesController Statuses { get; init; }
         public required FakeTimeProvider Time { get; init; }
         public required int ProjectId { get; init; }
         public required int InboxId { get; init; }
         public required int DoneId { get; init; }
+        public int? ReviewId { get; init; }
 
         public async Task<IssueDto> FileAsync(string type = "task", string title = "a thing") =>
             Created(await Issues.CreateIssue(new IssueCreateRequest(ProjectId, type, title, null, null, null, null), default));
@@ -277,7 +294,7 @@ public class IssueExpressControllerTests
                 .Select(c => c.Key)
                 .ToList();
 
-        /// <summary>The column itself, which is what the projection is read against.</summary>
+        /// <summary>The row itself, which is what the projection is read against.</summary>
         public async Task<EfHatchIssue> RowAsync(string key)
         {
             IssueKey.TryParse(key, out var projectKey, out var number);
@@ -290,9 +307,37 @@ public class IssueExpressControllerTests
                 .Where(e => e.Kind == EfHatchIssueEvent.PreApprovalChanged)
                 .Reverse()
                 .ToList();
+
+        /// <summary>A person's role on a project - what <see cref="ProjectAccess"/> reads to answer owner/approver.</summary>
+        public async Task MemberAsync(Guid personId, string role, int? projectId = null)
+        {
+            Db.ProjectMembers.Add(new EfHatchProjectMember
+            {
+                ProjectId = projectId ?? ProjectId,
+                PersonId = personId,
+                Role = role,
+                CreatedAt = Now,
+            });
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// Written straight to the row, the same as <see cref="RowAsync"/> reads -
+        /// for a test that needs an issue already at <c>PreApproved</c> or
+        /// <c>Express</c> to set up a lowering or clearing test. The setup is
+        /// about the state, not about how it got there, so it bypasses the gate
+        /// instead of requiring an approver just to arrange the fixture.
+        /// </summary>
+        public async Task PreApprovalAsync(string key, int level)
+        {
+            IssueKey.TryParse(key, out var projectKey, out var number);
+            var issue = await Db.Issues.WithKey(projectKey, number).FirstAsync();
+            issue.PreApproval = level;
+            await Db.SaveChangesAsync();
+        }
     }
 
-    private static async Task<Harness> NewAsync()
+    private static async Task<Harness> NewAsync(bool seam = false)
     {
         var db = new HatchContext(
             new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
@@ -301,8 +346,24 @@ public class IssueExpressControllerTests
         db.Add(hatch);
         var inbox = new EfHatchStatus { Name = "inbox", SortOrder = 10 };
         db.Add(inbox);
-        var done = new EfHatchStatus { Name = "done", SortOrder = 20, IsTerminal = true };
-        db.Add(done);
+        EfHatchStatus done;
+        EfHatchStatus? review = null;
+        if (seam)
+        {
+            // The seam's own board: a protected review column immediately
+            // before the implementation column, so Columns.SendBack measures
+            // back to "review" rather than resolving to null the way it does
+            // on the plain two-status board every other test here runs on.
+            review = new EfHatchStatus { Name = "review", SortOrder = 20, IsProtected = true };
+            var doing = new EfHatchStatus { Name = "doing", SortOrder = 30, IsImplementation = true };
+            done = new EfHatchStatus { Name = "done", SortOrder = 40, IsTerminal = true };
+            db.AddRange(review, doing, done);
+        }
+        else
+        {
+            done = new EfHatchStatus { Name = "done", SortOrder = 20, IsTerminal = true };
+            db.Add(done);
+        }
         await db.SaveChangesAsync();
 
         var time = new FakeTimeProvider(Now);
@@ -312,14 +373,18 @@ public class IssueExpressControllerTests
         return new Harness
         {
             Db = db,
+            Caller = caller,
+            Actors = actors,
             Express = new IssuePreApprovalController(db, actors, TestClaims.With(), caller, time, new ProjectAccess(db, actors)),
             Issues = new IssuesController(db, new RankService(db), actors, TestClaims.With(), caller, time, new ProjectAccess(db, actors)),
             Board = new BoardController(db, actors, TestClaims.With(), time),
             Thread = new IssueThreadController(db, caller, time),
+            Statuses = new StatusesController(db, caller),
             Time = time,
             ProjectId = hatch.Id,
             InboxId = inbox.Id,
             DoneId = done.Id,
+            ReviewId = review?.Id,
         };
     }
 
