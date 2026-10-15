@@ -1524,6 +1524,12 @@ public record IssueDependencyRequest(string DependsOnKey);
 /// <paramref name="Children"/> stands in - a child's own <see cref="IssueCardDto.StatusId"/>
 /// is a bare id with no name attached. Null on a client too old to read it.
 /// </param>
+/// <param name="ClearNote">
+/// Why a row that carries no <paramref name="Blocked"/> is clear at all, where
+/// that is not otherwise obvious - today, only that a stall question lapsed
+/// (<c>"its stall question lapsed after 5 minutes untouched"</c>). Null on
+/// every row that is clear for the ordinary reason, which is most of them.
+/// </param>
 public record WorkDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -1542,7 +1548,8 @@ public record WorkDto(
     int LetGo = 0,
     bool InReview = false,
     SentBackDto? SentBack = null,
-    IReadOnlyList<StatusDto>? Statuses = null);
+    IReadOnlyList<StatusDto>? Statuses = null,
+    string? ClearNote = null);
 
 /// <summary>
 /// The two numbers a send-back for an over-long brief carried, and whether
@@ -1592,7 +1599,7 @@ public static class WorkKinds
     public const string Pending = "pending";
 }
 
-/// <summary>Which of the five reasons carried a hop - see WorkDto.HopKind.</summary>
+/// <summary>Which of the six reasons carried a hop - see WorkDto.HopKind.</summary>
 public static class HopKinds
 {
     /// <summary>An express issue, in a column marked <see cref="StatusDto.ExpressSkips"/>.</summary>
@@ -1618,6 +1625,12 @@ public static class HopKinds
     /// to the column that feeds the implementation column - see HA-394.
     /// </summary>
     public const string SendBack = "sendback";
+
+    /// <summary>
+    /// A pre-approved issue in review whose branch <c>MergeWork.Judge</c> would
+    /// merge or bring current - see HA-560.
+    /// </summary>
+    public const string Approve = "approve";
 }
 
 /// <summary>
