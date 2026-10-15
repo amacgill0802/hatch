@@ -13,7 +13,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// <see cref="EfHatchIssue.Held"/>.
 /// </summary>
 /// <remarks>
-/// <para>Its own controller for the reason <see cref="IssueExpressController"/>
+/// <para>Its own controller for the reason <see cref="IssuePreApprovalController"/>
 /// is, and cut the same way: no class-level attribute, so neither write below
 /// inherits a scope from anything - each says its own.</para>
 /// </remarks>
