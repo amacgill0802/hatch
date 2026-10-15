@@ -3944,6 +3944,144 @@ public class WorkControllerTests
         Assert.True(System.Text.Json.JsonDocument.Parse(e.Payload!).RootElement.GetProperty("express").GetBoolean());
     }
 
+    // ---- Approve, the hop (HA-561) ----
+    //
+    // A pre-approved issue in review, with a branch MergeWork.Judge would
+    // merge or bring current, is carried into the merge column with no
+    // session - the hop HopKind calls Approve. Each test below cuts its own
+    // merge column, since the stock harness has none.
+
+    private static async Task<(EfHatchStatus Approved, EfHatchIssue Issue)> ApproveEligibleAsync(Harness h)
+    {
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+
+        var issue = await h.FileAsync("story", "carried into the merge column", h.Review);
+        await h.PreApproveAsync(issue);
+        await h.SetPullRequestAsync(issue, "https://example.com/pr/1");
+        await h.VerdictAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Passed);
+
+        return (approved, issue);
+    }
+
+    [Fact]
+    public async Task Hop_MovesAPreApprovedMergeableIssueFromReviewToTheMergeColumn_ToTheBottom()
+    {
+        var h = await NewAsync();
+        var (approved, issue) = await ApproveEligibleAsync(h);
+        var already = await h.FileAsync("story", "already in the merge column", approved.Id, rank: 1024);
+
+        var moved = Value(await h.Work.HopWork(Key(issue), null, null, null, default));
+        var row = await h.Db.Issues.FirstAsync(i => i.Id == issue.Id);
+
+        Assert.Equal(approved.Id, moved.StatusId);
+        Assert.Equal(approved.Id, row.StatusId);
+        Assert.True(row.Rank > already.Rank);
+    }
+
+    [Fact]
+    public async Task Hop_OnAnApproveRow_WritesOneStatusChangedEventCarryingPreapprovedTrue()
+    {
+        var h = await NewAsync();
+        var (_, issue) = await ApproveEligibleAsync(h);
+
+        await h.Work.HopWork(Key(issue), null, null, null, default);
+
+        var row = await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id);
+        var e = Assert.Single(row.Events);
+        Assert.Equal(EfHatchIssueEvent.StatusChanged, e.Kind);
+        Assert.True(System.Text.Json.JsonDocument.Parse(e.Payload!).RootElement.GetProperty("preapproved").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Hop_OnAnApproveRow_WritesTheApprovalCommentNamingItsOwnRow()
+    {
+        var h = await NewAsync();
+        var (_, issue) = await ApproveEligibleAsync(h);
+
+        await h.Work.HopWork(Key(issue), null, null, null, default);
+
+        var comment = Assert.Single(await h.Db.Comments.Where(c => c.IssueId == issue.Id).ToListAsync());
+        Assert.Equal(
+            "Approved by its pre-approval on its own row: its branch holds main and its build passes.",
+            comment.Body);
+    }
+
+    [Fact]
+    public async Task Hop_OnAnApproveRow_WritesTheApprovalCommentNamingTheAncestor()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+
+        var parent = await h.FileAsync("story", "the pre-approval's own row", h.Todo);
+        await h.PreApproveAsync(parent);
+        var issue = await h.FileAsync("task", "carried on its parent's pre-approval", h.Review, parentId: parent.Id);
+        await h.SetPullRequestAsync(issue, "https://example.com/pr/1");
+        await h.VerdictAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Passed);
+
+        await h.Work.HopWork(Key(issue), null, null, null, default);
+
+        var comment = Assert.Single(await h.Db.Comments.Where(c => c.IssueId == issue.Id).ToListAsync());
+        Assert.Equal(
+            $"Approved by its pre-approval from {Key(parent)}: its branch holds main and its build passes.",
+            comment.Body);
+    }
+
+    [Fact]
+    public async Task Hop_OnAnApproveRow_Is409WhenTheVerdictNoLongerSaysMergeOrUpdate()
+    {
+        var h = await NewAsync();
+        var (_, issue) = await ApproveEligibleAsync(h);
+        var build = await h.Db.BuildChecks.FirstAsync(b => b.IssueId == issue.Id);
+        build.Verdict = BuildVerdicts.Pending;
+        await h.Db.SaveChangesAsync();
+
+        var result = await h.Work.HopWork(Key(issue), null, null, null, default);
+
+        var response = (ObjectResult)result.Result!;
+        Assert.Equal(StatusCodes.Status409Conflict, response.StatusCode);
+        Assert.Equal("its build on bbbbbbb is still running", response.Value?.ToString());
+        Assert.Empty((await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id)).Events);
+        Assert.Empty(await h.Db.Comments.Where(c => c.IssueId == issue.Id).ToListAsync());
+    }
+
+    [Fact]
+    public async Task Hop_OnAnApproveRow_Is409WhenAnotherCallerAlreadyMovedIt()
+    {
+        var h = await NewAsync();
+        var (approved, issue) = await ApproveEligibleAsync(h);
+        issue.StatusId = approved.Id;
+        await h.Db.SaveChangesAsync();
+
+        var result = await h.Work.HopWork(Key(issue), null, null, null, default);
+
+        var response = (ObjectResult)result.Result!;
+        Assert.Equal(StatusCodes.Status409Conflict, response.StatusCode);
+        Assert.Equal("no runner has checked its branch against the trunk yet", response.Value?.ToString());
+        Assert.Empty((await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id)).Events);
+        Assert.Empty(await h.Db.Comments.Where(c => c.IssueId == issue.Id).ToListAsync());
+    }
+
+    [Fact]
+    public async Task Hop_OnAnApproveRow_RefusesThroughClaimGateWhenClaimed()
+    {
+        var h = await NewAsync();
+        var (_, issue) = await ApproveEligibleAsync(h);
+        await h.ClaimAsync(issue, by: "Ada");
+
+        var result = await h.Work.HopWork(Key(issue), null, null, null, default);
+
+        var response = (ObjectResult)result.Result!;
+        Assert.Equal(StatusCodes.Status409Conflict, response.StatusCode);
+        Assert.Empty((await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id)).Events);
+        Assert.Empty(await h.Db.Comments.Where(c => c.IssueId == issue.Id).ToListAsync());
+    }
+
     [Fact]
     public async Task Hop_OnAnIssueThatIsNotAHop_Is409AndWritesNothing()
     {
@@ -4004,6 +4142,223 @@ public class WorkControllerTests
         Assert.Equal(
             "paused - a person set it aside, and nothing picks it up until they set it back", entry.Blocked);
         Assert.False(entry.Hop);
+    }
+
+    // ---- The approve hop (HA-560) ----
+    //
+    // A pre-approved review row whose branch MergeWork.Judge would merge or
+    // bring current is carried to the merge column with no session - the
+    // sixth hop, HopKinds.Approve. Every other fold still holds it exactly as
+    // it holds any other issue, the same contract Express holds above.
+
+    [Fact]
+    public async Task Queue_ListsAPreApprovedMergeableReviewRowAsClearAndAHopNamingTheMergeColumn()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("story", "ready to merge", h.Review);
+        await h.PreApprovedAsync(issue);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+        await h.VerdictAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Passed);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Approve, entry.HopKind);
+        Assert.Equal(approved.Id, entry.ToStatus!.Id);
+        Assert.Null(entry.Blocked);
+        Assert.Equal("its branch holds main and its build passes", entry.ClearNote);
+    }
+
+    [Fact]
+    public async Task Queue_ListsAPreApprovedBehindMergeableReviewRowAsAHopToo()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("story", "clean but stale", h.Review);
+        await h.PreApprovedAsync(issue);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+        await h.VerdictAsync(issue, MergeVerdicts.Clean, holdsTrunk: false);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        // Merge or update, never merge alone - a hop carries either.
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Approve, entry.HopKind);
+        Assert.Equal(approved.Id, entry.ToStatus!.Id);
+        Assert.Null(entry.Blocked);
+        Assert.Equal("bringing its branch current from main", entry.ClearNote);
+    }
+
+    [Fact]
+    public async Task AnIssueThatIsPreApprovedButNotClean_IsNotAHop()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("story", "conflicts with main", h.Review);
+        await h.PreApprovedAsync(issue);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+        await h.VerdictAsync(issue, MergeVerdicts.Conflicted);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        // Conflicted work is real work for a session, not a fold - Fold is
+        // null, so the review-fold at Dispatch.cs never fires, and this falls
+        // through to the review-to-review self-move, which the stock board
+        // has no playbook for.
+        Assert.False(entry.Hop);
+        Assert.Contains("no playbook covers", entry.Blocked);
+    }
+
+    [Fact]
+    public async Task AnIssueThatIsOnlyExpress_WithAMergeableBranch_IsNotAnApproveHop()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("story", "only express, not pre-approved", h.Review);
+        await h.ExpressAsync(issue);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+        await h.VerdictAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Passed);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.False(entry.Hop);
+        Assert.Equal(
+            "its branch merges cleanly with main and its build passes - nothing for an agent to do",
+            entry.Blocked);
+    }
+
+    [Fact]
+    public async Task APreApprovedCleanIssueWithNoPullRequest_IsNotAnApproveHop()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("story", "pre-approved, but no pull request yet", h.Review);
+        await h.PreApprovedAsync(issue);
+        await h.VerdictAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Passed);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.False(entry.Hop);
+        Assert.Equal(
+            "its branch merges cleanly with main and its build passes - nothing for an agent to do",
+            entry.Blocked);
+    }
+
+    [Fact]
+    public async Task APreApprovedCleanIssueOnABoardWithNoMergeColumn_IsNotAnApproveHop()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "pre-approved, but nowhere to merge it to", h.Review);
+        await h.PreApprovedAsync(issue);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+        await h.VerdictAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Passed);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.False(entry.Hop);
+        Assert.Equal(
+            "its branch merges cleanly with main and its build passes - nothing for an agent to do",
+            entry.Blocked);
+    }
+
+    [Fact]
+    public async Task APreApprovedCleanIssueStandingInTheMergeColumnItself_IsNotAnApproveHop()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("task", "already standing in the merge column", approved.Id);
+        await h.PreApprovedAsync(issue);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+        await h.VerdictAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Passed);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        // HopKind's Approve arm requires AwaitingReview to be where the row
+        // stands - once the row is the merge column itself, that fails, and
+        // this falls to the ordinary merge-column fold instead.
+        Assert.False(entry.Hop);
+        Assert.Equal(WorkKinds.Merge, entry.Kind);
+        Assert.Equal("its branch holds main and its build passes", entry.Blocked);
+    }
+
+    [Fact]
+    public async Task ApproveHop_IsFoldedByALiveClaimSomebodyElseHolds()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("story", "somebody's already on this", h.Review);
+        await h.PreApprovedAsync(issue);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+        await h.VerdictAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Passed);
+        await h.ClaimAsync(issue, by: "Ada");
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.NotNull(entry.Blocked);
+        Assert.False(entry.Hop);
+    }
+
+    [Fact]
+    public async Task ApproveHop_IsFoldedByAnUnansweredQuestion()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("story", "waiting on a person", h.Review);
+        await h.PreApprovedAsync(issue);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+        await h.VerdictAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Passed);
+        await h.AskAsync(issue, "per-node or global?");
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.Contains("unanswered question", entry.Blocked);
+        Assert.False(entry.Hop);
+    }
+
+    [Fact]
+    public async Task GetWork_OnAPreApprovedMergeableReviewRow_NamesTheMergeColumnAndCarriesTheClearNote()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("story", "ready to merge", h.Review);
+        await h.PreApprovedAsync(issue);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+        await h.VerdictAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Passed);
+
+        var work = Value(await h.Work.GetWork(Key(issue), null, default));
+
+        Assert.Equal(approved.Id, work.ToStatus!.Id);
+        Assert.True(work.Hop);
+        Assert.Equal(HopKinds.Approve, work.HopKind);
+        Assert.Equal("its branch holds main and its build passes", work.ClearNote);
+        Assert.Null(work.Blocked);
     }
 
     // ---- Express is routing, never priority (HA-241) ----
@@ -7669,6 +8024,23 @@ public class WorkControllerTests
         public async Task ExpressAsync(EfHatchIssue issue)
         {
             issue.PreApproval = PreApprovalLevels.Express;
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>The same, one level up - see <see cref="ExpressAsync"/>.</summary>
+        public async Task PreApproveAsync(EfHatchIssue issue)
+        {
+            issue.PreApproval = PreApprovalLevels.PreApproved;
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// Pre-approved, one level past Express - see <see cref="ExpressAsync"/>.
+        /// What HopKind's Approve arm requires alongside a mergeable review row.
+        /// </summary>
+        public async Task PreApprovedAsync(EfHatchIssue issue)
+        {
+            issue.PreApproval = PreApprovalLevels.PreApproved;
             await Db.SaveChangesAsync();
         }
 
