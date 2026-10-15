@@ -394,13 +394,18 @@ public class AdminSurfaceTests
         "IssueExpediteController.PutIssuePriority",
         "IssueExpediteController.PutIssueExpedite",
 
-        // The night train's own edge. Express decides which gates the loop may
-        // pass unattended, so a key that could set it could carry its own
-        // ticket through the night with nobody reading it first. Reading it is
-        // open, the same as expedite. See IssueExpressController.
+        // The night train's own edge, now three levels instead of a flag: none,
+        // express or preapproved (HA-470). Express still decides which gates the
+        // loop may pass unattended; preapproved is the approve press given in
+        // advance - a key that could set either could carry its own ticket
+        // through the night unattended, or approve it in advance. Setting express
+        // is gated the way a move into the column that feeds implementation is
+        // (IProjectAccess.CanMoveIntoAsync); setting preapproved, on either side
+        // of the change, needs an approver (IProjectAccess.CanApproveAsync).
+        // Reading it is open, the same as expedite. See IssuePreApprovalController.
         "IssuePreApprovalController.PutIssueExpress",
 
-        // The level by name, same gate as above - set net-new over PutIssueExpress.
+        // The level by name, same two gates as above - HA-470.
         "IssuePreApprovalController.PutIssuePreApproval",
 
         // Holding and resuming a ticket - an agent that could hold its own
@@ -568,6 +573,8 @@ public class AdminSurfaceTests
         "AssigneeController.PutIssueAssignee",
         "IssueExpediteController.PutIssuePriority",
         "IssueExpediteController.PutIssueExpedite",
+
+        // The night train's edge, now three levels instead of a flag - HA-470.
         "IssuePreApprovalController.PutIssueExpress",
         "IssuePreApprovalController.PutIssuePreApproval",
         "IssueStallController.PutHold",
