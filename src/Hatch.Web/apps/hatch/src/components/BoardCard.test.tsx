@@ -78,6 +78,14 @@ describe('BoardCard CardFace', () => {
     expect(head).not.toContain('hatch-card-held');
     expect(head).not.toContain('hatch-card-assignee');
     expect(head).not.toContain('hatch-badge');
+
+    // The type is a glyph on the card now, not a word anywhere on it - fixture's
+    // default type is 'task'.
+    expect(html).toContain('hatch-type-glyph--task');
+    expect(html).not.toContain('>epic<');
+    expect(html).not.toContain('>story<');
+    expect(html).not.toContain('>task<');
+    expect(html).not.toContain('>bug<');
   });
 
   it('draws every enhancer together on the marks row, in order, ending in the assignee', () => {

@@ -4,6 +4,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { ProjectMark, markVars } from '@hatch/ui';
 import { ClaimBadge } from './ClaimBadge';
 import { MomentChip } from './MomentChip';
+import { TypeGlyph } from './TypeGlyph';
 import { projectLogoUrl } from '../lib/projectLogo';
 import { isPlainClick } from '../lib/pointer';
 import { truncate } from '../lib/text';
@@ -134,6 +135,7 @@ export function CardPreview({ card, waiting = false, terminal = false, project =
 function CardFace({ card, waiting, terminal, project }: Required<Omit<CardProps, 'card'>> & { card: IssueCard }) {
   return (
     <>
+      <TypeGlyph type={card.type} />
       <div className="hatch-card-head">
         {project && (
           <ProjectMark

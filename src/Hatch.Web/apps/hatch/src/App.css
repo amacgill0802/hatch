@@ -704,6 +704,7 @@
 }
 
 .hatch-card {
+  position: relative;
   display: block;
   padding: var(--sp-2) var(--sp-2-5);
   background: var(--bg);
@@ -890,6 +891,37 @@
   width: 0.875rem;
   height: 0.875rem;
   flex: none;
+}
+
+/* The card's type, as a shape in the card's own corner - a sibling of the
+   head rather than part of it, so it never takes flex space there and never
+   pushes the key. Sized to match .hatch-card-claim-glyph's own ornament. */
+.hatch-type-glyph {
+  position: absolute;
+  top: var(--sp-1);
+  right: var(--sp-1);
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.hatch-type-glyph-shape {
+  fill: currentColor;
+}
+
+.hatch-type-glyph--epic {
+  color: var(--primary);
+}
+
+.hatch-type-glyph--story {
+  color: var(--series-7);
+}
+
+.hatch-type-glyph--task {
+  color: var(--series-3);
+}
+
+.hatch-type-glyph--bug {
+  color: var(--danger);
 }
 
 /* Blue is being heard from - --primary, the one blue the tokens carry. It is
@@ -5370,8 +5402,8 @@ button.hatch-option.chosen {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
   /* Only while found: the sweep below is clipped to the card, and a card that
-     is not being looked for needs neither. */
-  position: relative;
+     is not being looked for needs none of it. position: relative comes from
+     the base rule now, for the type glyph's sake as well as this. */
   overflow: hidden;
 }
 
