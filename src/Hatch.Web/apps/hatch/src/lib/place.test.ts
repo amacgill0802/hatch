@@ -168,6 +168,28 @@ describe('place, with the board filtered', () => {
   });
 });
 
+describe('place, with the board drawn out of rank order', () => {
+  // Stands in for lineage()'s grouped order: AER-2 drawn before AER-1,
+  // against their own rank (AER-1 1024 < AER-2 2048). place() never reads
+  // parentKey or calls lineage() itself, so the swap alone is enough.
+  const visible = [board[1], board[0], board[2], board[3]];
+
+  it('names the drawn neighbour, not the rank-ordered one', () => {
+    const placed = place(board, visible, 'AER-3', 'AER-2')!;
+
+    expect(placed.afterKey).toBeNull();
+    expect(placed.beforeKey).toBe('AER-2');
+  });
+
+  it('writes the issues list back using the drawn neighbours, not rank order', () => {
+    const placed = place(board, visible, 'AER-2', 'AER-1')!;
+
+    expect(placed.afterKey).toBe('AER-1');
+    expect(placed.beforeKey).toBe('AER-3');
+    expect(keysIn(placed.issues, INBOX)).toEqual(['AER-1', 'AER-2', 'AER-3']);
+  });
+});
+
 /* The float, as the browser has to paint it before the refetch arrives. The
    server places the card in the column's rank order and then serves the
    expedited ones above the rest; anything here that did those two in the other
