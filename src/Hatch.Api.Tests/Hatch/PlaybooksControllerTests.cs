@@ -425,6 +425,62 @@ public class PlaybooksControllerTests
         Assert.Empty((await h.ReadAsync(row.Id)).DeniedTools);
     }
 
+    [Fact]
+    public async Task AnUnknownToolName_IsRefused_AndWritesNothing()
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync();
+
+        var refusal = await h.Playbooks.PatchPlaybook(
+            row.Id, new PlaybookPatchRequest(null, null, null, null, null, null, DeniedTools: ["Frobnicate"]), default);
+
+        Assert.Equal(
+            "a tool rule is a built-in name, \"mcp__…\", or \"*\", each optionally followed by one (pattern) - not \"Frobnicate\"",
+            Reason(refusal.Result));
+        Assert.Empty((await h.ReadAsync(row.Id)).DeniedTools);
+    }
+
+    [Fact]
+    public async Task AMalformedPattern_IsRefused_AndWritesNothing()
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync();
+
+        var refusal = await h.Playbooks.PatchPlaybook(
+            row.Id, new PlaybookPatchRequest(null, null, null, null, null, null, DeniedTools: ["Bash(git push *"]), default);
+
+        Assert.Equal(
+            "a tool rule is a built-in name, \"mcp__…\", or \"*\", each optionally followed by one (pattern) - not \"Bash(git push *\"",
+            Reason(refusal.Result));
+        Assert.Empty((await h.ReadAsync(row.Id)).DeniedTools);
+    }
+
+    [Fact]
+    public async Task AnUnknownToolNameOnCreate_IsRefused()
+    {
+        var h = await NewAsync();
+
+        var refusal = await h.Playbooks.CreatePlaybook(
+            new PlaybookCreateRequest(h.Todo, h.InProgress, [], "do it", "sonnet", "high", DeniedTools: ["Frobnicate"]), default);
+
+        Assert.Equal(
+            "a tool rule is a built-in name, \"mcp__…\", or \"*\", each optionally followed by one (pattern) - not \"Frobnicate\"",
+            Reason(refusal.Result));
+    }
+
+    [Fact]
+    public async Task AMalformedPatternOnCreate_IsRefused()
+    {
+        var h = await NewAsync();
+
+        var refusal = await h.Playbooks.CreatePlaybook(
+            new PlaybookCreateRequest(h.Todo, h.InProgress, [], "do it", "sonnet", "high", DeniedTools: ["Bash(git push *"]), default);
+
+        Assert.Equal(
+            "a tool rule is a built-in name, \"mcp__…\", or \"*\", each optionally followed by one (pattern) - not \"Bash(git push *\"",
+            Reason(refusal.Result));
+    }
+
     // ---- Harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 9, 2, 12, 0, 0, TimeSpan.Zero);
