@@ -472,6 +472,7 @@ public class AdminSurfaceTests
         "ProjectsController.PutMember",
         "ProjectsController.DeleteMember",
         "ProjectsController.ClaimProject",
+        "ProjectsController.PutLanding",
 
         // The whole controller, reads included. See
         // Hatch.Api.Controllers.SettingsController.
@@ -607,6 +608,7 @@ public class AdminSurfaceTests
         "ProjectsController.PutMember",
         "ProjectsController.DeleteMember",
         "ProjectsController.ClaimProject",
+        "ProjectsController.PutLanding",
         "ImagesController.PostImage",
         "SettingsController.GetHatchSettings",
         "SettingsController.PutHatchSettings",
