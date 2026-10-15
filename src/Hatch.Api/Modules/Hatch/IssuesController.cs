@@ -1105,10 +1105,9 @@ public class IssuesController(
         if (await caller.IsProgramAsync(ct))
             return "moving work into a protected column is an owner's or approver's call, not an agent's";
 
-        if (!await access.CanApproveAsync(project.Id, ct))
-            return $"only an owner or approver of {project.Key} may move work into \"{target.Name}\"";
+        if (await access.CanMoveIntoAsync(project.Id, target, ct)) return null;
 
-        return null;
+        return $"only an owner or approver of {project.Key} may move work into \"{target.Name}\"";
     }
 
     /// <summary>400 for a move into a column that merges the pull request, when the issue carries none.</summary>
