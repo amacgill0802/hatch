@@ -45,6 +45,7 @@ public sealed record ConfigCommand(
         "                                     checkout of its own would otherwise serve",
         "  hatch config --workspace <dir>  clone every repository the board binds that",
         "                                     this runner has no checkout of, into <dir>",
+        "  hatch config --workspace off    ...never clone: serve only the checkouts it has",
         "",
         "  --origin is what Hatch's own Runner page hands a new machine to paste. It",
         "  leaves the key and everything else exactly as they were, so it is also how",
@@ -72,7 +73,9 @@ public sealed record ConfigCommand(
         "  where it clones what the board binds and it has no checkout of. Refused when",
         "  it sits inside a named checkout or the checkout it contains one, in either",
         "  direction - a clone under a tree being reset (or a tree under a directory of",
-        "  clones) is two owners of one path.",
+        "  clones) is two owners of one path. With none written, the default is a",
+        "  `workspace` directory beside the per-user file; `--workspace off` writes",
+        "  `off`, which keeps this runner from cloning at all.",
         "",
         "  Written to the per-user file, mode 600 where the platform has modes.",
         "  Read back highest-first: an exported variable, then scripts/.env in the",
@@ -458,7 +461,8 @@ public sealed record ConfigCommand(
         // The reverse of the check `--workspace` makes: a checkout named here
         // that sits inside the workspace already configured is the same two
         // owners of one path, the other way round.
-        if (workspace.Length > 0 && !Checkouts.OverlapsCheckout(workspace, paths, out var workspaceOverlap))
+        if (workspace.Length > 0 && !Settings.IsWorkspaceOff(workspace)
+            && !Checkouts.OverlapsCheckout(workspace, paths, out var workspaceOverlap))
         {
             Say.Complain(workspaceOverlap);
             return 1;
@@ -497,6 +501,15 @@ public sealed record ConfigCommand(
         var repos = reposRaw is { Length: > 0 }
             ? reposRaw.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             : [];
+
+        if (Settings.IsWorkspaceOff(dir))
+        {
+            // A word and not a directory: nothing to overlap and nothing to make.
+            Write(origin, key, claudeBin, reposRaw, Settings.WorkspaceOff);
+            Environment["HATCH_WORKSPACE"] = Settings.WorkspaceOff;
+            Say.Line($"wrote {ConfigPath}");
+            return 0;
+        }
 
         var others = Root is null ? repos : (IReadOnlyList<string>)[Root, .. repos];
         if (!Checkouts.OverlapsCheckout(dir, others, out var overlapRefusal))
@@ -614,10 +627,14 @@ public sealed record ConfigCommand(
             var shown = value is not { Length: > 0 }
                 ? name == "HATCH_KEY"
                     ? $"<unset - calls go out as \"{RunnerName}\", which only a wall-off Hatch reads>"
-                    : "<unset>"
+                    : name == "HATCH_WORKSPACE"
+                        ? $"<unset - clones go to {Settings.DefaultWorkspacePath()}>"
+                        : "<unset>"
                 : name == "HATCH_KEY"
                     ? Mask(value)
-                    : value;
+                    : name == "HATCH_WORKSPACE" && Settings.IsWorkspaceOff(value)
+                        ? "off - this runner never clones"
+                        : value;
 
             Say.Line($"{(name + ":").PadRight(19)}{shown}{where}");
         }

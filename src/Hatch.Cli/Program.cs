@@ -98,11 +98,16 @@ if (command == "inbox")
 // claimed, uniformly for all sixteen commands: a misconfigured HATCH_REPOS is
 // exactly as broken for `hatch board` as for the loop. `work` and
 // `go-to-work` may override this list with their own --repo, below.
-if (!Checkouts.TryDiscover(root, settings.Repos, settings.Workspace, out var checkouts, out var strays, out var badRepo))
+if (!Checkouts.TryDiscoverServing(
+        root, settings.Repos, settings.Workspace, settings.WorkspaceDefaulted,
+        out var checkouts, out var strays, out var badRepo, out var servedWorkspace, out var workspaceNote))
 {
     say.Complain(badRepo);
     return 1;
 }
+
+if (workspaceNote is not null) say.Complain(workspaceNote);
+settings = settings.WithWorkspace(servedWorkspace, settings.WorkspaceDefaulted);
 
 foreach (var stray in strays)
     say.Line($"hatch: {stray} - not a checkout, and nothing under it is one either; left alone");
@@ -431,7 +436,8 @@ internal partial class Program
         "  HATCH_REPOS        checkouts a loop with no checkout of its own serves, joined on",
         "                     the platform's path separator (: on Unix, ; on Windows)",
         "  HATCH_WORKSPACE    a directory this runner owns entirely, where it clones every",
-        "                     repository the board binds that it has no checkout of",
+        "                     repository the board binds that it has no checkout of;",
+        "                     unset means a per-user default, `off` means never clone",
         "  HATCH_HEARTBEAT    seconds of silence before the renderer says what it is waiting on",
         "  HATCH_RETRY_SECONDS  seconds a call keeps retrying Hatch, 90 by default, 0 for one try",
         "  HATCH_NIGHT_STATE  where a night's totals are handed to the loop that restarts into",

@@ -45,6 +45,12 @@ public static class Checkouts
     /// incarnation is found again rather than cloned twice. Null for a runner
     /// with none, which is every one before HA-19.
     /// </param>
+    /// <param name="lazyWorkspace">
+    /// True where the workspace was defaulted rather than asked for: one that
+    /// does not exist yet is then left uncreated and unwalked, since nothing
+    /// has been cloned into it and a command that clones nothing should not
+    /// leave a directory behind.
+    /// </param>
     /// <param name="strays">
     /// Every top-level entry under <paramref name="workspace"/> that is not
     /// itself a checkout and holds no checkout anywhere beneath it - printed
@@ -57,7 +63,8 @@ public static class Checkouts
         string? workspace,
         out IReadOnlyList<CheckoutEntry> checkouts,
         out IReadOnlyList<string> strays,
-        out string refusal)
+        out string refusal,
+        bool lazyWorkspace = false)
     {
         var found = new List<CheckoutEntry>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -96,7 +103,15 @@ public static class Checkouts
         if (workspace is not null)
         {
             var others = standingRoot is null ? named : (IReadOnlyList<string>)[standingRoot, .. named];
+
+            // Path arithmetic, so it runs whether or not the directory exists:
+            // a checkout that contains a workspace not yet made is the same two
+            // owners of one path as one that contains a workspace already there.
             if (!OverlapsCheckout(workspace, others, out refusal)) return false;
+        }
+
+        if (workspace is not null && !(lazyWorkspace && !Directory.Exists(workspace)))
+        {
             if (!EnsureWorkspace(workspace, out refusal)) return false;
 
             foreach (var top in Directory.EnumerateDirectories(workspace))
@@ -125,6 +140,66 @@ public static class Checkouts
         strays = strayList;
         return true;
     }
+
+    /// <summary>
+    /// <see cref="TryDiscover"/> for a run, which is the one place a workspace
+    /// nobody asked for gives way. A defaulted workspace is dropped, and the run
+    /// carries on without cloning, where it conflicts with a checkout the run
+    /// stands in or names (<paramref name="note"/> stays null for a checkout
+    /// that is simply one of its clones, which is the ordinary case of a
+    /// session running <c>hatch</c> from inside one) or where it cannot be
+    /// written (said in <paramref name="note"/>, since cloning is then off for
+    /// a reason the person did not choose). Nothing else is swallowed: a bad
+    /// <c>--repo</c> is still a refusal, and a workspace somebody asked for is
+    /// held to every check.
+    /// </summary>
+    /// <param name="defaulted">Whether <paramref name="workspace"/> is the default and not a choice.</param>
+    /// <param name="workspaceUsed">The workspace this run serves - <paramref name="workspace"/>, or null where it gave way.</param>
+    /// <param name="note">A sentence for the person where cloning was turned off for them, otherwise null.</param>
+    public static bool TryDiscoverServing(
+        string? standingRoot,
+        IReadOnlyList<string> named,
+        string? workspace,
+        bool defaulted,
+        out IReadOnlyList<CheckoutEntry> checkouts,
+        out IReadOnlyList<string> strays,
+        out string refusal,
+        out string? workspaceUsed,
+        out string? note)
+    {
+        note = null;
+        workspaceUsed = workspace;
+
+        if (defaulted && workspace is not null)
+        {
+            var others = standingRoot is null ? named : (IReadOnlyList<string>)[standingRoot, .. named];
+            if (!OverlapsCheckout(workspace, others, out var overlap))
+            {
+                workspaceUsed = null;
+
+                // Only a checkout that holds the workspace is worth saying: one
+                // inside it is a clone, and being in a clone is not a problem.
+                var ws = Checkout.Canonical(workspace);
+                if (others.Any(o => Checkout.Canonical(o) is var c && (c == ws || IsAncestor(c, ws))))
+                    note = $"{overlap}; this run will not clone";
+            }
+            else if (Directory.Exists(workspace) && !EnsureWorkspace(workspace, out var unwritable))
+            {
+                workspaceUsed = null;
+                note = $"{unwritable}; this run will not clone";
+            }
+        }
+
+        return TryDiscover(
+            standingRoot, named, workspaceUsed, out checkouts, out strays, out refusal,
+            lazyWorkspace: defaulted);
+    }
+
+    /// <summary>Whether <paramref name="path"/> lies under <paramref name="directory"/>.</summary>
+    public static bool IsUnder(string directory, string path) =>
+        IsAncestor(Checkout.Canonical(directory), Checkout.Canonical(path));
+
+    private static bool IsAncestor(string a, string b) => b.StartsWith(a + Path.DirectorySeparatorChar, StringComparison.Ordinal);
 
     /// <summary>Every checkout under <paramref name="dir"/>, not descending into one found.</summary>
     private static IEnumerable<string> WalkForCheckouts(string dir)
@@ -197,8 +272,6 @@ public static class Checkouts
 
         refusal = "";
         return true;
-
-        static bool IsAncestor(string a, string b) => b.StartsWith(a + Path.DirectorySeparatorChar, StringComparison.Ordinal);
     }
 
     /// <summary>

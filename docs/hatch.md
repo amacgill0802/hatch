@@ -4075,6 +4075,20 @@ spawn does — three in a row end the night. This is also what
 project bound to a remote this runner does not yet have checked out is
 offered to it rather than folded past.
 
+**With no workspace named, there is still one.** A runner that is given neither
+`--workspace` nor `HATCH_WORKSPACE` clones into a `workspace` directory beside
+the per-user settings file (`ApplicationData/hatch/workspace`), built from the
+operating system's per-user folder so it is the same convention on every
+machine and a path on none in particular. It is held lightly, because nobody
+chose it: it is not made until a clone needs it, and it gives way instead of
+refusing. A run that stands in, or names, a checkout that is one of its clones
+simply does not clone, and says nothing; a checkout that contains the
+workspace, or a workspace that cannot be written, turns cloning off for that
+run and says why. A second loop that finds the default workspace's lock held
+serves its own checkouts and does not clone, where a workspace somebody named
+is still refused. `--workspace off`, `HATCH_WORKSPACE=off` or `hatch config
+--workspace off` turns it off outright for a runner that must never clone.
+
 What says "one loop" is a directory under `TMPDIR`, holding the pid of the run
 that took it, taken on every served checkout in order at startup — and, where
 a workspace is set, on the workspace directory itself first, so a clone that

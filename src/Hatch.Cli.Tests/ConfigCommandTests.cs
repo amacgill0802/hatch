@@ -899,10 +899,33 @@ public sealed class ConfigCommandTests : IDisposable
     }
 
     [Fact]
-    public async Task Show_with_no_workspace_says_unset()
+    public async Task Workspace_off_is_written_as_a_word_and_makes_no_directory()
+    {
+        Assert.Equal(0, await Command(new Replies()).RunAsync(["--workspace", "off"], default));
+
+        Assert.Contains("HATCH_WORKSPACE=off", File.ReadAllLines(ConfigPath));
+        Assert.False(Directory.Exists("off"));
+
+        await Command(new Replies()).RunAsync(["--show"], default);
+        Assert.Contains("off - this runner never clones", Said, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Workspace_off_does_not_trip_the_overlap_check_when_a_repo_is_added_after()
+    {
+        var checkout = Tree("checkout");
+        await Command(new Replies()).RunAsync(["--workspace", "off"], default);
+
+        Assert.Equal(0, await Command(new Replies()).RunAsync(["--repo", checkout], default));
+
+        Assert.Contains("HATCH_WORKSPACE=off", File.ReadAllLines(ConfigPath));
+    }
+
+    [Fact]
+    public async Task Show_with_no_workspace_says_unset_and_where_clones_go_instead()
     {
         await Command(new Replies()).RunAsync(["--show"], default);
-        Assert.Contains("HATCH_WORKSPACE:   <unset>", Said);
+        Assert.Contains($"HATCH_WORKSPACE:   <unset - clones go to {Settings.DefaultWorkspacePath()}>", Said);
     }
 
     public void Dispose()

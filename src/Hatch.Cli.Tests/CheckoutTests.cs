@@ -390,6 +390,140 @@ public sealed class CheckoutTests : IDisposable
     }
 
     [Fact]
+    public void A_lazy_workspace_that_does_not_exist_is_neither_created_nor_walked()
+    {
+        var workspace = Path.Combine(_temp, "never-made");
+
+        Assert.True(Checkouts.TryDiscover(null, [], workspace, out var checkouts, out var strays, out _, lazyWorkspace: true));
+
+        Assert.Empty(checkouts);
+        Assert.Empty(strays);
+        Assert.False(Directory.Exists(workspace));
+    }
+
+    [Fact]
+    public void A_lazy_workspace_that_exists_is_walked_like_any_other()
+    {
+        var workspace = Tree("workspace");
+        var clone = Path.Combine(workspace, "example.test", "owner", "repo");
+        Directory.CreateDirectory(clone);
+        Git(clone, "init", "--quiet");
+        Git(clone, "remote", "add", "origin", "https://example.test/owner/repo.git");
+
+        Assert.True(Checkouts.TryDiscover(null, [], workspace, out var checkouts, out _, out _, lazyWorkspace: true));
+
+        Assert.Equal(clone, Assert.Single(checkouts).Path);
+    }
+
+    // ---- a workspace nobody asked for gives way ----
+
+    private string CloneUnder(string workspace, string name)
+    {
+        var clone = Path.Combine(workspace, "example.test", "owner", name);
+        Directory.CreateDirectory(clone);
+        Git(clone, "init", "--quiet");
+        Git(clone, "remote", "add", "origin", $"https://example.test/owner/{name}.git");
+        return clone;
+    }
+
+    [Fact]
+    public void A_defaulted_workspace_gives_way_silently_to_a_checkout_that_is_one_of_its_clones()
+    {
+        var workspace = Tree("workspace");
+        var clone = CloneUnder(workspace, "repo");
+
+        Assert.True(Checkouts.TryDiscoverServing(
+            clone, [], workspace, defaulted: true,
+            out var checkouts, out _, out _, out var used, out var note));
+
+        Assert.Null(used);
+        Assert.Null(note);
+        Assert.Equal(clone, Assert.Single(checkouts).Path);
+    }
+
+    [Fact]
+    public void A_defaulted_workspace_that_a_checkout_contains_gives_way_and_says_so()
+    {
+        var checkout = Tree("home");
+        var workspace = Path.Combine(checkout, "hatch", "workspace");
+
+        Assert.True(Checkouts.TryDiscoverServing(
+            checkout, [], workspace, defaulted: true,
+            out _, out _, out _, out var used, out var note));
+
+        Assert.Null(used);
+        Assert.Contains("will not clone", note, StringComparison.Ordinal);
+        Assert.Contains(checkout, note, StringComparison.Ordinal);
+        Assert.False(Directory.Exists(workspace));
+    }
+
+    [Fact]
+    public void A_workspace_somebody_chose_is_refused_on_the_same_overlap()
+    {
+        var workspace = Tree("workspace");
+        var clone = CloneUnder(workspace, "repo");
+
+        Assert.False(Checkouts.TryDiscoverServing(
+            clone, [], workspace, defaulted: false,
+            out _, out _, out var refusal, out var used, out _));
+
+        Assert.Equal(workspace, used);
+        Assert.Contains("one contains the other", refusal, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void An_overlap_with_a_workspace_that_does_not_exist_yet_is_still_found()
+    {
+        var checkout = Tree("home");
+        var workspace = Path.Combine(checkout, "not-yet");
+
+        Assert.False(Checkouts.TryDiscover(checkout, [], workspace, out _, out _, out var refusal, lazyWorkspace: true));
+        Assert.Contains("one contains the other", refusal, StringComparison.Ordinal);
+        Assert.False(Directory.Exists(workspace));
+    }
+
+    [Fact]
+    public void A_bad_named_repo_is_a_refusal_even_when_the_workspace_is_defaulted()
+    {
+        var workspace = Path.Combine(_temp, "never-made");
+        var missing = Path.Combine(_temp, "nowhere");
+
+        Assert.False(Checkouts.TryDiscoverServing(
+            null, [missing], workspace, defaulted: true,
+            out _, out _, out var refusal, out var used, out var note));
+
+        Assert.Contains(missing, refusal, StringComparison.Ordinal);
+        Assert.Equal(workspace, used);
+        Assert.Null(note);
+    }
+
+    [SkippableFact]
+    public void A_defaulted_workspace_that_cannot_be_written_gives_way_and_says_so()
+    {
+        Skip.If(OperatingSystem.IsWindows(), "no unix modes to take write permission away with");
+
+        var workspace = Tree("read-only");
+        File.SetUnixFileMode(workspace, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+        try
+        {
+            Skip.If(
+                Environment.UserName == "root" || Checkouts.EnsureWorkspace(workspace, out _),
+                "this account can write to a read-only directory");
+
+            Assert.True(Checkouts.TryDiscoverServing(
+                null, [], workspace, defaulted: true,
+                out _, out _, out _, out var used, out var note));
+
+            Assert.Null(used);
+            Assert.Contains("will not clone", note, StringComparison.Ordinal);
+        }
+        finally
+        {
+            File.SetUnixFileMode(workspace, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+    }
+
+    [Fact]
     public void EnsureWorkspace_makes_the_directory_and_proves_it_writable()
     {
         var path = Path.Combine(_temp, "brand-new", "workspace");
