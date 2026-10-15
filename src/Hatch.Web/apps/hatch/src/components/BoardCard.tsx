@@ -28,6 +28,11 @@ interface BoardCardProps {
       the peek is a desk affordance, a modal over a board still visible behind
       it, and phone width shows no board behind it to peek over. */
   onPeek?: (card: IssueCard) => void;
+  /** How many ancestors in this card's lineage group are drawn above it in the
+      column - 0 at the top of its own stack. See lib/lineage.ts. Absent from
+      CardPreview on purpose: the preview follows the cursor, not a place in a
+      column, and takes no indent. */
+  depth?: number;
 }
 
 /** Owed an answer, and drawn as such wherever the card is drawn. */
@@ -72,17 +77,23 @@ export function BoardCard({
   project = null,
   found = false,
   onPeek,
+  depth = 0,
 }: CardProps & BoardCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: card.key });
+  const nested = depth > 0;
 
   return (
     <Link
       ref={setNodeRef}
       to={`/issues/${card.key}`}
-      className={`hatch-card${isDragging ? ' dragging' : ''}${waiting ? ' waiting' : ''}${askingClass(card)}${priorityClass(card)}${found ? ' found' : ''}`}
+      className={`hatch-card${isDragging ? ' dragging' : ''}${waiting ? ' waiting' : ''}${askingClass(card)}${priorityClass(card)}${found ? ' found' : ''}${nested ? ' nested' : ''}`}
       // How the board finds the element again: the console's take scrolls to it and focuses it.
       data-issue-key={card.key}
-      style={{ transform: CSS.Transform.toString(transform), transition }}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        ...(nested ? { '--card-depth': String(depth) } : null),
+      }}
       onClick={(e) => {
         if (!isPlainClick(e) || !onPeek) return;
         e.preventDefault();

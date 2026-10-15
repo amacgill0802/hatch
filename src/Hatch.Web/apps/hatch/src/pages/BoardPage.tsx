@@ -49,6 +49,8 @@ import type { Placement } from '../lib/place';
 import { columnBlocked } from '../lib/protectedColumns';
 import { askingCount } from '../lib/questions';
 import { isWaiting } from '../lib/schedule';
+import { lineage } from '../lib/lineage';
+import type { LineageCard } from '../lib/lineage';
 import { isGoToShortcut, isTypingTarget, isUndoShortcut } from '../lib/shortcuts';
 import { useCloseSubtree } from '../lib/useCloseSubtree';
 import { useIssueConfirmations } from '../lib/useIssueConfirmations';
@@ -248,7 +250,19 @@ export function BoardPage() {
   );
 
   const cards = board?.issues;
-  const visible = useMemo(() => filterCards(cards ?? [], filter), [cards, filter]);
+  /* Grouped once per status, right where the filter's own output would
+     otherwise have been a flat list: `Column`/`PhoneColumn` just filter this
+     by statusId (unchanged), so a column's drawn order falls out of this one
+     place rather than every reader of `visible` needing its own opinion
+     about lineage. `all` is `cards`, never `vis` - ancestry is walked over
+     the whole board, exactly as lib/lineage.ts's docstring requires, so a
+     parent hidden by the type filter still costs its children no depth. */
+  const visible: LineageCard[] = useMemo(() => {
+    const vis = filterCards(cards ?? [], filter);
+    const statusIds: number[] = [];
+    for (const c of vis) if (!statusIds.includes(c.statusId)) statusIds.push(c.statusId);
+    return statusIds.flatMap((id) => lineage(cards ?? [], vis.filter((c) => c.statusId === id)));
+  }, [cards, filter]);
   const visibleKeys = useMemo(() => new Set(visible.map((c) => c.key)), [visible]);
 
   /* The board's own columns. The API sends every status - the issue page needs
@@ -753,7 +767,7 @@ function Column({
   showProjectMark,
 }: {
   status: Status;
-  cards: IssueCard[];
+  cards: LineageCard[];
   /** How many of this column's cards the filter is holding back. */
   hidden: number;
   filtering: boolean;
@@ -829,6 +843,7 @@ function Column({
               <BoardCard
                 key={card.key}
                 card={card}
+                depth={card.depth}
                 waiting={waiting.includes(card)}
                 terminal={status.isTerminal}
                 found={found === card.key}
@@ -882,7 +897,7 @@ function PhoneColumn({
   showProjectMark,
 }: {
   status: Status;
-  cards: IssueCard[];
+  cards: LineageCard[];
   /** How many of this column's cards the filter is holding back. */
   hidden: number;
   filtering: boolean;
@@ -927,6 +942,7 @@ function PhoneColumn({
               <BoardCard
                 key={card.key}
                 card={card}
+                depth={card.depth}
                 waiting={waiting.includes(card)}
                 terminal={status.isTerminal}
                 found={found === card.key}
