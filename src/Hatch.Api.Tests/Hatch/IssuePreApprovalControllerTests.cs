@@ -351,6 +351,42 @@ public class IssuePreApprovalControllerTests
         Assert.False(unmarked.Express);
     }
 
+    // ---- The approver gate ----
+
+    [Fact]
+    public async Task ANonMember_IsRefusedSettingPreapproved()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+        h.Actors.Me = h.Actors.AddPerson("Ada");
+
+        var refusal = await h.Express.PutIssuePreApproval(
+            issue.Key, new PreApprovalRequest(PreApprovalLevels.PreApprovedName), default);
+
+        var obj = Assert.IsType<ObjectResult>(refusal.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, obj.StatusCode);
+        Assert.Equal(
+            "only an owner or approver of AER may set pre-approval - it is the approve press given in advance",
+            obj.Value);
+    }
+
+    [Theory]
+    [InlineData(ProjectMemberRole.Owner)]
+    [InlineData(ProjectMemberRole.Approver)]
+    public async Task AnOwnerOrApprover_MaySetPreapproved(string role)
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var ada = h.Actors.AddPerson("Ada");
+        await h.MemberAsync(ada.Id, role);
+        h.Actors.Me = ada;
+
+        var marked = Value(await h.Express.PutIssuePreApproval(
+            issue.Key, new PreApprovalRequest(PreApprovalLevels.PreApprovedName), default));
+
+        Assert.Equal(PreApprovalLevels.PreApprovedName, marked.PreApproval);
+    }
+
     // ---- The legacy alias ----
 
     // ---- Harness ----
