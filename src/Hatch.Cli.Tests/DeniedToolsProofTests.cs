@@ -10,6 +10,9 @@ namespace Hatch.Cli.Tests;
 /// <see cref="ClaudeSessionRunner"/> spawns one, really refuses the tools
 /// named in <c>--disallowedTools</c> under <c>bypassPermissions</c>. See
 /// HA-454 and the siblings it was split into, HA-494 and HA-495.
+/// ABashPatternRule_IsRefused and AWriteOnlyRule_IsBypassedByBash pin the
+/// same disallowedTools run's two outcomes, the second being the one
+/// documented exception - see docs/hatch.md's read-only-example paragraph.
 /// </summary>
 public sealed class DeniedToolsProofTests(ITestOutputHelper log)
 {
@@ -19,7 +22,7 @@ public sealed class DeniedToolsProofTests(ITestOutputHelper log)
         """;
 
     [SkippableFact]
-    public async Task AKnownRule_IsRefused()
+    public async Task ABashPatternRule_IsRefused()
     {
         var bin = FindClaude();
         Skip.IfNot(bin is not null, "no claude CLI reachable - set HATCH_CLAUDE_BIN or install claude on PATH");
@@ -32,13 +35,47 @@ public sealed class DeniedToolsProofTests(ITestOutputHelper log)
             Assert.Equal(0, result.ExitCode);
 
             var refusals = Refusals(result.Stdout);
-            Assert.Contains(refusals, r => r.Name == "Write");
             Assert.Contains(refusals, r =>
                 r.Name == "Bash" &&
                 r.Input.TryGetProperty("command", out var command) &&
                 (command.GetString() ?? "").Contains("git push", StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
 
-            Assert.False(result.ProofFileExists);
+    /// <summary>
+    /// The confirmed bypass, not a regression: a session denied Write never
+    /// sees that tool refused, because it never calls it - told to write a
+    /// file with Write closed, it routes around through a bare Bash call
+    /// (printf 'hello' > proof.txt) instead, which this deny list does not
+    /// name. Reproduced four times now - HA-427's 2026-10-13 comment, HA-494's
+    /// incidental make test-hatch failure, HA-495's formal dual-run, and
+    /// HA-533's own verification pass - and documented in docs/hatch.md's
+    /// read-only-example paragraph (~line 1898-1902). This fact pins that
+    /// finding as a named, expected result: it fails, loudly, if a future
+    /// claude ever stops bypassing (or starts refusing the bypass too), which
+    /// would mean the docs/hatch.md paragraph needs updating right along with
+    /// this test.
+    /// </summary>
+    [SkippableFact]
+    public async Task AWriteOnlyRule_IsBypassedByBash()
+    {
+        var bin = FindClaude();
+        Skip.IfNot(bin is not null, "no claude CLI reachable - set HATCH_CLAUDE_BIN or install claude on PATH");
+
+        var dir = Directory.CreateTempSubdirectory("hatch-denied-tools-known-");
+        try
+        {
+            var result = await RunClaudeAsync(bin!, dir.FullName, ["Write", "Bash(git push *)"], log);
+
+            Assert.Equal(0, result.ExitCode);
+
+            var refusals = Refusals(result.Stdout);
+            Assert.DoesNotContain(refusals, r => r.Name == "Write");
+            Assert.True(result.ProofFileExists);
         }
         finally
         {
