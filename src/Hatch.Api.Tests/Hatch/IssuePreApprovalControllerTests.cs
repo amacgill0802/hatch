@@ -3,6 +3,7 @@ using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Modules.Hatch;
 using Hatch.Api.Services.Auth;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Time.Testing;
@@ -252,6 +253,102 @@ public class IssuePreApprovalControllerTests
 
         Assert.Equal(403, ((ObjectResult)refusal.Result!).StatusCode);
         Assert.False((await h.RowAsync(issue.Key)).PreApproval >= PreApprovalLevels.Express);
+    }
+
+    // ---- The seam ----
+
+    [Fact]
+    public async Task ANonMember_IsRefusedExpressTheSameSentenceTheSiblingMoveTestGets()
+    {
+        var h = await NewAsync(seam: true);
+        var issue = await h.FileAsync();
+        h.Actors.Me = h.Actors.AddPerson("Ada");
+
+        var refusal = await h.Express.PutIssueExpress(issue.Key, new ExpressRequest(true), default);
+
+        var obj = Assert.IsType<ObjectResult>(refusal.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, obj.StatusCode);
+        Assert.Equal("only an owner or approver of AER may move work into \"review\"", obj.Value);
+    }
+
+    [Theory]
+    [InlineData(ProjectMemberRole.Owner)]
+    [InlineData(ProjectMemberRole.Approver)]
+    public async Task AnOwnerOrApprover_MaySetExpress(string role)
+    {
+        var h = await NewAsync(seam: true);
+        var issue = await h.FileAsync();
+        var ada = h.Actors.AddPerson("Ada");
+        await h.MemberAsync(ada.Id, role);
+        h.Actors.Me = ada;
+
+        var marked = await h.ExpressAsync(issue.Key, true);
+
+        Assert.True(marked.Express);
+    }
+
+    [Fact]
+    public async Task ANonMember_IsRefusedClearingExpressTheSameSentence()
+    {
+        var h = await NewAsync(seam: true);
+        var issue = await h.FileAsync();
+        await h.PreApprovalAsync(issue.Key, PreApprovalLevels.Express);
+        h.Actors.Me = h.Actors.AddPerson("Ada");
+
+        var refusal = await h.Express.PutIssueExpress(issue.Key, new ExpressRequest(false), default);
+
+        var obj = Assert.IsType<ObjectResult>(refusal.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, obj.StatusCode);
+        Assert.Equal("only an owner or approver of AER may move work into \"review\"", obj.Value);
+    }
+
+    [Theory]
+    [InlineData(ProjectMemberRole.Owner)]
+    [InlineData(ProjectMemberRole.Approver)]
+    public async Task AnOwnerOrApprover_MayClearExpress(string role)
+    {
+        var h = await NewAsync(seam: true);
+        var issue = await h.FileAsync();
+        await h.PreApprovalAsync(issue.Key, PreApprovalLevels.Express);
+        var ada = h.Actors.AddPerson("Ada");
+        await h.MemberAsync(ada.Id, role);
+        h.Actors.Me = ada;
+
+        var unmarked = await h.ExpressAsync(issue.Key, false);
+
+        Assert.False(unmarked.Express);
+    }
+
+    [Fact]
+    public async Task UntickingProtectedDirectlyOnTheRow_LetsANonMemberThrough()
+    {
+        var h = await NewAsync(seam: true);
+        var issue = await h.FileAsync();
+        var review = await h.Db.Statuses.FirstAsync(s => s.Id == h.ReviewId);
+        review.IsProtected = false;
+        await h.Db.SaveChangesAsync();
+        h.Actors.Me = h.Actors.AddPerson("Ada");
+
+        var marked = await h.ExpressAsync(issue.Key, true);
+        Assert.True(marked.Express);
+
+        var unmarked = await h.ExpressAsync(issue.Key, false);
+        Assert.False(unmarked.Express);
+    }
+
+    [Fact]
+    public async Task UntickingProtectedThroughTheRoute_LetsANonMemberThrough()
+    {
+        var h = await NewAsync(seam: true);
+        var issue = await h.FileAsync();
+        await h.Statuses.PutProtected(h.ReviewId!.Value, new ProtectedRequest(false), default);
+        h.Actors.Me = h.Actors.AddPerson("Ada");
+
+        var marked = await h.ExpressAsync(issue.Key, true);
+        Assert.True(marked.Express);
+
+        var unmarked = await h.ExpressAsync(issue.Key, false);
+        Assert.False(unmarked.Express);
     }
 
     // ---- The legacy alias ----
