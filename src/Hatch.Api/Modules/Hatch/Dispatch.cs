@@ -233,13 +233,14 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                     var built = builds.TryGetValue(issue.Id, out var foundBuilds) ? foundBuilds : [];
                     var parent = family.ParentOf(issue.Id);
                     var sendBackStreak = sendBackStreaks?.GetValueOrDefault(issue.Id, 0) ?? 0;
-                    var hopKind = HopKind(issue, status, to, family, statuses, wip, parent, playbook, sendBackStreak, claimed.Claims!.StallResumeLimit, gate.EffectivePreApproval(issue.Id).Level);
+                    var hopKind = HopKind(issue, status, to, family, statuses, wip, parent, playbook, sendBackStreak, claimed.Claims!.StallResumeLimit, gate.EffectivePreApproval(issue.Id).Level, merged, built, claimed.Now);
                     var hop = hopKind is not null;
                     var hopUnder = hopKind == HopKinds.Under ? parent?.Key : null;
+                    var rowTo = hopKind == HopKinds.Approve ? Columns.Advance(statuses, status) : to;
                     var letGo = issue.StalledAt is not null ? letGoCounts?.GetValueOrDefault(issue.Id, 0) ?? 0 : 0;
                     var blocked = Blocked(
-                        issue, status, to, playbook, waiting, letGo, sendBackStreak, loop, pace, gate, family, claimed,
-                        implementation, assignees[issue.Id], repos, merged, built, hop, statuses, wip, epics,
+                        issue, status, rowTo, playbook, waiting, letGo, sendBackStreak, loop, pace, gate, family, claimed,
+                        implementation, assignees[issue.Id], repos, merged, built, hopKind, statuses, wip, epics,
                         trainSlots.GetValueOrDefault(issue.Id));
 
                     var sentence = blocked;
@@ -260,12 +261,14 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                         firstClearThisTier = IssueKey.Format(issue.Project!.Key, issue.Number);
 
                     rows.Add(new ScanRow(
-                        issue, status, to, sentence,
-                        KindOf(issue, status, to, merged, built, claimed.Now),
+                        issue, status, rowTo, sentence,
+                        KindOf(issue, status, rowTo, merged, built, claimed.Now),
                         hop && sentence is null,
                         sentence is null ? hopKind : null,
                         sentence is null ? hopUnder : null,
-                        sentence is null && issue.StalledAt is not null
+                        sentence is null && hopKind == HopKinds.Approve
+                            ? MergeWork.Judge(issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(), merged, built, issue.PullRequestClosedAt, claimed.Now).Sentence
+                            : sentence is null && issue.StalledAt is not null
                             ? ResumedClearNote(issue.StalledAt.Value, claimed.Now, claimed.Claims!.StallResumeSeconds)
                             : sentence is null && effective[issue.Id].Level == PriorityLevels.Economy ? pace?.Economy.ClearNote
                             : sentence is null && effective[issue.Id].Level == PriorityLevels.Low ? pace?.Low.ClearNote
@@ -678,13 +681,15 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// about the work rather than the pass's policy, so a named dispatch is
     /// refused by it too - see <see cref="RepositoryFold"/>.
     /// </param>
-    /// <param name="hop">
-    /// Whether this issue is express and stands in a column marked
-    /// <see cref="EfHatchStatus.ExpressSkips"/> - see
-    /// <see cref="EfHatchIssue.PreApproval"/>. Checked last, after every other fold,
-    /// because a hop answers only "does this column still need a session" and
-    /// every other reason to hold the issue back still applies to it exactly as
-    /// it applies to any other issue.
+    /// <param name="hopKind">
+    /// Which of <see cref="HopKinds"/> carried this hop, or null where this
+    /// issue is not one - see <see cref="EfHatchIssue.PreApproval"/>. Checked
+    /// last, after every other fold, because a hop answers only "does this
+    /// column still need a session" and every other reason to hold the issue
+    /// back still applies to it exactly as it applies to any other issue. One
+    /// kind, <see cref="HopKinds.Approve"/>, bypasses the protected-column fold
+    /// below as well - every other kind is folded by it exactly as a non-hop
+    /// issue is.
     /// </param>
     /// <param name="statuses">
     /// The board, for the same board-order comparison <see cref="FamilyGate.SiblingInFlight"/>
@@ -733,12 +738,14 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         RepositoryDeclaration repos,
         IReadOnlyList<EfHatchMergeCheck> verdicts,
         IReadOnlyList<EfHatchBuildCheck> builds,
-        bool hop,
+        string? hopKind,
         List<EfHatchStatus> statuses,
         WipSection? wip,
         IReadOnlyDictionary<long, EpicLimit> epics,
         TrainSlot? train = null)
     {
+        var hop = hopKind is not null;
+
         if (from.IsTerminal)
             return $"\"{from.Name}\" is where work ends - there is nothing after it";
 
@@ -775,7 +782,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         if (to.IsTerminal)
             return $"the next column is \"{to.Name}\", and only the operator moves work there";
 
-        if (to.IsProtected)
+        if (to.IsProtected && hopKind != HopKinds.Approve)
             return $"the next column is \"{to.Name}\", and only its approvers move work there";
 
         if (claimed.Held(issue) is { } holder)
@@ -963,22 +970,26 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// outside the WIP section whose next column is inside it, with something
     /// filed under it and its own direct parent a running epic; a story or bug
     /// in a ticked column whose parent is a running epic; a child a ParentPulls
-    /// column pulls (HA-149); and last, a childless issue whose brief is over
-    /// its playbook's BriefLimit, with <see cref="Columns.SendBack"/> naming a
-    /// column strictly left of the one it stands in (HA-394) - asked last so
-    /// nothing that is already one of the first four changes meaning. A
-    /// top-level epic - one with no parent, or a parent that is not a running
-    /// epic - is never carried by the second arm: only a person moves it in
-    /// (HA-202). The order matters only where a board ticks both ExpressSkips
-    /// and ParentPulls on the same column and an epic stands exactly in the
-    /// implementation column - see HA-113's own decision on the overlap. Never
-    /// on a move that ends where it starts: a review self-move is never a hop
-    /// for the first three, by construction.
+    /// column pulls (HA-149); a childless issue whose brief is over its
+    /// playbook's BriefLimit, with <see cref="Columns.SendBack"/> naming a
+    /// column strictly left of the one it stands in (HA-394); and last, a
+    /// pre-approved issue standing in the review column whose branch
+    /// <see cref="MergeWork.Judge"/> would merge or bring current, with a
+    /// mergeable column to carry it to (HA-560) - asked last so nothing that is
+    /// already one of the first five changes meaning. A top-level epic - one
+    /// with no parent, or a parent that is not a running epic - is never
+    /// carried by the second arm: only a person moves it in (HA-202). The order
+    /// matters only where a board ticks both ExpressSkips and ParentPulls on
+    /// the same column and an epic stands exactly in the implementation
+    /// column - see HA-113's own decision on the overlap. Never on a move that
+    /// ends where it starts: a review self-move is never a hop for the first
+    /// three, by construction.
     /// </remarks>
     public static string? HopKind(
         EfHatchIssue issue, EfHatchStatus from, EfHatchStatus? to, FamilyGate family,
         List<EfHatchStatus> statuses, WipSection? wip, FamilyGate.Parent? parent,
-        EfHatchPlaybook? playbook, int sendBackStreak, int sendBackStreakLimit, int effectivePreApproval)
+        EfHatchPlaybook? playbook, int sendBackStreak, int sendBackStreakLimit, int effectivePreApproval,
+        IReadOnlyList<EfHatchMergeCheck> verdicts, IReadOnlyList<EfHatchBuildCheck> builds, DateTimeOffset now)
     {
         var crosses = to is not null && to.Id != from.Id;
 
@@ -1000,6 +1011,15 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
 
         if (SendBackEligible(issue, from, family, statuses, playbook) && sendBackStreak < sendBackStreakLimit)
             return HopKinds.SendBack;
+
+        if (Columns.AwaitingReview(statuses)?.Id == from.Id
+            && Columns.Advance(statuses, from) is { MergesPullRequest: true }
+            && effectivePreApproval == PreApprovalLevels.PreApproved
+            && issue.PullRequestUrl is { Length: > 0 }
+            && MergeWork.Judge(
+                   issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
+                   verdicts, builds, issue.PullRequestClosedAt, now).Kind is WorkKinds.Merge or WorkKinds.Update)
+            return HopKinds.Approve;
 
         return null;
     }
