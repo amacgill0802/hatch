@@ -667,6 +667,8 @@ so the trail says who did what without anybody being asked to record it.
   comment saying what landed and what did not. Only the operator decides that
   something shipped, and the board enforces it: the dispatcher refuses a
   transition into a terminal column outright.
+- **Move work into a protected column.** Only an owner or approver can, by
+  hand. A `403` there is that gate working, not a mistake to work around.
 - **Edit a playbook.** The API refuses it, and the refusal is deliberate; if a
   playbook is wrong, say so on the ticket and stop.
 - **Mint and revoke keys**, and everything else behind a plain `[RequireAdmin]`.
