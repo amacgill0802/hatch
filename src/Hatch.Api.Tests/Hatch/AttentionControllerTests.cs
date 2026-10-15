@@ -325,6 +325,87 @@ public class AttentionControllerTests
         Assert.Equal(ReviewBuildStates.Success, row.BuildState);
     }
 
+    // ---- The pre-approval half (HA-562) ----
+
+    [Fact]
+    public async Task Attention_LeavesOutAPreApprovedReviewRowTheJudgeWouldMerge()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "ready to merge itself", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        issue.PreApproval = PreApprovalLevels.PreApproved;
+        await h.Db.SaveChangesAsync();
+        await h.CheckAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Passed);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        Assert.Empty(attention.Reviews);
+        Assert.Equal(0, attention.ReviewsHeldBack);
+    }
+
+    [Fact]
+    public async Task Attention_LeavesOutAPreApprovedReviewRowTheJudgeWouldUpdate()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "ready to update itself", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        issue.PreApproval = PreApprovalLevels.PreApproved;
+        await h.Db.SaveChangesAsync();
+        await h.CheckAsync(issue, MergeVerdicts.Clean, holdsTrunk: false);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        Assert.Empty(attention.Reviews);
+        Assert.Equal(0, attention.ReviewsHeldBack);
+    }
+
+    [Fact]
+    public async Task Attention_LeavesOutAPreApprovedReviewRowStillPending()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "nobody has run a build yet", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        issue.PreApproval = PreApprovalLevels.PreApproved;
+        await h.Db.SaveChangesAsync();
+        await h.CheckAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        Assert.Empty(attention.Reviews);
+        Assert.Equal(0, attention.ReviewsHeldBack);
+    }
+
+    [Fact]
+    public async Task Attention_KeepsAPreApprovedReviewRowTheJudgeHolds_CarryingTheSentence()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "closed without merging", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        issue.PreApproval = PreApprovalLevels.PreApproved;
+        issue.PullRequestClosedAt = Now;
+        await h.Db.SaveChangesAsync();
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        var row = Assert.Single(attention.Reviews);
+        Assert.Equal(Key(issue), row.Key);
+        Assert.Equal("its pull request was closed without merging", row.HeldSentence);
+    }
+
+    [Fact]
+    public async Task Attention_DoesNotAnnotateAnOrdinaryCleanRow()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "delivered", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.CheckAsync(issue, MergeVerdicts.Clean);
+        await h.BuildAsync(issue, BuildVerdicts.Passed);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        var row = Assert.Single(attention.Reviews);
+        Assert.Equal(Key(issue), row.Key);
+        Assert.Equal(0, attention.ReviewsHeldBack);
+        Assert.Equal(ReviewBuildStates.Success, row.BuildState);
+        Assert.Null(row.HeldSentence);
+    }
+
     // ---- The build and up-to-date half ----
 
     [Fact]

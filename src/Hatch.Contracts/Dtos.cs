@@ -962,6 +962,15 @@ public record ActivityPageDto(IReadOnlyList<ActivityEventDto> Events, bool HasMo
 /// Non-null only alongside <paramref name="Trunk"/>.
 /// </param>
 /// <param name="Trunk">The trunk's name as a counted clean merge check reported it, or <c>null</c> when <paramref name="HoldsTrunk"/> is.</param>
+/// <param name="HeldSentence">
+/// Non-null only for a pre-approved row <c>MergeWork.Judge</c> still holds -
+/// a closed pull request, an ambiguous or missing branch, a stale unread tip:
+/// the four reasons HA-465 left standing on a person's row. Null for every row
+/// that is not pre-approved, and null for a pre-approved row the judge would
+/// merge, update, or is still progressing on its own, since neither of those
+/// reaches this list at all. Defaults to <c>null</c> so an older client still
+/// reads.
+/// </param>
 public record ReviewDto(
     string Key,
     string Title,
@@ -969,7 +978,8 @@ public record ReviewDto(
     string PullRequestUrl,
     string BuildState = ReviewBuildStates.Unknown,
     bool? HoldsTrunk = null,
-    string? Trunk = null);
+    string? Trunk = null,
+    string? HeldSentence = null);
 
 /// <summary>
 /// The two things that stop a night, in one read: a pull request nobody has
@@ -1524,6 +1534,12 @@ public record IssueDependencyRequest(string DependsOnKey);
 /// <paramref name="Children"/> stands in - a child's own <see cref="IssueCardDto.StatusId"/>
 /// is a bare id with no name attached. Null on a client too old to read it.
 /// </param>
+/// <param name="ClearNote">
+/// Why a row that carries no <paramref name="Blocked"/> is clear at all, where
+/// that is not otherwise obvious - today, only that a stall question lapsed
+/// (<c>"its stall question lapsed after 5 minutes untouched"</c>). Null on
+/// every row that is clear for the ordinary reason, which is most of them.
+/// </param>
 public record WorkDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -1542,7 +1558,8 @@ public record WorkDto(
     int LetGo = 0,
     bool InReview = false,
     SentBackDto? SentBack = null,
-    IReadOnlyList<StatusDto>? Statuses = null);
+    IReadOnlyList<StatusDto>? Statuses = null,
+    string? ClearNote = null);
 
 /// <summary>
 /// The two numbers a send-back for an over-long brief carried, and whether
@@ -1592,7 +1609,7 @@ public static class WorkKinds
     public const string Pending = "pending";
 }
 
-/// <summary>Which of the five reasons carried a hop - see WorkDto.HopKind.</summary>
+/// <summary>Which of the six reasons carried a hop - see WorkDto.HopKind.</summary>
 public static class HopKinds
 {
     /// <summary>An express issue, in a column marked <see cref="StatusDto.ExpressSkips"/>.</summary>
@@ -1618,6 +1635,12 @@ public static class HopKinds
     /// to the column that feeds the implementation column - see HA-394.
     /// </summary>
     public const string SendBack = "sendback";
+
+    /// <summary>
+    /// A pre-approved issue in review whose branch <c>MergeWork.Judge</c> would
+    /// merge or bring current - see HA-560.
+    /// </summary>
+    public const string Approve = "approve";
 }
 
 /// <summary>

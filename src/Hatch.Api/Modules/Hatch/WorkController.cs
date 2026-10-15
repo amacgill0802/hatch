@@ -438,11 +438,12 @@ public class WorkController(
             ? await SendBackStreak.ForIssueAsync(db, issue.Id, implementation.Name, ct)
             : 0;
         var gate = await DependencyGate.ForAsync(db, statuses, ct);
-        var hopKind = to is null ? null : Dispatch.HopKind(issue, from, to, family, statuses, wip, parent, playbook, sendBackStreak, claims.StallResumeLimit, gate.EffectivePreApproval(issue.Id).Level);
+        var hopKind = to is null ? null : Dispatch.HopKind(issue, from, to, family, statuses, wip, parent, playbook, sendBackStreak, claims.StallResumeLimit, gate.EffectivePreApproval(issue.Id).Level, merged, built, now);
         var hop = hopKind is not null;
+        var rowTo = hopKind == HopKinds.Approve ? Columns.Advance(statuses, from) : to;
         var letGo = await LetGo.ForIssueAsync(db, issue.Id, ct);
         var blocked = Dispatch.Blocked(
-            issue, from, to, playbook, waiting, letGo, sendBackStreak,
+            issue, from, rowTo, playbook, waiting, letGo, sendBackStreak,
             null, // a hop takes no ready-date fold of its own, and no economy or low fold either - see Dispatch.Blocked's loop parameter
             null,
             gate,
@@ -450,14 +451,14 @@ public class WorkController(
             new ClaimGate(claims, now, null, await claims.LineageAsync(db, now, ct)),
             Columns.Implementation(statuses),
             await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct),
-            repos, merged, built, hop, statuses,
+            repos, merged, built, hopKind, statuses,
             wip,
             await Wip.EpicsAsync(db, [issue.ParentId], ct));
 
         if (blocked is not null) return Conflict(blocked);
         if (!hop) return Conflict($"{key} is not a hop - a session moves this issue, and a hop does not");
 
-        var target = hopKind == HopKinds.SendBack ? Columns.SendBack(statuses)! : to!;
+        var target = hopKind == HopKinds.SendBack ? Columns.SendBack(statuses)! : rowTo!;
         var actor = await caller.ActorNameAsync(ct);
 
         var payload = hopKind switch
@@ -470,6 +471,7 @@ public class WorkController(
                 from = from.Name, to = target.Name, sendback = true,
                 length = issue.Description.Length, limit = playbook?.BriefLimit,
             }),
+            HopKinds.Approve => JsonSerializer.Serialize(new { from = from.Name, to = target.Name, preapproved = true }),
             _ => JsonSerializer.Serialize(new { from = from.Name, to = target.Name, express = true }),
         };
 
@@ -824,20 +826,21 @@ public class WorkController(
         var sendBackStreak = Columns.Implementation(statuses) is { } implementation
             ? await SendBackStreak.ForIssueAsync(db, issue.Id, implementation.Name, ct)
             : 0;
-        var hopKind = to is null ? null : Dispatch.HopKind(issue, from, to, family, statuses, wip, hopParent, playbook, sendBackStreak, claims.StallResumeLimit, gate.EffectivePreApproval(issue.Id).Level);
+        var hopKind = to is null ? null : Dispatch.HopKind(issue, from, to, family, statuses, wip, hopParent, playbook, sendBackStreak, claims.StallResumeLimit, gate.EffectivePreApproval(issue.Id).Level, merged, built, claimed.Now);
         var hop = hopKind is not null;
+        var rowTo = hopKind == HopKinds.Approve ? Columns.Advance(statuses, from) : to;
         var letGo = await LetGo.ForIssueAsync(db, issue.Id, ct);
         var sentBack = await SentBack.ForIssueAsync(db, issue.Id, ct);
         var blocked = Dispatch.Blocked(
-            issue, from, to, playbook, waiting, letGo, sendBackStreak, loop, pace, gate, family, claimed, Columns.Implementation(statuses),
+            issue, from, rowTo, playbook, waiting, letGo, sendBackStreak, loop, pace, gate, family, claimed, Columns.Implementation(statuses),
             await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct),
-            repos, merged, built, hop, statuses, wip, epics);
+            repos, merged, built, hopKind, statuses, wip, epics);
         var hopped = hop && blocked is null;
 
         return new WorkDto(
             issueDto,
             ToStatusDto(from),
-            to is null ? null : ToStatusDto(to),
+            rowTo is null ? null : ToStatusDto(rowTo),
             // The values the increment will actually run on, in place rather
             // than beside them. An issue's own model and effort beat whichever
             // playbook speaks for its next move, and a client that had to
@@ -860,7 +863,7 @@ public class WorkController(
             questions,
             blocked,
             IssueUrl(issueDto.Key),
-            Dispatch.KindOf(issue, from, to, merged, built, claimed.Now),
+            Dispatch.KindOf(issue, from, rowTo, merged, built, claimed.Now),
             await IssueMessagesController.UnreadAsync(db, issue.Id, ct),
             hopped,
             hopped ? hopKind : null,
@@ -869,7 +872,10 @@ public class WorkController(
             inReview,
             sentBack is null || blocked is not null ? null : new SentBackDto(
                 sentBack.Value.Length, sentBack.Value.Limit, EfHatchIssue.LegalParentTypes["task"].Contains(issue.Type)),
-            statuses.Select(ToStatusDto).ToList());
+            statuses.Select(ToStatusDto).ToList(),
+            blocked is null && hopKind == HopKinds.Approve
+                ? MergeWork.Judge(issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(), merged, built, issue.PullRequestClosedAt, claimed.Now).Sentence
+                : null);
     }
 
     /// <summary>
