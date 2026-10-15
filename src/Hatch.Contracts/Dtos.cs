@@ -1245,6 +1245,7 @@ public record PlaybookDto(
     int? Budget,
     int? BriefLimit,
     IReadOnlyList<string> DeniedTools,
+    bool IsCheck,
     DateTimeOffset UpdatedAt,
     int? ProjectId,
     string? ProjectKey,
@@ -1269,6 +1270,7 @@ public record PlaybookDto(
 /// <c>""</c> or whitespace hands it back to the whole board; a parsed
 /// positive integer names a project.
 /// </param>
+/// <param name="IsCheck">Null means false (on create) or leaves it alone (on patch).</param>
 public record PlaybookCreateRequest(
     int FromStatusId,
     int ToStatusId,
@@ -1280,7 +1282,8 @@ public record PlaybookCreateRequest(
     string? BriefLimit = null,
     string? Shape = null,
     IReadOnlyList<string>? DeniedTools = null,
-    string? ProjectId = null);
+    string? ProjectId = null,
+    bool? IsCheck = null);
 
 /// <summary>Null leaves a field alone, as everywhere else in Hatch.</summary>
 /// <param name="BriefLimit">
@@ -1294,6 +1297,7 @@ public record PlaybookCreateRequest(
 /// whitespace hands it back to the whole board; a parsed positive integer
 /// names a project - the same three states <paramref name="Budget"/> carries.
 /// </param>
+/// <param name="IsCheck">Null leaves it alone.</param>
 public record PlaybookPatchRequest(
     int? FromStatusId,
     int? ToStatusId,
@@ -1305,7 +1309,8 @@ public record PlaybookPatchRequest(
     string? BriefLimit = null,
     string? Shape = null,
     IReadOnlyList<string>? DeniedTools = null,
-    string? ProjectId = null);
+    string? ProjectId = null,
+    bool? IsCheck = null);
 
 /// <summary>
 /// What one issue overrides its playbooks with. Null leaves a field alone and

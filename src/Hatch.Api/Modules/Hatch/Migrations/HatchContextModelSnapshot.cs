@@ -490,6 +490,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<int>("FromStatusId")
                         .HasColumnType("integer");
 
+                    b.Property<bool>("IsCheck")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("Model")
                         .IsRequired()
                         .HasMaxLength(60)
