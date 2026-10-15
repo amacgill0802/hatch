@@ -1738,6 +1738,13 @@ public class EfHatchPlaybook
     /// </summary>
     public string? DeniedTools { get; set; }
 
+    /// <summary>
+    /// Whether a row this playbook moves into is a check: its session judges,
+    /// never edits, and the runner - not the session - moves the ticket on
+    /// its verdict (HA-422, "this epic adds two things", item 2).
+    /// </summary>
+    public bool IsCheck { get; set; }
+
     public required DateTimeOffset CreatedAt { get; set; }
     public required DateTimeOffset UpdatedAt { get; set; }
 

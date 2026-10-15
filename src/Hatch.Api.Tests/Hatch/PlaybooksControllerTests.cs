@@ -244,6 +244,22 @@ public class PlaybooksControllerTests
             .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false));
     }
 
+    [Fact]
+    public void IsCheck_IsClosedToAnApiKey()
+    {
+        var guard = typeof(PlaybooksController)
+            .GetMethod(nameof(PlaybooksController.PatchPlaybook))!
+            .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false)
+            .Cast<RequireRoleAttribute>()
+            .SingleOrDefault();
+
+        Assert.NotNull(guard);
+        Assert.Null(guard.AcceptScope);
+
+        Assert.Empty(typeof(PlaybooksController)
+            .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false));
+    }
+
     // ---- Project ----
 
     [Fact]
@@ -481,6 +497,24 @@ public class PlaybooksControllerTests
             Reason(refusal.Result));
     }
 
+    // ---- IsCheck ----
+
+    [Fact]
+    public async Task AnIsCheck_IsSetAndReadBack()
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync(isCheck: true);
+        Assert.True(row.IsCheck);
+
+        var toFalse = await h.SetAsync(row.Id, isCheck: false);
+        Assert.False(toFalse.IsCheck);
+        Assert.False((await h.ReadAsync(row.Id)).IsCheck);
+
+        var toTrue = await h.SetAsync(row.Id, isCheck: true);
+        Assert.True(toTrue.IsCheck);
+        Assert.True((await h.ReadAsync(row.Id)).IsCheck);
+    }
+
     // ---- Harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 9, 2, 12, 0, 0, TimeSpan.Zero);
@@ -493,16 +527,18 @@ public class PlaybooksControllerTests
         public required int ProjectA { get; init; }
 
         public async Task<PlaybookDto> CreateAsync(
-            string? budget = null, string? briefLimit = null, string? projectId = null, IReadOnlyList<string>? deniedTools = null) =>
+            string? budget = null, string? briefLimit = null, string? projectId = null, IReadOnlyList<string>? deniedTools = null,
+            bool? isCheck = null) =>
             Created(await Playbooks.CreatePlaybook(
                 new PlaybookCreateRequest(Todo, InProgress, [], "do it", "sonnet", "high", budget, briefLimit,
-                    ProjectId: projectId, DeniedTools: deniedTools), default));
+                    ProjectId: projectId, DeniedTools: deniedTools, IsCheck: isCheck), default));
 
         public async Task<PlaybookDto> SetAsync(
-            int id, string? budget = null, string? briefLimit = null, string? projectId = null, IReadOnlyList<string>? deniedTools = null) =>
+            int id, string? budget = null, string? briefLimit = null, string? projectId = null, IReadOnlyList<string>? deniedTools = null,
+            bool? isCheck = null) =>
             Value(await Playbooks.PatchPlaybook(
                 id, new PlaybookPatchRequest(null, null, null, null, null, null, budget, briefLimit,
-                    ProjectId: projectId, DeniedTools: deniedTools), default));
+                    ProjectId: projectId, DeniedTools: deniedTools, IsCheck: isCheck), default));
 
         public async Task<PlaybookDto> ReadAsync(int id) =>
             Value(await Playbooks.GetPlaybooks(default)).Single(p => p.Id == id);

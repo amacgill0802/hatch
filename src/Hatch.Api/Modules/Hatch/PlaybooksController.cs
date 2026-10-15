@@ -108,6 +108,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
             Budget = budget,
             BriefLimit = briefLimit,
             DeniedTools = EfHatchPlaybook.WriteDeniedTools(deniedTools),
+            IsCheck = request.IsCheck ?? false,
             ProjectId = projectId,
             CreatedAt = now,
             UpdatedAt = now,
@@ -188,6 +189,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
         playbook.Budget = budget;
         playbook.BriefLimit = briefLimit;
         playbook.DeniedTools = deniedTools;
+        playbook.IsCheck = request.IsCheck ?? playbook.IsCheck;
         playbook.ProjectId = projectId;
         playbook.UpdatedAt = time.GetUtcNow();
 
@@ -392,6 +394,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
         p.Budget,
         p.BriefLimit,
         EfHatchPlaybook.ReadDeniedTools(p.DeniedTools) ?? [],
+        p.IsCheck,
         p.UpdatedAt,
         p.ProjectId,
         p.Project?.Key,
