@@ -45,6 +45,12 @@ public static class Checkouts
     /// incarnation is found again rather than cloned twice. Null for a runner
     /// with none, which is every one before HA-19.
     /// </param>
+    /// <param name="lazyWorkspace">
+    /// True where the workspace was defaulted rather than asked for: one that
+    /// does not exist yet is then left uncreated and unwalked, since nothing
+    /// has been cloned into it and a command that clones nothing should not
+    /// leave a directory behind.
+    /// </param>
     /// <param name="strays">
     /// Every top-level entry under <paramref name="workspace"/> that is not
     /// itself a checkout and holds no checkout anywhere beneath it - printed
@@ -57,7 +63,8 @@ public static class Checkouts
         string? workspace,
         out IReadOnlyList<CheckoutEntry> checkouts,
         out IReadOnlyList<string> strays,
-        out string refusal)
+        out string refusal,
+        bool lazyWorkspace = false)
     {
         var found = new List<CheckoutEntry>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -93,7 +100,7 @@ public static class Checkouts
             found.Add(new CheckoutEntry(path, origin, Standing: false));
         }
 
-        if (workspace is not null)
+        if (workspace is not null && !(lazyWorkspace && !Directory.Exists(workspace)))
         {
             var others = standingRoot is null ? named : (IReadOnlyList<string>)[standingRoot, .. named];
             if (!OverlapsCheckout(workspace, others, out refusal)) return false;

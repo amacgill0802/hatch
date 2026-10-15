@@ -78,6 +78,14 @@ public sealed record Settings
     public string? Workspace { get; init; }
 
     /// <summary>
+    /// True where <see cref="Workspace"/> is <see cref="DefaultWorkspacePath"/>
+    /// because nothing set one. Such a workspace is held lightly: it is not
+    /// created until a clone needs it, and it gives way rather than refusing
+    /// where it conflicts with the checkout the command stands in.
+    /// </summary>
+    public bool WorkspaceDefaulted { get; init; }
+
+    /// <summary>
     /// How long a spawned session may say nothing before the renderer says what
     /// it is still waiting on. Zero turns the pulse off.
     /// </summary>
@@ -112,6 +120,18 @@ public sealed record Settings
             Environment.SpecialFolder.ApplicationData, Environment.SpecialFolderOption.DoNotVerify),
         "hatch",
         "config");
+
+    /// <summary>
+    /// Where a runner clones what the board binds when nobody named a place:
+    /// <c>ApplicationData/hatch/workspace</c>, beside <see cref="UserConfigPath"/>.
+    /// Built from the operating system's per-user folder, so it is a convention
+    /// every installation shares and not a path that is true of only one.
+    /// </summary>
+    public static string DefaultWorkspacePath() => Path.Combine(
+        Environment.GetFolderPath(
+            Environment.SpecialFolder.ApplicationData, Environment.SpecialFolderOption.DoNotVerify),
+        "hatch",
+        "workspace");
 
     /// <summary>
     /// The three layers, folded. Answers the settings, or the sentence saying
@@ -195,7 +215,8 @@ public sealed record Settings
             HeartbeatSeconds = pulse,
             RetrySeconds = retrySeconds,
             Repos = repos,
-            Workspace = workspace,
+            Workspace = workspace ?? DefaultWorkspacePath(),
+            WorkspaceDefaulted = workspace is null,
             Sources = sources,
         };
         return true;

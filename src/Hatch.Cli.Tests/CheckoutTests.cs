@@ -390,6 +390,32 @@ public sealed class CheckoutTests : IDisposable
     }
 
     [Fact]
+    public void A_lazy_workspace_that_does_not_exist_is_neither_created_nor_walked()
+    {
+        var workspace = Path.Combine(_temp, "never-made");
+
+        Assert.True(Checkouts.TryDiscover(null, [], workspace, out var checkouts, out var strays, out _, lazyWorkspace: true));
+
+        Assert.Empty(checkouts);
+        Assert.Empty(strays);
+        Assert.False(Directory.Exists(workspace));
+    }
+
+    [Fact]
+    public void A_lazy_workspace_that_exists_is_walked_like_any_other()
+    {
+        var workspace = Tree("workspace");
+        var clone = Path.Combine(workspace, "example.test", "owner", "repo");
+        Directory.CreateDirectory(clone);
+        Git(clone, "init", "--quiet");
+        Git(clone, "remote", "add", "origin", "https://example.test/owner/repo.git");
+
+        Assert.True(Checkouts.TryDiscover(null, [], workspace, out var checkouts, out _, out _, lazyWorkspace: true));
+
+        Assert.Equal(clone, Assert.Single(checkouts).Path);
+    }
+
+    [Fact]
     public void EnsureWorkspace_makes_the_directory_and_proves_it_writable()
     {
         var path = Path.Combine(_temp, "brand-new", "workspace");

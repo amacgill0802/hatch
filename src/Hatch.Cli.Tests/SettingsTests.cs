@@ -162,13 +162,34 @@ public sealed class SettingsTests : IDisposable
     // ---- HATCH_WORKSPACE ----
 
     [Fact]
-    public void HATCH_WORKSPACE_unset_is_null()
+    public void HATCH_WORKSPACE_unset_falls_back_to_the_per_user_default()
     {
         Assert.True(Settings.TryLoad(
             null, Env(("HATCH_BASE", "https://somewhere")), out var settings, out _,
             Path.Combine(_temp, "does-not-exist")));
 
-        Assert.Null(settings.Workspace);
+        Assert.Equal(Settings.DefaultWorkspacePath(), settings.Workspace);
+        Assert.True(settings.WorkspaceDefaulted);
+        Assert.Equal(Settings.Layer.Unset, settings.SourceOf("HATCH_WORKSPACE"));
+    }
+
+    [Fact]
+    public void The_default_workspace_sits_beside_the_per_user_config_and_names_no_one()
+    {
+        Assert.Equal(
+            Path.Combine(Path.GetDirectoryName(Settings.UserConfigPath())!, "workspace"),
+            Settings.DefaultWorkspacePath());
+    }
+
+    [Fact]
+    public void A_workspace_that_is_set_is_not_defaulted()
+    {
+        Assert.True(Settings.TryLoad(
+            null, Env(("HATCH_BASE", "https://somewhere"), ("HATCH_WORKSPACE", "/mine")), out var settings, out _,
+            Path.Combine(_temp, "does-not-exist")));
+
+        Assert.Equal("/mine", settings.Workspace);
+        Assert.False(settings.WorkspaceDefaulted);
     }
 
     [Fact]

@@ -614,7 +614,9 @@ public sealed record ConfigCommand(
             var shown = value is not { Length: > 0 }
                 ? name == "HATCH_KEY"
                     ? $"<unset - calls go out as \"{RunnerName}\", which only a wall-off Hatch reads>"
-                    : "<unset>"
+                    : name == "HATCH_WORKSPACE"
+                        ? $"<unset - clones go to {Settings.DefaultWorkspacePath()}>"
+                        : "<unset>"
                 : name == "HATCH_KEY"
                     ? Mask(value)
                     : value;

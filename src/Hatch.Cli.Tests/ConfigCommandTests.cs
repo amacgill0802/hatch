@@ -899,10 +899,10 @@ public sealed class ConfigCommandTests : IDisposable
     }
 
     [Fact]
-    public async Task Show_with_no_workspace_says_unset()
+    public async Task Show_with_no_workspace_says_unset_and_where_clones_go_instead()
     {
         await Command(new Replies()).RunAsync(["--show"], default);
-        Assert.Contains("HATCH_WORKSPACE:   <unset>", Said);
+        Assert.Contains($"HATCH_WORKSPACE:   <unset - clones go to {Settings.DefaultWorkspacePath()}>", Said);
     }
 
     public void Dispose()

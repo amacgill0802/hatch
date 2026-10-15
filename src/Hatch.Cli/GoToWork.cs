@@ -582,7 +582,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
             var effectiveWorkspace = workspaceFlag ?? runtime.Settings.Workspace;
 
             if (!Checkouts.TryDiscover(
-                    standing, effectiveRepos, effectiveWorkspace, out var repoCheckouts, out var strays, out var badRepo))
+                    standing, effectiveRepos, effectiveWorkspace, out var repoCheckouts, out var strays, out var badRepo,
+                    lazyWorkspace: workspaceFlag is null && runtime.Settings.WorkspaceDefaulted))
             {
                 runtime.Say.Complain(badRepo);
                 return 1;
@@ -600,7 +601,11 @@ public sealed class GoToWorkCommand(Runtime runtime)
             {
                 Checkouts = repoCheckouts,
                 Root = root,
-                Settings = runtime.Settings with { Workspace = effectiveWorkspace },
+                Settings = runtime.Settings with
+                {
+                    Workspace = effectiveWorkspace,
+                    WorkspaceDefaulted = workspaceFlag is null && runtime.Settings.WorkspaceDefaulted,
+                },
             };
         }
 

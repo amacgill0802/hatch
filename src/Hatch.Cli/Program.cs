@@ -98,7 +98,20 @@ if (command == "inbox")
 // claimed, uniformly for all sixteen commands: a misconfigured HATCH_REPOS is
 // exactly as broken for `hatch board` as for the loop. `work` and
 // `go-to-work` may override this list with their own --repo, below.
-if (!Checkouts.TryDiscover(root, settings.Repos, settings.Workspace, out var checkouts, out var strays, out var badRepo))
+var discovered = Checkouts.TryDiscover(
+    root, settings.Repos, settings.Workspace, out var checkouts, out var strays, out var badRepo,
+    lazyWorkspace: settings.WorkspaceDefaulted);
+
+// A workspace nobody asked for gives way instead of refusing: the common case
+// is a command run from inside one of its own clones, which is a conflict the
+// person never created and cannot fix by a setting they never made.
+if (!discovered && settings.WorkspaceDefaulted)
+{
+    settings = settings with { Workspace = null, WorkspaceDefaulted = false };
+    discovered = Checkouts.TryDiscover(root, settings.Repos, null, out checkouts, out strays, out badRepo);
+}
+
+if (!discovered)
 {
     say.Complain(badRepo);
     return 1;

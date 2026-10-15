@@ -99,7 +99,8 @@ public sealed class WorkCommand(Runtime runtime)
             var effectiveWorkspace = workspaceFlag ?? runtime.Settings.Workspace;
 
             if (!Checkouts.TryDiscover(
-                    standing, effectiveRepos, effectiveWorkspace, out var repoCheckouts, out var strays, out var badRepo))
+                    standing, effectiveRepos, effectiveWorkspace, out var repoCheckouts, out var strays, out var badRepo,
+                    lazyWorkspace: workspaceFlag is null && runtime.Settings.WorkspaceDefaulted))
             {
                 runtime.Say.Complain(badRepo);
                 return 1;
@@ -120,7 +121,11 @@ public sealed class WorkCommand(Runtime runtime)
                 RunnerName = runnerName,
                 Where = Checkout.Where(Checkout.Host(), root),
                 Board = runtime.NewBoard(runnerName),
-                Settings = runtime.Settings with { Workspace = effectiveWorkspace },
+                Settings = runtime.Settings with
+                {
+                    Workspace = effectiveWorkspace,
+                    WorkspaceDefaulted = workspaceFlag is null && runtime.Settings.WorkspaceDefaulted,
+                },
             };
         }
 
