@@ -7662,7 +7662,7 @@ public class WorkControllerTests
 
         /// <summary>
         /// Express, written straight onto the row - what the route that writes
-        /// it accepts and refuses is <see cref="IssueExpressControllerTests"/>'s
+        /// it accepts and refuses is <see cref="IssuePreApprovalControllerTests"/>'s
         /// business; these tests are about what the dispatcher does with the
         /// flag once it is set.
         /// </summary>

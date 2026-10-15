@@ -178,8 +178,8 @@ public class IssueExpressControllerTests
     [Fact]
     public void SettingIt_IsClosedToAnApiKey()
     {
-        var guard = typeof(IssueExpressController)
-            .GetMethod(nameof(IssueExpressController.PutIssueExpress))!
+        var guard = typeof(IssuePreApprovalController)
+            .GetMethod(nameof(IssuePreApprovalController.PutIssueExpress))!
             .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false)
             .Cast<RequireRoleAttribute>()
             .SingleOrDefault();
@@ -191,7 +191,7 @@ public class IssueExpressControllerTests
         Assert.NotNull(guard);
         Assert.Null(guard.AcceptScope);
 
-        Assert.Empty(typeof(IssueExpressController)
+        Assert.Empty(typeof(IssuePreApprovalController)
             .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false));
     }
 
@@ -250,7 +250,7 @@ public class IssueExpressControllerTests
     private sealed class Harness
     {
         public required HatchContext Db { get; init; }
-        public required IssueExpressController Express { get; init; }
+        public required IssuePreApprovalController Express { get; init; }
         public required IssuesController Issues { get; init; }
         public required BoardController Board { get; init; }
         public required IssueThreadController Thread { get; init; }
@@ -312,7 +312,7 @@ public class IssueExpressControllerTests
         return new Harness
         {
             Db = db,
-            Express = new IssueExpressController(db, actors, TestClaims.With(), caller, time),
+            Express = new IssuePreApprovalController(db, actors, TestClaims.With(), caller, time, new ProjectAccess(db, actors)),
             Issues = new IssuesController(db, new RankService(db), actors, TestClaims.With(), caller, time, new ProjectAccess(db, actors)),
             Board = new BoardController(db, actors, TestClaims.With(), time),
             Thread = new IssueThreadController(db, caller, time),

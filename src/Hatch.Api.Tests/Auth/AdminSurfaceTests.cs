@@ -398,7 +398,10 @@ public class AdminSurfaceTests
         // pass unattended, so a key that could set it could carry its own
         // ticket through the night with nobody reading it first. Reading it is
         // open, the same as expedite. See IssueExpressController.
-        "IssueExpressController.PutIssueExpress",
+        "IssuePreApprovalController.PutIssueExpress",
+
+        // The level by name, same gate as above - set net-new over PutIssueExpress.
+        "IssuePreApprovalController.PutIssuePreApproval",
 
         // Holding and resuming a ticket - an agent that could hold its own
         // ticket could park it off the board for the night. Stalling is the
@@ -565,7 +568,8 @@ public class AdminSurfaceTests
         "AssigneeController.PutIssueAssignee",
         "IssueExpediteController.PutIssuePriority",
         "IssueExpediteController.PutIssueExpedite",
-        "IssueExpressController.PutIssueExpress",
+        "IssuePreApprovalController.PutIssueExpress",
+        "IssuePreApprovalController.PutIssuePreApproval",
         "IssueStallController.PutHold",
         "StatusesController.PutExpressSkips",
         "StatusesController.PutParentPulls",

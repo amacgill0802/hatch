@@ -1384,6 +1384,15 @@ public record PriorityRequest(string Priority);
 public record ExpressRequest(bool Express);
 
 /// <summary>
+/// The level to set, by name - <c>"none"</c>, <c>"express"</c> or
+/// <c>"preapproved"</c> - see <see cref="PreApprovalLevels"/>. One required
+/// string rather than a boolean, for the same reason <see cref="PriorityRequest"/>
+/// is: the same route both raises and lowers, and the caller says which it
+/// meant.
+/// </summary>
+public record PreApprovalRequest(string Level);
+
+/// <summary>
 /// The sentence an increment leaves behind it, saying why it left this ticket
 /// where it found it - see <see cref="EfHatchIssue.StalledAt"/>.
 /// </summary>

@@ -754,10 +754,13 @@ public class EfHatchIssue
     /// </summary>
     /// <remarks>
     /// <para>Set by a person
-    /// (<see cref="IssueExpressController"/>), for the same reason as
+    /// (<see cref="IssuePreApprovalController"/>), for the same reason as
     /// <see cref="Priority"/>: it decides which gates the loop may pass
     /// unattended, and a key that could set it could carry its own ticket
-    /// through the night unattended.</para>
+    /// through the night unattended. Setting <see cref="PreApprovalLevels.PreApproved"/>
+    /// is an approver's own act, so a key that could set it could approve its
+    /// own ticket in advance - and lowering from it needs the same approver,
+    /// because it is undoing that act.</para>
     ///
     /// <para>Inheritance. A level set here is live on everything beneath this
     /// issue that sets none of its own - every child, every grandchild, down
