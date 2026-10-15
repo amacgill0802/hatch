@@ -882,6 +882,7 @@ export interface Playbook {
   briefLimit: number | null;
   /** Empty means every tool. */
   deniedTools: string[];
+  isCheck: boolean;
   updatedAt: string;
   /** The one project this row speaks for, or null to speak for every project. */
   projectId: number | null;
@@ -900,6 +901,7 @@ export interface PlaybookCreateRequest {
   briefLimit?: string;
   shape?: PlaybookShape;
   deniedTools?: string[];
+  isCheck?: boolean;
   projectId?: string;
 }
 
@@ -915,6 +917,7 @@ export interface PlaybookPatchRequest {
   briefLimit?: string;
   shape?: PlaybookShape;
   deniedTools?: string[];
+  isCheck?: boolean;
   projectId?: string;
 }
 

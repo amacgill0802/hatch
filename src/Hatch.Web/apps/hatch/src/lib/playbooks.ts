@@ -71,3 +71,8 @@ export function projectLabel(p: Pick<Playbook, 'projectKey' | 'projectName'>): s
 export function matchesProjectFilter(p: Pick<Playbook, 'projectKey'>, projectKey: string): boolean {
   return projectKey === '' || p.projectKey === null || p.projectKey === projectKey;
 }
+
+/** A check that can edit - the case the epic exists to prevent. */
+export function isUncheckedEdit(p: Pick<Playbook, 'isCheck' | 'deniedTools'>): boolean {
+  return p.isCheck && p.deniedTools.length === 0;
+}

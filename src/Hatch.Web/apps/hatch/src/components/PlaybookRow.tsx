@@ -1,7 +1,7 @@
-import { Button, ProjectMark, Text } from '@hatch/ui';
+import { Badge, Button, ProjectMark, Text } from '@hatch/ui';
 import { StatusPill } from './StatusPill';
 import { TypeBadge } from './TypeBadge';
-import { isReviewPlaybook, transitionLabel } from '../lib/playbooks';
+import { isReviewPlaybook, isUncheckedEdit, transitionLabel } from '../lib/playbooks';
 import { projectLogoUrl } from '../lib/projectLogo';
 import { hasMultipleProjects } from '../lib/useProjects';
 import type { Playbook, Project, Status } from '../types';
@@ -82,6 +82,8 @@ export function PlaybookRow({
           <span className="hatch-playbook-model-effort">
             {playbook.model} {playbook.effort}
           </span>
+
+          {isUncheckedEdit(playbook) && <Badge tone="danger">a check with no denied tools can edit</Badge>}
         </button>
       </td>
       <td>

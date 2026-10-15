@@ -44,6 +44,7 @@ interface Draft {
   budget: string;
   briefLimit: string;
   deniedTools: string;
+  isCheck: boolean;
   projectId: string;
   prompt: string;
 }
@@ -60,6 +61,7 @@ function openDraft(playbook: Playbook | null, statuses: Status[]): Draft {
       budget: budgetDraft(playbook.budget),
       briefLimit: briefLimitDraft(playbook.briefLimit),
       deniedTools: deniedToolsDraft(playbook.deniedTools),
+      isCheck: playbook.isCheck,
       projectId: playbook.projectId === null ? '' : String(playbook.projectId),
       prompt: playbook.prompt,
     };
@@ -75,6 +77,7 @@ function openDraft(playbook: Playbook | null, statuses: Status[]): Draft {
     budget: '',
     briefLimit: '',
     deniedTools: '',
+    isCheck: false,
     projectId: '',
     prompt: '',
   };
@@ -140,6 +143,7 @@ export function PlaybookEditDialog({
           budget: budgetRequest(draft!.budget),
           briefLimit: briefLimitRequest(draft!.briefLimit),
           deniedTools: deniedToolsRequest(draft!.deniedTools),
+          isCheck: draft!.isCheck,
           projectId: draft!.projectId,
           prompt: draft!.prompt,
         });
@@ -154,6 +158,7 @@ export function PlaybookEditDialog({
           budget: budgetRequest(draft!.budget),
           briefLimit: briefLimitRequest(draft!.briefLimit),
           deniedTools: deniedToolsRequest(draft!.deniedTools),
+          isCheck: draft!.isCheck,
           projectId: draft!.projectId || undefined,
           prompt: draft!.prompt,
         });
@@ -238,6 +243,12 @@ export function PlaybookEditDialog({
               value={draft.deniedTools}
               onChange={(e) => write({ deniedTools: e.target.value })}
             />
+          </Field>
+          <Field label="Is check" hint="A check reviews without editing. Pair it with denied tools, or it can edit anyway." as="div">
+            <label>
+              <input type="checkbox" checked={draft.isCheck} onChange={(e) => write({ isCheck: e.target.checked })} />
+              Is check
+            </label>
           </Field>
           {hasMultipleProjects(projects) && (
             <Field label="Project">

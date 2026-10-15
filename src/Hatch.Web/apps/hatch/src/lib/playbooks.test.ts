@@ -7,6 +7,7 @@ import {
   deniedToolsDraft,
   deniedToolsRequest,
   isReviewPlaybook,
+  isUncheckedEdit,
   matchesProjectFilter,
   projectLabel,
   transitionLabel,
@@ -118,5 +119,19 @@ describe('matchesProjectFilter', () => {
     expect(matchesProjectFilter(boardWide, 'A')).toBe(true);
     expect(matchesProjectFilter(projectA, 'A')).toBe(true);
     expect(matchesProjectFilter(projectB, 'A')).toBe(false);
+  });
+});
+
+describe('isUncheckedEdit', () => {
+  it('is a check with no denied tools', () => {
+    expect(isUncheckedEdit({ isCheck: true, deniedTools: [] })).toBe(true);
+  });
+
+  it('is not a check that denies at least one tool', () => {
+    expect(isUncheckedEdit({ isCheck: true, deniedTools: ['Bash'] })).toBe(false);
+  });
+
+  it('is not a row that is not a check at all', () => {
+    expect(isUncheckedEdit({ isCheck: false, deniedTools: [] })).toBe(false);
   });
 });
