@@ -1564,7 +1564,9 @@ public record WorkDto(
     bool InReview = false,
     SentBackDto? SentBack = null,
     IReadOnlyList<StatusDto>? Statuses = null,
-    string? ClearNote = null);
+    string? ClearNote = null,
+    string? Landing = null,
+    bool ChecksRequired = true);
 
 /// <summary>
 /// The two numbers a send-back for an over-long brief carried, and whether
@@ -1735,7 +1737,8 @@ public record ReviewCheckDto(
     IReadOnlyList<BuildCheckDto>? BuildChecks = null,
     string? PullRequestUrl = null,
     MergeWorkDto? MergeWork = null,
-    string ProjectKey = "");
+    string ProjectKey = "",
+    string Landing = Landings.PullRequest);
 
 /// <summary>The kind of work an issue in the merges column is, and why it is not work where it is not - see <see cref="Hatch.Api.Modules.Hatch.MergeWork.Judgement"/>.</summary>
 /// <param name="IsHead">

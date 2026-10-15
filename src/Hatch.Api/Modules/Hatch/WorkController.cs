@@ -337,7 +337,8 @@ public class WorkController(
                 built.Select(IssueBuildChecks.Project).ToList(),
                 i.PullRequestUrl,
                 mergeWork is { } j ? new MergeWorkDto(j.Kind, j.Sentence, trainSlots.GetValueOrDefault(i.Id)?.IsHead ?? true) : null,
-                i.Project.Key);
+                i.Project.Key,
+                i.Project.Landing);
         }).ToList();
     }
 
@@ -893,7 +894,9 @@ public class WorkController(
             statuses.Select(ToStatusDto).ToList(),
             blocked is null && hopKind == HopKinds.Approve
                 ? MergeWork.Judge(issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(), merged, built, issue.PullRequestClosedAt, claimed.Now).Sentence
-                : null);
+                : null,
+            issue.Project!.Landing,
+            issue.Project!.ChecksRequired);
     }
 
     /// <summary>
