@@ -758,9 +758,9 @@
   color: var(--mark-ink, var(--muted));
 }
 
-/* Ready for the sibling ticket to wire CardFace's enhancers into: a one-line
-   row so a card's assignee, claim mark and the rest never push the head
-   into a second line the way the old single flex row did. */
+/* A card's assignee, claim mark and the rest, in a one-line row of their
+   own so they never push the head into a second line the way the old
+   single flex row did. Drawn only when the card carries at least one. */
 .hatch-card-marks {
   display: flex;
   align-items: center;
@@ -783,12 +783,12 @@
   overflow-wrap: anywhere;
 }
 
-/* Who owns the card, in the head beside the type badge - and drawn only when
-   somebody does. There is no empty state here on purpose: most of the board
-   belongs to nobody, and a placeholder on every card is noise the eye has to
-   skip past to find the three that are somebody's.
+/* Who owns the card, last in the marks row and drawn only when somebody
+   does. There is no empty state here on purpose: most of the board belongs
+   to nobody, and a placeholder on every card is noise the eye has to skip
+   past to find the three that are somebody's.
 
-   Truncated rather than wrapped, because the head is one line and a long name
+   Truncated rather than wrapped, because the row is one line and a long name
    must not push the question mark onto a second one. Both themes come from the
    tokens; nothing here is a literal colour. */
 .hatch-card-assignee {
