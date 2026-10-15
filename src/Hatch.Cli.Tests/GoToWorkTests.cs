@@ -1582,6 +1582,85 @@ public sealed class GoToWorkTests
         h.Runtime with { Settings = h.Runtime.Settings with { Workspace = workspace } };
 
     [Fact]
+    public async Task A_default_workspace_held_by_another_loop_is_served_around_not_refused()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
+        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+
+        var workspace = Path.Combine(h.Temp, "default-workspace");
+        using var held = LoopLock.Take(workspace, h.Temp, out _);
+        Assert.NotNull(held);
+
+        var runtime = h.Runtime with { Settings = h.Runtime.Settings.WithWorkspace(workspace, defaulted: true) };
+
+        Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync(["--once"], default));
+
+        Assert.Contains(h.Say.Said, l => l.Contains("holds the default workspace", StringComparison.Ordinal));
+        Assert.DoesNotContain(h.Say.Complained, l => l.Contains("already running", StringComparison.Ordinal));
+        Assert.DoesNotContain("clones=true", Assert.Single(h.Wire.To("GET", Queue)).Query);
+    }
+
+    [Fact]
+    public async Task A_workspace_somebody_chose_that_another_loop_holds_is_still_refused()
+    {
+        using var h = new Harness();
+
+        var workspace = Path.Combine(h.Temp, "chosen-workspace");
+        using var held = LoopLock.Take(workspace, h.Temp, out _);
+        Assert.NotNull(held);
+
+        var runtime = h.Runtime with { Settings = h.Runtime.Settings.WithWorkspace(workspace, defaulted: false) };
+
+        Assert.Equal(1, await new GoToWorkCommand(runtime).RunAsync(["--once"], default));
+
+        Assert.Contains(h.Say.Complained, l => l.Contains("already running in", StringComparison.Ordinal));
+        Assert.Empty(h.Wire.Calls);
+    }
+
+    [Fact]
+    public async Task Workspace_off_on_the_command_line_declares_no_clones_even_where_a_workspace_is_set()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
+        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+
+        var workspace = Path.Combine(h.Temp, "set-workspace");
+        Directory.CreateDirectory(workspace);
+
+        Assert.Equal(
+            0, await new GoToWorkCommand(WithWorkspace(h, workspace)).RunAsync(["--once", "--workspace", "off"], default));
+
+        Assert.DoesNotContain("clones=true", Assert.Single(h.Wire.To("GET", Queue)).Query);
+        Assert.Empty(h.Clone.Requested);
+    }
+
+    [Fact]
+    public async Task A_default_workspace_that_the_standing_checkout_sits_in_gives_way_to_a_named_repo()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
+        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+
+        // --repo names a clone that lives under the default workspace: a
+        // conflict the person never made, so the run serves it and goes on.
+        var workspace = Path.Combine(h.Temp, "default-workspace");
+        var clone = Path.Combine(workspace, "example.test", "owner", "repo");
+        Directory.CreateDirectory(clone);
+        Git(clone, "init", "--quiet");
+        Git(clone, "remote", "add", "origin", "https://example.test/owner/repo.git");
+
+        var runtime = h.Runtime with { Settings = h.Runtime.Settings.WithWorkspace(workspace, defaulted: true) };
+
+        Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync(["--once", "--repo", clone], default));
+
+        Assert.DoesNotContain(h.Say.Complained, l => l.Contains("one contains the other", StringComparison.Ordinal));
+        var query = Assert.Single(h.Wire.To("GET", Queue)).Query;
+        Assert.Contains($"remote={Uri.EscapeDataString("https://example.test/owner/repo.git")}", query);
+        Assert.DoesNotContain("clones=true", query);
+    }
+
+    [Fact]
     public async Task A_workspace_holding_two_prior_clones_is_served_and_their_remotes_declared_with_clones_true()
     {
         using var h = new Harness();

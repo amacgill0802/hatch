@@ -86,6 +86,30 @@ public sealed record Settings
     public bool WorkspaceDefaulted { get; init; }
 
     /// <summary>
+    /// What <c>HATCH_WORKSPACE</c> (or <c>--workspace</c>) says to turn the
+    /// default off: this runner serves the checkouts it has and never clones.
+    /// A word rather than a blank because a blank value reads as unset in every
+    /// layer, which is how the default gets applied at all.
+    /// </summary>
+    public const string WorkspaceOff = "off";
+
+    /// <summary>Whether a workspace value is <see cref="WorkspaceOff"/>.</summary>
+    public static bool IsWorkspaceOff(string? value) =>
+        string.Equals(value?.Trim(), WorkspaceOff, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The workspace one run serves, and whether it is the default: the
+    /// command line's <paramref name="flag"/> if there is one, as that run's
+    /// whole answer, and these settings' own otherwise.
+    /// </summary>
+    public (string? Workspace, bool Defaulted) WorkspaceFor(string? flag) =>
+        flag is null ? (Workspace, WorkspaceDefaulted) : (IsWorkspaceOff(flag) ? null : flag, false);
+
+    /// <summary>These settings with the workspace a run actually ended up serving.</summary>
+    public Settings WithWorkspace(string? workspace, bool defaulted) =>
+        this with { Workspace = workspace, WorkspaceDefaulted = defaulted && workspace is not null };
+
+    /// <summary>
     /// How long a spawned session may say nothing before the renderer says what
     /// it is still waiting on. Zero turns the pulse off.
     /// </summary>
@@ -215,7 +239,7 @@ public sealed record Settings
             HeartbeatSeconds = pulse,
             RetrySeconds = retrySeconds,
             Repos = repos,
-            Workspace = workspace ?? DefaultWorkspacePath(),
+            Workspace = IsWorkspaceOff(workspace) ? null : workspace ?? DefaultWorkspacePath(),
             WorkspaceDefaulted = workspace is null,
             Sources = sources,
         };
