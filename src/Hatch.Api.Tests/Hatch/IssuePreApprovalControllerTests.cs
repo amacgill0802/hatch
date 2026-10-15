@@ -387,6 +387,78 @@ public class IssuePreApprovalControllerTests
         Assert.Equal(PreApprovalLevels.PreApprovedName, marked.PreApproval);
     }
 
+    [Fact]
+    public async Task ANonApprover_CannotLowerFromPreapprovedToExpress()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await h.PreApprovalAsync(issue.Key, PreApprovalLevels.PreApproved);
+        h.Actors.Me = h.Actors.AddPerson("Ada");
+
+        var refusal = await h.Express.PutIssuePreApproval(
+            issue.Key, new PreApprovalRequest(PreApprovalLevels.ExpressName), default);
+
+        var obj = Assert.IsType<ObjectResult>(refusal.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, obj.StatusCode);
+        Assert.Equal(
+            "only an owner or approver of AER may set pre-approval - it is the approve press given in advance",
+            obj.Value);
+    }
+
+    [Fact]
+    public async Task ANonApprover_CannotLowerFromPreapprovedToNone()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await h.PreApprovalAsync(issue.Key, PreApprovalLevels.PreApproved);
+        h.Actors.Me = h.Actors.AddPerson("Ada");
+
+        var refusal = await h.Express.PutIssuePreApproval(
+            issue.Key, new PreApprovalRequest(PreApprovalLevels.NoneName), default);
+
+        var obj = Assert.IsType<ObjectResult>(refusal.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, obj.StatusCode);
+        Assert.Equal(
+            "only an owner or approver of AER may set pre-approval - it is the approve press given in advance",
+            obj.Value);
+    }
+
+    [Theory]
+    [InlineData(PreApprovalLevels.ExpressName)]
+    [InlineData(PreApprovalLevels.NoneName)]
+    public async Task AnApprover_MayLowerFromPreapprovedToExpressOrNone(string target)
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await h.PreApprovalAsync(issue.Key, PreApprovalLevels.PreApproved);
+        var ada = h.Actors.AddPerson("Ada");
+        await h.MemberAsync(ada.Id, ProjectMemberRole.Approver);
+        h.Actors.Me = ada;
+
+        var lowered = Value(await h.Express.PutIssuePreApproval(
+            issue.Key, new PreApprovalRequest(target), default));
+
+        Assert.Equal(target, lowered.PreApproval);
+    }
+
+    [Fact]
+    public async Task LoweringFromPreapproved_IsNotAffectedByWhetherReviewIsProtected()
+    {
+        var h = await NewAsync(seam: true);
+        var issue = await h.FileAsync();
+        await h.PreApprovalAsync(issue.Key, PreApprovalLevels.PreApproved);
+        h.Actors.Me = h.Actors.AddPerson("Ada");
+
+        var refusal = await h.Express.PutIssuePreApproval(
+            issue.Key, new PreApprovalRequest(PreApprovalLevels.NoneName), default);
+
+        var obj = Assert.IsType<ObjectResult>(refusal.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, obj.StatusCode);
+        Assert.Equal(
+            "only an owner or approver of AER may set pre-approval - it is the approve press given in advance",
+            obj.Value);
+    }
+
     // ---- The legacy alias ----
 
     // ---- Harness ----
