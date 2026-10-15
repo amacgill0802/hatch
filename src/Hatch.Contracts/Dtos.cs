@@ -962,6 +962,15 @@ public record ActivityPageDto(IReadOnlyList<ActivityEventDto> Events, bool HasMo
 /// Non-null only alongside <paramref name="Trunk"/>.
 /// </param>
 /// <param name="Trunk">The trunk's name as a counted clean merge check reported it, or <c>null</c> when <paramref name="HoldsTrunk"/> is.</param>
+/// <param name="HeldSentence">
+/// Non-null only for a pre-approved row <c>MergeWork.Judge</c> still holds -
+/// a closed pull request, an ambiguous or missing branch, a stale unread tip:
+/// the four reasons HA-465 left standing on a person's row. Null for every row
+/// that is not pre-approved, and null for a pre-approved row the judge would
+/// merge, update, or is still progressing on its own, since neither of those
+/// reaches this list at all. Defaults to <c>null</c> so an older client still
+/// reads.
+/// </param>
 public record ReviewDto(
     string Key,
     string Title,
@@ -969,7 +978,8 @@ public record ReviewDto(
     string PullRequestUrl,
     string BuildState = ReviewBuildStates.Unknown,
     bool? HoldsTrunk = null,
-    string? Trunk = null);
+    string? Trunk = null,
+    string? HeldSentence = null);
 
 /// <summary>
 /// The two things that stop a night, in one read: a pull request nobody has
