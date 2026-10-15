@@ -719,6 +719,16 @@
   border-color: var(--primary);
 }
 
+/* One indent per level, and the rule that says which ancestor it belongs to -
+   the same pattern .hatch-plan-nested draws for the Plan page, sized down for
+   the board's narrower column and capped at depth 2: see lib/lineage.ts. */
+.hatch-card.nested {
+  margin-left: calc(min(var(--card-depth, 0), 2) * var(--sp-3));
+  margin-top: calc(var(--sp-1) - var(--sp-2));
+  border-left: 1px solid var(--line);
+  padding-left: calc(var(--sp-2-5) - 1px);
+}
+
 .hatch-card.dragging {
   opacity: 0.4;
 }
