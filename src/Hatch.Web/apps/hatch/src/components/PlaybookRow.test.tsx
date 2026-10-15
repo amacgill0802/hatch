@@ -17,6 +17,7 @@ const BASE: Playbook = {
   budget: null,
   briefLimit: null,
   deniedTools: [],
+  isCheck: false,
   updatedAt: '2026-01-01T00:00:00Z',
   projectId: null,
   projectKey: null,
@@ -144,6 +145,26 @@ describe('PlaybookRow', () => {
     );
     const deleteButton = /<button[^>]*>Delete<\/button>/.exec(html)![0];
     expect(deleteButton).not.toContain('disabled');
+  });
+
+  it('shows the warning badge for a check with no denied tools, and in no other case', () => {
+    const uncheckedCheck: Playbook = { ...BASE, isCheck: true, deniedTools: [] };
+    const html = renderToStaticMarkup(
+      <PlaybookRow playbook={uncheckedCheck} projects={ONE_PROJECT} statuses={STATUSES} onEdit={noop} onDelete={noop} />,
+    );
+    expect(html).toContain('hatch-badge--danger');
+
+    const guardedCheck: Playbook = { ...BASE, isCheck: true, deniedTools: ['Bash'] };
+    const guardedHtml = renderToStaticMarkup(
+      <PlaybookRow playbook={guardedCheck} projects={ONE_PROJECT} statuses={STATUSES} onEdit={noop} onDelete={noop} />,
+    );
+    expect(guardedHtml).not.toContain('hatch-badge--danger');
+
+    const notCheck: Playbook = { ...BASE, isCheck: false, deniedTools: [] };
+    const notCheckHtml = renderToStaticMarkup(
+      <PlaybookRow playbook={notCheck} projects={ONE_PROJECT} statuses={STATUSES} onEdit={noop} onDelete={noop} />,
+    );
+    expect(notCheckHtml).not.toContain('hatch-badge--danger');
   });
 
   it('opens with a real, focusable button distinct from Delete', () => {
