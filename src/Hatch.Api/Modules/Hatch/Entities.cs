@@ -110,6 +110,11 @@ public class EfHatchProject
 
     public static bool IsValidIcon(string? icon) =>
         icon is not null && Regex.IsMatch(icon, IconPattern, RegexOptions.None, TimeSpan.FromSeconds(1));
+
+    /// <summary>One of <see cref="Landings"/>.</summary>
+    public string Landing { get; set; } = Landings.PullRequest;
+
+    public bool ChecksRequired { get; set; } = true;
 }
 
 /// <summary>
