@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assigneeFact, effortFact, expressFact, modelFact, priorityFact, wipLimitFact } from './issueFacts';
+import { assigneeFact, effortFact, modelFact, preApprovalFact, priorityFact, wipLimitFact } from './issueFacts';
 import { DEFAULT_EPIC_WIP_LIMIT } from './wip';
 import type { Assignee } from '../types';
 
@@ -34,13 +34,21 @@ describe('priorityFact', () => {
   });
 });
 
-describe('expressFact', () => {
-  it('reads true as Express', () => {
-    expect(expressFact(true)).toBe('Express');
+describe('preApprovalFact', () => {
+  it('reads none as the plain word', () => {
+    expect(preApprovalFact('none', null)).toBe('None');
   });
 
-  it('reads false as Not express', () => {
-    expect(expressFact(false)).toBe('Not express');
+  it('reads express as the plain word', () => {
+    expect(preApprovalFact('express', null)).toBe('Express');
+  });
+
+  it('reads preapproved as the plain word', () => {
+    expect(preApprovalFact('preapproved', null)).toBe('Pre-approved');
+  });
+
+  it('says where an inherited level came from', () => {
+    expect(preApprovalFact('preapproved', 'AER-1')).toBe('Pre-approved · inherited from AER-1');
   });
 });
 
