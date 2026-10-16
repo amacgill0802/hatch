@@ -91,6 +91,96 @@ public class AttentionControllerTests
         Assert.Equal(0, attention.InReviewWithoutPullRequest);
     }
 
+    [Fact]
+    public async Task Attention_LeavesOutACloseHopRowFromInReviewWithoutPullRequest()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "ready to close itself", h.Review);
+        issue.PreApproval = PreApprovalLevels.PreApproved;
+        await h.Db.SaveChangesAsync();
+        await h.FileAsync("story", "a done child", h.Done, parentId: issue.Id);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        Assert.Empty(attention.Reviews);
+        Assert.Equal(0, attention.InReviewWithoutPullRequest);
+    }
+
+    [Fact]
+    public async Task Attention_CountsAChildlessPreApprovedRowWithNoPullRequest()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "ready to close itself, but nothing is filed under it", h.Review);
+        issue.PreApproval = PreApprovalLevels.PreApproved;
+        await h.Db.SaveChangesAsync();
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        Assert.Equal(1, attention.InReviewWithoutPullRequest);
+    }
+
+    [Fact]
+    public async Task Attention_CountsAPreApprovedRowWithAnOpenChild()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "not ready, its child is still open", h.Review);
+        issue.PreApproval = PreApprovalLevels.PreApproved;
+        await h.Db.SaveChangesAsync();
+        await h.FileAsync("story", "an open child", h.Todo, parentId: issue.Id);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        Assert.Equal(1, attention.InReviewWithoutPullRequest);
+    }
+
+    [Fact]
+    public async Task Attention_CountsAnExpressOnlyRowWithADoneChildAndNoPullRequest()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "express is not enough to close itself", h.Review);
+        issue.PreApproval = PreApprovalLevels.Express;
+        await h.Db.SaveChangesAsync();
+        await h.FileAsync("story", "a done child", h.Done, parentId: issue.Id);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        Assert.Equal(1, attention.InReviewWithoutPullRequest);
+    }
+
+    [Fact]
+    public async Task Attention_LeavesOutAPreApprovedEpicRowWhoseOnlyChildIsDeferred()
+    {
+        var h = await NewAsync();
+        var shelf = await h.ShelfAsync(37);
+        var issue = await h.FileAsync("epic", "an epic whose only child is shelved", h.Review);
+        issue.PreApproval = PreApprovalLevels.PreApproved;
+        await h.Db.SaveChangesAsync();
+        await h.FileAsync("story", "a deferred child", shelf, parentId: issue.Id);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        // FamilyGate.EpicFold excludes a deferred child entirely, so this is
+        // still a close hop.
+        Assert.Equal(0, attention.InReviewWithoutPullRequest);
+    }
+
+    [Fact]
+    public async Task Attention_CountsAPreApprovedStoryRowWhoseOnlyChildIsDeferred()
+    {
+        var h = await NewAsync();
+        var shelf = await h.ShelfAsync(37);
+        var issue = await h.FileAsync("story", "a story whose only child is shelved", h.Review);
+        issue.PreApproval = PreApprovalLevels.PreApproved;
+        await h.Db.SaveChangesAsync();
+        await h.FileAsync("story", "a deferred child", shelf, parentId: issue.Id);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        // FamilyGate.OpenChildren counts a deferred child as open, so this is
+        // not a close hop - the one place the epic and non-epic rules disagree.
+        Assert.Equal(1, attention.InReviewWithoutPullRequest);
+    }
+
     // ---- The conflict half ----
 
     [Fact]
@@ -1092,7 +1182,8 @@ public class AttentionControllerTests
         /// <see cref="IssuesControllerTests"/>' business.
         /// </summary>
         public async Task<EfHatchIssue> FileAsync(
-            string type, string title, int statusId, long rank = 1024, string? pullRequestUrl = null)
+            string type, string title, int statusId, long rank = 1024, string? pullRequestUrl = null,
+            long? parentId = null)
         {
             var issue = new EfHatchIssue
             {
@@ -1104,6 +1195,7 @@ public class AttentionControllerTests
                 StatusId = statusId,
                 Rank = rank,
                 PullRequestUrl = pullRequestUrl,
+                ParentId = parentId,
                 CreatedBy = "operator",
                 CreatedAt = Now,
                 UpdatedAt = Now,

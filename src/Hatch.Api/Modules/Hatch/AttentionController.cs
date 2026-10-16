@@ -204,7 +204,17 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
             .OfType<ReviewDto>()
             .ToList();
 
-        var withoutPr = inReview.Count(i => string.IsNullOrWhiteSpace(i.PullRequestUrl));
+        var closesTo = Columns.Closes(statuses, review);
+        var family = closesTo is not null ? await FamilyGate.ForAsync(db, statuses, ct) : null;
+
+        var withoutPr = inReview.Count(i =>
+            string.IsNullOrWhiteSpace(i.PullRequestUrl)
+            && !(family is not null
+                && tree.EffectivePreApproval(i.Id).Level == PreApprovalLevels.PreApproved
+                && family.Children(i.Id).Count > 0
+                && (i.Type == "epic"
+                    ? family.EpicFold(i.Id, statuses) is null
+                    : family.OpenChildren(i.Id).Count == 0)));
 
         var reviewsHeldBack = inReview.Count(i => !string.IsNullOrWhiteSpace(i.PullRequestUrl)
             && (conflicted.ContainsKey(i.Id) || failed.ContainsKey(i.Id)));
