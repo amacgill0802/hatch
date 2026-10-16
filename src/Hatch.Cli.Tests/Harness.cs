@@ -200,7 +200,7 @@ public sealed class FakeWorkspace
             return owner.AnswerFor.GetValueOrDefault(path, owner.Answer);
         }
 
-        public BranchEntry Enter(string key, string title, string? answer)
+        public BranchEntry Enter(string key, string title, string? answer, bool trunkLanding = false)
         {
             owner.Calls.Add($"enter {path}");
             owner.Answers.Add(answer);
@@ -208,7 +208,7 @@ public sealed class FakeWorkspace
             return Answer(key, title);
         }
 
-        public BranchEntry Plan(string key, string title, string? answer)
+        public BranchEntry Plan(string key, string title, string? answer, bool trunkLanding = false)
         {
             owner.Calls.Add($"plan {path}");
             return Answer(key, title) is var entry

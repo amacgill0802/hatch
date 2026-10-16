@@ -253,6 +253,37 @@ public sealed class WorkspaceTests : RepoFixture
     }
 
     [Fact]
+    public void Trunk_landing_omitted_reproduces_todays_none_sentence_and_fields()
+    {
+        var ws = Ws();
+        ws.Prepare();
+
+        var entry = ws.Enter("HA-31", "Deterministic Lifecycle Elements", null);
+
+        Assert.Equal(BranchKind.None, entry.Kind);
+        Assert.False(entry.TrunkLanding);
+        Assert.Equal("main", entry.Trunk);
+        Assert.Equal(
+            "work: no branch on origin for this issue; the session is told to cut ha-31-deterministic-lifecycle-elements",
+            entry.Sentence());
+    }
+
+    [Fact]
+    public void An_issue_with_no_branch_and_trunk_landing_stays_on_the_trunk()
+    {
+        var ws = Ws();
+        ws.Prepare();
+
+        var entry = ws.Enter("HA-31", "Thing", null, trunkLanding: true);
+
+        Assert.Equal(BranchKind.None, entry.Kind);
+        Assert.True(entry.TrunkLanding);
+        Assert.Equal("main", entry.Trunk);
+        Assert.Equal(G(_work, "rev-parse", "--short=9", "refs/remotes/origin/main").Trim(), entry.Sha);
+        Assert.Equal($"work: stays on main at {entry.Sha} - this project lands on the trunk", entry.Sentence());
+    }
+
+    [Fact]
     public void A_branch_named_for_the_bare_key_or_in_another_case_is_found()
     {
         Publish("HA-31", "x.txt", "x");
@@ -281,6 +312,22 @@ public sealed class WorkspaceTests : RepoFixture
         Assert.Equal(["ha-31-first"], entry.Merged);
         Assert.Equal("ha-31-first-2", entry.Cut);
         Assert.Equal("main", Current(_work));
+    }
+
+    [Fact]
+    public void Trunk_landing_does_not_change_the_already_merged_sentence()
+    {
+        Publish("ha-31-first", "x.txt", "x");
+        G(_other, "checkout", "--quiet", "main");
+        G(_other, "merge", "--quiet", "--ff-only", "origin/ha-31-first");
+        G(_other, "push", "--quiet", "origin", "main");
+
+        var ws = Ws();
+        ws.Prepare();
+        var entry = ws.Enter("HA-31", "First", null, trunkLanding: true);
+
+        Assert.Equal(BranchKind.AlreadyMerged, entry.Kind);
+        Assert.Equal($"work: ha-31-first already merged into the trunk; the session is told to cut {entry.Cut}", entry.Sentence());
     }
 
     [Fact]
@@ -319,6 +366,21 @@ public sealed class WorkspaceTests : RepoFixture
         Assert.Equal(entry.Sha, entry.Head);
         Assert.Equal("ha-31-thing", Current(_work));
         Assert.Equal(Tip(_origin, "ha-31-thing"), G(_work, "rev-parse", "HEAD").Trim());
+    }
+
+    [Fact]
+    public void Trunk_landing_does_not_change_the_entered_sentence()
+    {
+        Publish("ha-31-thing", "x.txt", "x");
+        var ws = Ws();
+        ws.Prepare();
+
+        var entry = ws.Enter("HA-31", "Thing", null, trunkLanding: true);
+
+        Assert.Equal(BranchKind.Entered, entry.Kind);
+        Assert.Equal(
+            $"work: on ha-31-thing at {entry.Sha}, {entry.Ahead} commit(s) ahead of the trunk; the trunk is already in it",
+            entry.Sentence());
     }
 
     [Fact]
@@ -470,6 +532,20 @@ public sealed class WorkspaceTests : RepoFixture
     }
 
     [Fact]
+    public void Trunk_landing_does_not_change_the_several_sentence()
+    {
+        Publish("ha-31-first", "x.txt", "x");
+        Publish("ha-31-second", "y.txt", "y");
+        var ws = Ws();
+        ws.Prepare();
+
+        var entry = ws.Enter("HA-31", "Thing", null, trunkLanding: true);
+
+        Assert.Equal(BranchKind.Several, entry.Kind);
+        Assert.Equal("work: 2 unmerged branches: ha-31-first, ha-31-second", entry.Sentence());
+    }
+
+    [Fact]
     public void An_answer_naming_one_of_them_is_the_one_used()
     {
         Publish("ha-31-first", "x.txt", "x");
@@ -517,5 +593,20 @@ public sealed class WorkspaceTests : RepoFixture
         Assert.Equal(before, Refs(_work));
         Assert.Equal("main", Current(_work));
         Assert.False(File.Exists(Path.Combine(_work, ".git", "MERGE_HEAD")));
+    }
+
+    [Fact]
+    public void A_plan_with_trunk_landing_says_it_would_stay()
+    {
+        var ws = Ws();
+        ws.Prepare();
+
+        var plan = ws.Plan("HA-31", "Thing", null, trunkLanding: true);
+
+        Assert.Equal(BranchKind.None, plan.Kind);
+        Assert.True(plan.Planned);
+        Assert.True(plan.TrunkLanding);
+        Assert.Equal("main", plan.Trunk);
+        Assert.Equal($"work: would stay on main at {plan.Sha} - this project lands on the trunk", plan.Sentence());
     }
 }
