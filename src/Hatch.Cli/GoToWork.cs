@@ -1658,7 +1658,13 @@ public sealed class GoToWorkCommand(Runtime runtime)
         // in: a pause is left by p alone, and an exhausted runner has nothing
         // to gain from asking again early.
         using var woken = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        void OnCheck() => woken.Cancel();
+        void OnCheck()
+        {
+            // Press raises this after its lock is released, so the nap may have
+            // ended and disposed the source in between - nothing left to wake.
+            try { woken.Cancel(); }
+            catch (ObjectDisposedException) { }
+        }
         if (checkNow)
         {
             runtime.Controls.CheckNow += OnCheck;
