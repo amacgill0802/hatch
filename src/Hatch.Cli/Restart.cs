@@ -208,6 +208,12 @@ public sealed record NightState
     /// <summary>Whether <see cref="ExhaustedUntil"/> came from the session, or is the one-hour backstop.</summary>
     public bool ExhaustedKnown { get; init; } = true;
 
+    /// <summary>The instant the limit behind <see cref="ExhaustedUntil"/> was first hit - carried the same way, so a restart mid-wait does not reset the clamp's own clock.</summary>
+    public DateTimeOffset? ExhaustedAt { get; init; }
+
+    /// <summary>"session" or "weekly" - which window the limit behind <see cref="ExhaustedUntil"/> belongs to.</summary>
+    public string? ExhaustedWindow { get; init; }
+
     /// <summary>
     /// What is at <paramref name="path"/>, or null - which is a fresh night.
     /// A file that is missing, unreadable or malformed reads as null rather than
