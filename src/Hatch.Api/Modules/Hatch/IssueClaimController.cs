@@ -134,6 +134,9 @@ public class IssueClaimController(
     {
         if (await LoadAsync(key, ct) is not { } issue) return NotFound();
 
+        if (request.PlaybookId is { } playbookId && !await db.Playbooks.AnyAsync(p => p.Id == playbookId, ct))
+            return BadRequest($"there is no playbook {playbookId}");
+
         var now = time.GetUtcNow();
         var claim = ClaimSnapshot.Of(issue);
 
@@ -148,7 +151,7 @@ public class IssueClaimController(
         // The predicate can still refuse - the lease may have expired or been
         // retaken between that read and this write - and it is what actually
         // fences the write, so its answer is the one that decides.
-        if (!await claims.TryRefreshAsync(db, issue.Id, request.Token, chatter, now, ct))
+        if (!await claims.TryRefreshAsync(db, issue.Id, request.Token, chatter, request.PlaybookId, now, ct))
             return Conflict(Why(await SnapshotAsync(issue.Id, ct), request.Token, now));
 
         // Only a lease that actually renewed touches the row - see "One column

@@ -665,7 +665,11 @@ public static class PreApprovalLevels
 /// truncated rather than refused - a lease is not worth losing to a wide
 /// terminal.
 /// </param>
-public record ClaimHeartbeatRequest(Guid Token, string? Chatter);
+/// <param name="PlaybookId">
+/// Absent leaves the claim's <c>ClaimPlaybookId</c> alone; a value overwrites
+/// it. There is no third state to clear it back to null from a heartbeat.
+/// </param>
+public record ClaimHeartbeatRequest(Guid Token, string? Chatter, int? PlaybookId = null);
 
 /// <summary>
 /// A new issue. It lands in the leftmost status and at the bottom of that

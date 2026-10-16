@@ -295,26 +295,44 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
     /// string clears it. Already normalised by the caller - see
     /// <see cref="IssueClaimController"/>.
     /// </param>
+    /// <param name="playbookId">
+    /// Null leaves <c>ClaimPlaybookId</c> alone; a value overwrites it. There
+    /// is no third state to clear it back to null from a heartbeat.
+    /// </param>
     public async Task<bool> TryRefreshAsync(
-        HatchContext db, long issueId, Guid token, string? chatter, DateTimeOffset now, CancellationToken ct)
+        HatchContext db, long issueId, Guid token, string? chatter, int? playbookId, DateTimeOffset now,
+        CancellationToken ct)
     {
         var cutoff = Cutoff(now);
         var quietCutoff = QuietCutoff(now);
         var live = db.Issues.Where(i => i.Id == issueId && i.ClaimToken == token && i.ClaimHeartbeatAt >= cutoff
             && (quietCutoff == null || (i.ClaimChatterAt ?? i.ClaimedAt) >= quietCutoff));
 
-        var written = chatter switch
+        var written = (chatter, playbookId) switch
         {
-            null => await live.ExecuteUpdateAsync(s => s
+            (null, null) => await live.ExecuteUpdateAsync(s => s
                 .SetProperty(i => i.ClaimHeartbeatAt, now), ct),
-            "" => await live.ExecuteUpdateAsync(s => s
+            (null, { } id) => await live.ExecuteUpdateAsync(s => s
+                .SetProperty(i => i.ClaimHeartbeatAt, now)
+                .SetProperty(i => i.ClaimPlaybookId, id), ct),
+            ("", null) => await live.ExecuteUpdateAsync(s => s
                 .SetProperty(i => i.ClaimHeartbeatAt, now)
                 .SetProperty(i => i.ClaimChatter, (string?)null)
                 .SetProperty(i => i.ClaimChatterAt, (DateTimeOffset?)null), ct),
-            _ => await live.ExecuteUpdateAsync(s => s
+            ("", { } id) => await live.ExecuteUpdateAsync(s => s
+                .SetProperty(i => i.ClaimHeartbeatAt, now)
+                .SetProperty(i => i.ClaimChatter, (string?)null)
+                .SetProperty(i => i.ClaimChatterAt, (DateTimeOffset?)null)
+                .SetProperty(i => i.ClaimPlaybookId, id), ct),
+            (_, null) => await live.ExecuteUpdateAsync(s => s
                 .SetProperty(i => i.ClaimHeartbeatAt, now)
                 .SetProperty(i => i.ClaimChatter, chatter)
                 .SetProperty(i => i.ClaimChatterAt, (DateTimeOffset?)now), ct),
+            (_, { } id) => await live.ExecuteUpdateAsync(s => s
+                .SetProperty(i => i.ClaimHeartbeatAt, now)
+                .SetProperty(i => i.ClaimChatter, chatter)
+                .SetProperty(i => i.ClaimChatterAt, (DateTimeOffset?)now)
+                .SetProperty(i => i.ClaimPlaybookId, id), ct),
         };
 
         return written == 1;

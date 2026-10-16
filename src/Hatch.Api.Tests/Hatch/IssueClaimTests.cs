@@ -472,6 +472,72 @@ public class IssueClaimTests
         Assert.Equal([EfHatchIssueEvent.ClaimTaken], await h.EventKindsAsync(issue));
     }
 
+    /// <summary>HA-582: a claim taken with no playbook can still have one attached after the fact.</summary>
+    [SkippableFact]
+    public async Task AHeartbeatNamingAPlaybook_AttachesItToAClaimTakenWithNone()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+        Assert.Null((await h.RowAsync(issue)).ClaimPlaybookId);
+
+        await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null, h.PlaybookId), default);
+
+        Assert.Equal(h.PlaybookId, (await h.RowAsync(issue)).ClaimPlaybookId);
+    }
+
+    [SkippableFact]
+    public async Task AHeartbeatNamingNone_LeavesAnAlreadyAttachedIdAlone()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue, playbookId: h.PlaybookId);
+
+        await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default);
+
+        Assert.Equal(h.PlaybookId, (await h.RowAsync(issue)).ClaimPlaybookId);
+    }
+
+    [SkippableFact]
+    public async Task ASecondHeartbeatNamingADifferentPlaybook_OverwritesTheFirst()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue, playbookId: h.PlaybookId);
+        var other = await h.AddPlaybookAsync();
+
+        await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null, other), default);
+
+        Assert.Equal(other, (await h.RowAsync(issue)).ClaimPlaybookId);
+    }
+
+    [SkippableFact]
+    public async Task AHeartbeatNamingAPlaybookThatDoesNotExist_IsRefused()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+        var noSuchPlaybook = h.PlaybookId + 1000;
+
+        Assert.Equal(
+            $"there is no playbook {noSuchPlaybook}",
+            BadRequest(await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null, noSuchPlaybook), default)));
+
+        Assert.Null((await h.RowAsync(issue)).ClaimPlaybookId);
+    }
+
+    [SkippableFact]
+    public async Task AHeartbeatCarryingAPlaybook_StillWritesNoEvent()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+
+        await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null, h.PlaybookId), default);
+
+        Assert.Equal([EfHatchIssueEvent.ClaimTaken], await h.EventKindsAsync(issue));
+    }
+
     // ---- Letting go ----
 
     [SkippableFact]
@@ -1315,6 +1381,27 @@ public class IssueClaimTests
 
         public async Task<Guid> TakeAsync(string key, string runner = "somewhere:/checkouts/one", int? playbookId = null) =>
             Value(await Claims.TakeClaim(key, new ClaimRequest(runner, playbookId), default)).Token;
+
+        /// <summary>A second playbook, distinct from <see cref="PlaybookId"/> - for a test about one overwriting the other.</summary>
+        public async Task<int> AddPlaybookAsync()
+        {
+            var db = Connect();
+            var playbook = new EfHatchPlaybook
+            {
+                FromStatusId = StatusId,
+                ToStatusId = DoingStatusId,
+                Types = "",
+                Shape = "any",
+                Prompt = "do the other thing",
+                Model = "sonnet",
+                Effort = "medium",
+                CreatedAt = Time.GetUtcNow(),
+                UpdatedAt = Time.GetUtcNow(),
+            };
+            db.Playbooks.Add(playbook);
+            await db.SaveChangesAsync();
+            return playbook.Id;
+        }
 
         /// <summary>
         /// Paused, written straight to the row - a person setting a ticket
