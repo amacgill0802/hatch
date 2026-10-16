@@ -31,6 +31,28 @@ public sealed class PromptTests
     }
 
     [Fact]
+    public void A_trunk_landing_project_is_told_to_land_rather_than_open_a_pull_request()
+    {
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12", landing: Landings.Trunk));
+
+        Assert.Contains("## Landing on the trunk", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("## Opening a pull request", prompt, StringComparison.Ordinal);
+        Assert.Contains("git pull --no-rebase", prompt, StringComparison.Ordinal);
+        Assert.Contains("hatch landed AER-12", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("git pull --rebase", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("--force", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_default_project_still_opens_a_pull_request_not_a_landing()
+    {
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12"));
+
+        Assert.Contains("## Opening a pull request", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("## Landing on the trunk", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Without_a_link_the_first_line_is_the_bare_key_and_the_session_is_told_so()
     {
         var prompt = Prompt.Compose(Fixtures.Work("AER-12", noLink: true));
