@@ -290,7 +290,14 @@ public class WorkController(
             .Include(i => i.Project).ThenInclude(p => p!.Repositories)
             .ToListAsync(ct);
 
-        var held = rows.Where(i => Dispatch.HoldsCheckout(i.Project!.Repositories, repos)).ToList();
+        // A task waiting on its story's pull request has no branch of its own
+        // to check - its work is on the story's, which is checked as the story
+        // - so a poll that went looking for one named for the task would find
+        // none and report that, for every task, until the story merged.
+        var tree = await PriorityTree.ForAsync(db, ct);
+        var held = rows
+            .Where(i => Dispatch.HoldsCheckout(i.Project!.Repositories, repos) && tree.WaitingOn(i.Id, statuses) is null)
+            .ToList();
 
         // The true head of a project's train may be a row this runner holds
         // no checkout of, so the train is read over every merges-column row
@@ -298,7 +305,7 @@ public class WorkController(
         var heldProjectIds = held.Select(h => h.ProjectId).ToHashSet();
         var merging = merges is null
             ? []
-            : rows.Where(i => i.StatusId == merges.Id && heldProjectIds.Contains(i.ProjectId)).ToList();
+            : rows.Where(i => i.StatusId == merges.Id && heldProjectIds.Contains(i.ProjectId) && tree.WaitingOn(i.Id, statuses) is null).ToList();
 
         var checkIds = held.Select(i => i.Id).Union(merging.Select(i => i.Id)).ToList();
         var verdicts = await _dispatch.MergeChecksAsync(checkIds, ct);
@@ -338,7 +345,9 @@ public class WorkController(
                 i.PullRequestUrl,
                 mergeWork is { } j ? new MergeWorkDto(j.Kind, j.Sentence, trainSlots.GetValueOrDefault(i.Id)?.IsHead ?? true) : null,
                 i.Project.Key,
-                i.Project.Landing);
+                i.Project.Landing,
+                IssueKey.Format(i.Project.Key, i.Number),
+                i.Title);
         }).ToList();
     }
 
@@ -711,6 +720,45 @@ public class WorkController(
         issue.Rank = await ranks.BottomAsync(to.Id, ct);
         issue.StatusId = to.Id;
         issue.UpdatedAt = now;
+
+        // A story that shares one pull request takes its waiting tasks with it:
+        // their work was pushed to the branch this pull request just merged, and
+        // none of them has a pull request of its own to say so. Not done by a
+        // person's manual move of the story, which gets the "Closing a subtree"
+        // dialog instead - this is the merge's own consequence, so it is the
+        // server's. Each task is one event on its own trail, the same status
+        // change a merge writes, naming the story.
+        if (issue.Type == "story")
+        {
+            var tree = await PriorityTree.ForAsync(db, ct);
+            var storyKey = IssueKey.Format(projectKey, number);
+            var waitingIds = tree.WaitingUnder(issue.Id, statuses);
+
+            if (waitingIds.Count > 0)
+            {
+                var tasks = await db.Issues.Where(i => waitingIds.Contains(i.Id)).OrderBy(i => i.Rank).ThenBy(i => i.Id).ToListAsync(ct);
+                var below = 0;
+                foreach (var task in tasks)
+                {
+                    var taskFrom = statuses.First(s => s.Id == task.StatusId);
+                    task.Events.Add(new EfHatchIssueEvent
+                    {
+                        Actor = actor,
+                        Kind = EfHatchIssueEvent.StatusChanged,
+                        Payload = JsonSerializer.Serialize(new { from = taskFrom.Name, to = to.Name, merged = true, with = storyKey }),
+                        At = now,
+                    });
+
+                    // Below the story, in the order they were already in; one
+                    // save for the story and every task, so a merge is never
+                    // reported with only some of them moved.
+                    task.Rank = issue.Rank + RankService.Gap * ++below;
+                    task.StatusId = to.Id;
+                    task.UpdatedAt = now;
+                }
+            }
+        }
+
         await db.SaveChangesAsync(ct);
 
         return await IssueProjection.ToDtoAsync(db, actors, issue, claims, now, ct);
@@ -990,6 +1038,7 @@ public class WorkController(
         var sendBackStreak = Columns.Implementation(statuses) is { } implementation
             ? await SendBackStreak.ForIssueAsync(db, issue.Id, implementation.Name, ct)
             : 0;
+        var (branchKey, branchTitle) = await BranchOfAsync(issue, gate, ct);
         var hopKind = to is null ? null : Dispatch.HopKind(issue, from, to, family, statuses, wip, hopParent, playbook, sendBackStreak, claims.StallResumeLimit, gate.EffectivePreApproval(issue.Id).Level, merged, built, claimed.Now);
         var hop = hopKind is not null;
         var rowTo = hopKind == HopKinds.Approve ? Columns.Advance(statuses, from)
@@ -1043,7 +1092,28 @@ public class WorkController(
                 ? MergeWork.Judge(issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(), merged, built, issue.PullRequestClosedAt, claimed.Now).Sentence
                 : null,
             issue.Project!.Landing,
-            issue.Project!.ChecksRequired);
+            issue.Project!.ChecksRequired,
+            branchKey,
+            branchTitle);
+    }
+
+    /// <summary>
+    /// The key and title the branch for a dispatch on <paramref name="issue"/>
+    /// is named from: its story's, for a task that shares the story's branch,
+    /// and its own otherwise - see <see cref="WorkDto.BranchKey"/>.
+    /// </summary>
+    private async Task<(string Key, string Title)> BranchOfAsync(EfHatchIssue issue, DependencyGate gate, CancellationToken ct)
+    {
+        if (gate.SharedStoryOf(issue.Id) is { } storyId)
+        {
+            var story = await db.Issues.AsNoTracking()
+                .Where(i => i.Id == storyId)
+                .Select(i => new { ProjectKey = i.Project!.Key, i.Number, i.Title })
+                .FirstOrDefaultAsync(ct);
+            if (story is not null) return (IssueKey.Format(story.ProjectKey, story.Number), story.Title);
+        }
+
+        return (IssueKey.Format(issue.Project!.Key, issue.Number), issue.Title);
     }
 
     /// <summary>

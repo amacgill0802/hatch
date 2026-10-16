@@ -8326,6 +8326,501 @@ public class WorkControllerTests
         Assert.Null(Value(await h.Work.GetWork(Key(s2), null, default)).Blocked);
     }
 
+    // ---- One pull request: a story's tasks share its branch ----
+    //
+    // With a story's effective OnePr on, a task that has pushed to the story's
+    // branch waits in review with no pull request of its own, and the story
+    // treats it as finished: the next sibling is pulled, an edge between
+    // siblings clears, the story reaches its closeout, and the story's merge
+    // takes the waiting tasks to Done with it. With it off, every one of these
+    // is exactly as it was - the paired assertions below are that.
+
+    private static async Task<(EfHatchIssue Story, EfHatchIssue Waiting)> OnePrStoryAsync(Harness h, bool on = true)
+    {
+        var story = await h.FileAsync("story", "the story", h.InProgress);
+        if (on) await h.OnePrAsync(story, true);
+        var waiting = await h.FileAsync("task", "pushed and waiting", h.Review, parentId: story.Id);
+        return (story, waiting);
+    }
+
+    [Fact]
+    public async Task OnePr_AWaitingTask_IsFoldedNamingTheStorysPullRequest()
+    {
+        var h = await NewAsync();
+        var (story, waiting) = await OnePrStoryAsync(h);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(waiting));
+
+        Assert.Equal(
+            $"waiting on {Key(story)}'s pull request - its work is pushed to the story's branch, and the story opens the one pull request",
+            entry.Blocked);
+    }
+
+    [Fact]
+    public async Task OnePr_Off_ATaskInReviewIsFoldedAsItAlwaysWas()
+    {
+        var h = await NewAsync();
+        var (_, task) = await OnePrStoryAsync(h, on: false);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(task));
+
+        Assert.DoesNotContain("waiting on", entry.Blocked);
+    }
+
+    [Fact]
+    public async Task OnePr_ATaskWithAPullRequestOfItsOwn_IsNotWaiting()
+    {
+        var h = await NewAsync();
+        var (_, task) = await OnePrStoryAsync(h);
+        await h.SetPullRequestAsync(task, "https://example.com/o/r/pull/9");
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(task));
+
+        Assert.DoesNotContain("waiting on", entry.Blocked);
+    }
+
+    [Fact]
+    public async Task OnePr_ATaskStillBeingWritten_IsNotWaiting()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", "the story", h.InProgress);
+        await h.OnePrAsync(story, true);
+        var task = await h.FileAsync("task", "still in progress", h.InProgress, parentId: story.Id);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(task));
+
+        Assert.DoesNotContain("waiting on", entry.Blocked);
+    }
+
+    [Fact]
+    public async Task OnePr_AWaitingSibling_DoesNotHoldBackTheNextChildBeingPulled()
+    {
+        var h = await NewAsync();
+        var (story, _) = await OnePrStoryAsync(h);
+        var next = await h.FileAsync("task", "the next one", h.Inbox, parentId: story.Id);
+        await h.TickParentPullsAsync(h.Inbox);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(next));
+
+        Assert.Null(entry.Blocked);
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Parent, entry.HopKind);
+    }
+
+    [Fact]
+    public async Task OnePr_Off_ASiblingInReview_StillHoldsBackTheNextChild()
+    {
+        var h = await NewAsync();
+        var (story, _) = await OnePrStoryAsync(h, on: false);
+        var next = await h.FileAsync("task", "the next one", h.Inbox, parentId: story.Id);
+        await h.TickParentPullsAsync(h.Inbox);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(next));
+
+        Assert.Equal("a sibling is already in flight, so only one child is pulled through at a time", entry.Blocked);
+    }
+
+    [Fact]
+    public async Task OnePr_ASiblingWithItsOwnPullRequest_StillHoldsBackTheNextChild()
+    {
+        var h = await NewAsync();
+        var (story, sibling) = await OnePrStoryAsync(h);
+        await h.SetPullRequestAsync(sibling, "https://example.com/o/r/pull/9");
+        var next = await h.FileAsync("task", "the next one", h.Inbox, parentId: story.Id);
+        await h.TickParentPullsAsync(h.Inbox);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(next));
+
+        Assert.Equal("a sibling is already in flight, so only one child is pulled through at a time", entry.Blocked);
+    }
+
+    [Fact]
+    public async Task OnePr_AnEdgeToAWaitingSibling_IsSatisfied()
+    {
+        var h = await NewAsync();
+        var (story, waiting) = await OnePrStoryAsync(h);
+        var next = await h.FileAsync("task", "builds on the first", h.Todo, parentId: story.Id);
+        await h.DependsAsync(next, waiting);
+
+        Assert.Null(Value(await h.Work.GetWork(Key(next), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task OnePr_Off_AnEdgeToASiblingInReview_IsStillUnmet()
+    {
+        var h = await NewAsync();
+        var (story, inReview) = await OnePrStoryAsync(h, on: false);
+        var next = await h.FileAsync("task", "builds on the first", h.Todo, parentId: story.Id);
+        await h.DependsAsync(next, inReview);
+
+        Assert.Equal(
+            $"{Key(inReview)} is not done, and this cannot be implemented until it is",
+            Value(await h.Work.GetWork(Key(next), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task OnePr_AnEdgeToATaskUnderAnotherStory_IsStillUnmet()
+    {
+        var h = await NewAsync();
+        var (_, waiting) = await OnePrStoryAsync(h);
+        var other = await h.FileAsync("story", "another story", h.InProgress);
+        await h.OnePrAsync(other, true);
+        var next = await h.FileAsync("task", "waits on a task elsewhere", h.Todo, parentId: other.Id);
+        await h.DependsAsync(next, waiting);
+
+        Assert.Equal(
+            $"{Key(waiting)} is not done, and this cannot be implemented until it is",
+            Value(await h.Work.GetWork(Key(next), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task OnePr_AnEdgeToASiblingStillBeingWritten_IsStillUnmet()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", "the story", h.InProgress);
+        await h.OnePrAsync(story, true);
+        var first = await h.FileAsync("task", "still in progress", h.InProgress, parentId: story.Id);
+        var next = await h.FileAsync("task", "builds on the first", h.Todo, parentId: story.Id);
+        await h.DependsAsync(next, first);
+
+        Assert.Equal(
+            $"{Key(first)} is not done, and this cannot be implemented until it is",
+            Value(await h.Work.GetWork(Key(next), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task OnePr_AStoryWhoseChildrenAreAllWaiting_IsNotFoldedForItsChildren()
+    {
+        var h = await NewAsync();
+        var (story, _) = await OnePrStoryAsync(h);
+        await h.FileAsync("task", "also waiting", h.Review, parentId: story.Id);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(story));
+
+        Assert.Null(entry.Blocked);
+    }
+
+    [Fact]
+    public async Task OnePr_AStoryWithAChildStillToWrite_IsStillFoldedForItsChildren()
+    {
+        var h = await NewAsync();
+        var (story, _) = await OnePrStoryAsync(h);
+        await h.FileAsync("task", "not pushed yet", h.Todo, parentId: story.Id);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(story));
+
+        Assert.Equal("its children are the work, and some are still open", entry.Blocked);
+    }
+
+    [Fact]
+    public async Task OnePr_Off_AStoryWhoseChildrenAreInReview_IsStillFoldedForItsChildren()
+    {
+        var h = await NewAsync();
+        var (story, _) = await OnePrStoryAsync(h, on: false);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(story));
+
+        Assert.Equal("its children are the work, and some are still open", entry.Blocked);
+    }
+
+    [Fact]
+    public async Task OnePr_APreApprovedStoryInReview_IsNotClosedOverTasksThatHaveNotMerged()
+    {
+        var h = await NewAsync();
+        var (story, _) = await OnePrStoryAsync(h);
+        story.StatusId = h.Review;
+        await h.PreApprovedAsync(story);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(story));
+
+        Assert.NotEqual(HopKinds.Close, entry.HopKind);
+    }
+
+    [Fact]
+    public async Task OnePr_AWaitingTaskInTheMergesColumn_IsNotTheHeadOfTheTrain()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+
+        var story = await h.FileAsync("story", "the story", h.InProgress);
+        await h.OnePrAsync(story, true);
+        var waiting = await h.FileAsync("task", "got in somehow", approved.Id, rank: 1024, parentId: story.Id);
+        var real = await h.FileAsync("story", "a real pull request", approved.Id, rank: 2048);
+        await h.SetPullRequestAsync(real, "https://example.com/o/r/pull/3");
+        await h.VerdictAsync(real, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(real, BuildVerdicts.Passed);
+
+        var queue = Value(await h.Work.GetQueue(0, null, default));
+
+        Assert.StartsWith("waiting on", queue.Single(e => e.Issue.Key == Key(waiting)).Blocked);
+        Assert.DoesNotContain("waiting its turn", queue.Single(e => e.Issue.Key == Key(real)).Blocked);
+    }
+
+    // ---- One pull request: the branch a dispatch is named for ----
+
+    [Fact]
+    public async Task OnePr_ATasksDispatch_IsNamedForItsStory()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", "the story title", h.InProgress);
+        await h.OnePrAsync(story, true);
+        var task = await h.FileAsync("task", "the task title", h.Todo, parentId: story.Id);
+
+        var work = Value(await h.Work.GetWork(Key(task), null, default));
+
+        Assert.Equal(Key(story), work.BranchKey);
+        Assert.Equal("the story title", work.BranchTitle);
+    }
+
+    [Fact]
+    public async Task OnePr_ATaskWithAPullRequestOfItsOwn_KeepsItsOwnBranch()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", "the story title", h.InProgress);
+        await h.OnePrAsync(story, true);
+        var task = await h.FileAsync("task", "the task title", h.Todo, parentId: story.Id);
+        await h.SetPullRequestAsync(task, "https://example.com/o/r/pull/9");
+
+        var work = Value(await h.Work.GetWork(Key(task), null, default));
+
+        Assert.Equal(Key(task), work.BranchKey);
+        Assert.Equal("the task title", work.BranchTitle);
+    }
+
+    [Fact]
+    public async Task OnePr_Off_ATasksDispatch_IsNamedForItself()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", "the story title", h.InProgress);
+        var task = await h.FileAsync("task", "the task title", h.Todo, parentId: story.Id);
+
+        var work = Value(await h.Work.GetWork(Key(task), null, default));
+
+        Assert.Equal(Key(task), work.BranchKey);
+    }
+
+    [Fact]
+    public async Task OnePr_TheStorysOwnDispatch_IsNamedForItself()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", "the story title", h.InProgress);
+        await h.OnePrAsync(story, true);
+
+        var work = Value(await h.Work.GetWork(Key(story), null, default));
+
+        Assert.Equal(Key(story), work.BranchKey);
+    }
+
+    [Fact]
+    public async Task OnePr_TheProjectsDefault_NamesTheBranchToo()
+    {
+        var h = await NewAsync();
+        await h.ProjectOnePrAsync(true);
+        var story = await h.FileAsync("story", "the story title", h.InProgress);
+        var task = await h.FileAsync("task", "the task title", h.Todo, parentId: story.Id);
+
+        Assert.Equal(Key(story), Value(await h.Work.GetWork(Key(task), null, default)).BranchKey);
+    }
+
+    [Fact]
+    public async Task OnePr_TheReviewPoll_LeavesOutAWaitingTaskAndKeepsTheStory()
+    {
+        var h = await NewAsync();
+        var (story, waiting) = await OnePrStoryAsync(h);
+        story.StatusId = h.Review;
+        await h.SetPullRequestAsync(story, "https://example.com/o/r/pull/3");
+
+        var rows = Value(await h.Work.GetReview(null, true, default));
+
+        var row = Assert.Single(rows);
+        Assert.Equal(Key(story), row.Key);
+        Assert.Equal(Key(story), row.BranchKey);
+        Assert.DoesNotContain(rows, r => r.Key == Key(waiting));
+    }
+
+    [Fact]
+    public async Task OnePr_Off_TheReviewPoll_StillListsATaskInReview()
+    {
+        var h = await NewAsync();
+        var (_, task) = await OnePrStoryAsync(h, on: false);
+
+        var rows = Value(await h.Work.GetReview(null, true, default));
+
+        Assert.Contains(rows, r => r.Key == Key(task));
+    }
+
+    // ---- One pull request: one sibling at a time ----
+
+    [Fact]
+    public async Task OnePr_ASiblingsClaim_FoldsTheOtherTask()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", "the story", h.InProgress);
+        await h.OnePrAsync(story, true);
+        var first = await h.FileAsync("task", "being written", h.InProgress, rank: 1024, parentId: story.Id);
+        var second = await h.FileAsync("task", "next", h.Todo, rank: 2048, parentId: story.Id);
+        await h.ClaimAsync(first);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(second));
+
+        Assert.Equal($"{From()} {Key(first)}, sharing this story's branch, {Where}", entry.Blocked);
+    }
+
+    [Fact]
+    public async Task OnePr_Off_ASiblingsClaim_FoldsNothing()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", "the story", h.InProgress);
+        var first = await h.FileAsync("task", "being written", h.InProgress, rank: 1024, parentId: story.Id);
+        var second = await h.FileAsync("task", "next", h.Todo, rank: 2048, parentId: story.Id);
+        await h.ClaimAsync(first);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(second));
+
+        Assert.Null(entry.Blocked);
+    }
+
+    [Fact]
+    public async Task OnePr_ASiblingWithItsOwnPullRequest_IsNotHeldAgainstTheOthers()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", "the story", h.InProgress);
+        await h.OnePrAsync(story, true);
+        var first = await h.FileAsync("task", "its own branch", h.InProgress, rank: 1024, parentId: story.Id);
+        await h.SetPullRequestAsync(first, "https://example.com/o/r/pull/9");
+        var second = await h.FileAsync("task", "next", h.Todo, rank: 2048, parentId: story.Id);
+        await h.ClaimAsync(first);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(second));
+
+        Assert.Null(entry.Blocked);
+    }
+
+    [Fact]
+    public async Task OnePr_TasksUnderDifferentStories_RemainParallel()
+    {
+        var h = await NewAsync();
+        var one = await h.FileAsync("story", "one", h.InProgress);
+        var two = await h.FileAsync("story", "two", h.InProgress);
+        await h.OnePrAsync(one, true);
+        await h.OnePrAsync(two, true);
+        var first = await h.FileAsync("task", "under one", h.InProgress, rank: 1024, parentId: one.Id);
+        var second = await h.FileAsync("task", "under two", h.Todo, rank: 2048, parentId: two.Id);
+        await h.ClaimAsync(first);
+
+        Assert.Null(Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(second)).Blocked);
+    }
+
+    [Fact]
+    public async Task OnePr_ATasksOwnClaim_IsNotHeldAgainstItself()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", "the story", h.InProgress);
+        await h.OnePrAsync(story, true);
+        var task = await h.FileAsync("task", "being written", h.InProgress, parentId: story.Id);
+        var token = await h.ClaimAsync(task);
+
+        var work = Value(await h.Work.GetWork(Key(task), token, default));
+
+        Assert.DoesNotContain("sharing this story's branch", work.Blocked);
+    }
+
+    // ---- One pull request: the story's merge takes its waiting tasks with it ----
+
+    private const string StoryPr = "https://example.com/o/r/pull/3";
+
+    [Fact]
+    public async Task OnePr_AMergedStory_TakesItsWaitingTasksToDone()
+    {
+        var h = await NewAsync();
+        var (story, waiting) = await OnePrStoryAsync(h);
+        var alsoWaiting = await h.FileAsync("task", "also waiting", h.Review, parentId: story.Id);
+        story.StatusId = h.Review;
+        await h.SetPullRequestAsync(story, StoryPr);
+
+        Value(await h.Work.MergedWork(Key(story), new PullRequestMergedRequest(StoryPr, "somewhere:/checkouts/one"), default));
+
+        h.Db.ChangeTracker.Clear();
+        foreach (var id in new[] { story.Id, waiting.Id, alsoWaiting.Id })
+            Assert.Equal(h.Done, (await h.Db.Issues.FirstAsync(i => i.Id == id)).StatusId);
+    }
+
+    [Fact]
+    public async Task OnePr_EachTaskTheMergeMoves_GetsAStatusChangedEventNamingTheStory()
+    {
+        var h = await NewAsync();
+        var (story, waiting) = await OnePrStoryAsync(h);
+        story.StatusId = h.Review;
+        await h.SetPullRequestAsync(story, StoryPr);
+
+        await h.Work.MergedWork(Key(story), new PullRequestMergedRequest(StoryPr, "somewhere:/checkouts/one"), default);
+
+        var row = await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == waiting.Id);
+        var e = Assert.Single(row.Events);
+        Assert.Equal(EfHatchIssueEvent.StatusChanged, e.Kind);
+        Assert.Equal("hatch-loop", e.Actor);
+        var payload = System.Text.Json.JsonDocument.Parse(e.Payload!).RootElement;
+        Assert.Equal("review", payload.GetProperty("from").GetString());
+        Assert.Equal("done", payload.GetProperty("to").GetString());
+        Assert.True(payload.GetProperty("merged").GetBoolean());
+        Assert.Equal(Key(story), payload.GetProperty("with").GetString());
+    }
+
+    [Fact]
+    public async Task OnePr_AMergedStory_LeavesWhatIsNotWaitingWhereItWas()
+    {
+        var h = await NewAsync();
+        var (story, _) = await OnePrStoryAsync(h);
+        var ownPr = await h.FileAsync("task", "its own pull request", h.Review, parentId: story.Id);
+        await h.SetPullRequestAsync(ownPr, "https://example.com/o/r/pull/9");
+        var unwritten = await h.FileAsync("task", "never pushed", h.Todo, parentId: story.Id);
+        var shelved = await h.FileAsync("task", "set aside", h.Shelved, parentId: story.Id);
+        var elsewhere = await h.FileAsync("task", "another story's", h.Review);
+        story.StatusId = h.Review;
+        await h.SetPullRequestAsync(story, StoryPr);
+
+        await h.Work.MergedWork(Key(story), new PullRequestMergedRequest(StoryPr, "somewhere:/checkouts/one"), default);
+
+        h.Db.ChangeTracker.Clear();
+        Assert.Equal(h.Review, (await h.Db.Issues.FirstAsync(i => i.Id == ownPr.Id)).StatusId);
+        Assert.Equal(h.Todo, (await h.Db.Issues.FirstAsync(i => i.Id == unwritten.Id)).StatusId);
+        Assert.Equal(h.Shelved, (await h.Db.Issues.FirstAsync(i => i.Id == shelved.Id)).StatusId);
+        Assert.Equal(h.Review, (await h.Db.Issues.FirstAsync(i => i.Id == elsewhere.Id)).StatusId);
+    }
+
+    [Fact]
+    public async Task OnePr_Off_AMergedStory_MovesOnlyItself()
+    {
+        var h = await NewAsync();
+        var (story, task) = await OnePrStoryAsync(h, on: false);
+        story.StatusId = h.Review;
+        await h.SetPullRequestAsync(story, StoryPr);
+
+        await h.Work.MergedWork(Key(story), new PullRequestMergedRequest(StoryPr, "somewhere:/checkouts/one"), default);
+
+        h.Db.ChangeTracker.Clear();
+        Assert.Equal(h.Done, (await h.Db.Issues.FirstAsync(i => i.Id == story.Id)).StatusId);
+        Assert.Equal(h.Review, (await h.Db.Issues.FirstAsync(i => i.Id == task.Id)).StatusId);
+    }
+
+    [Fact]
+    public async Task OnePr_ATaskUnderABugUnderTheStory_IsTakenToo()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", "the story", h.Review);
+        await h.OnePrAsync(story, true);
+        var bug = await h.FileAsync("bug", "a bug", h.InProgress, parentId: story.Id);
+        var deep = await h.FileAsync("task", "under the bug", h.Review, parentId: bug.Id);
+        await h.SetPullRequestAsync(story, StoryPr);
+
+        await h.Work.MergedWork(Key(story), new PullRequestMergedRequest(StoryPr, "somewhere:/checkouts/one"), default);
+
+        h.Db.ChangeTracker.Clear();
+        Assert.Equal(h.Done, (await h.Db.Issues.FirstAsync(i => i.Id == deep.Id)).StatusId);
+    }
+
     // ---- Harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 9, 2, 12, 0, 0, TimeSpan.Zero);
@@ -8391,6 +8886,25 @@ public class WorkControllerTests
             Db.Issues.Add(issue);
             await Db.SaveChangesAsync();
             return issue;
+        }
+
+        /// <summary>
+        /// A story's own one-PR override, written straight onto the row - who may
+        /// write it is <see cref="IssueOnePrControllerTests"/>' business; these
+        /// tests are about what the dispatcher does once it is set.
+        /// </summary>
+        public async Task OnePrAsync(EfHatchIssue story, bool? on)
+        {
+            story.OnePullRequest = on;
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>The project's default, written straight onto the row.</summary>
+        public async Task ProjectOnePrAsync(bool on)
+        {
+            var project = await Db.Projects.SingleAsync(p => p.Id == ProjectId);
+            project.OnePullRequest = on;
+            await Db.SaveChangesAsync();
         }
 
         /// <summary>A second project on the same board, for a test about a playbook that names one project and not the other.</summary>

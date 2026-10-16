@@ -221,7 +221,18 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
             siblings.Add(row.Id);
         }
 
-        return new ClaimLineage(this, now, parents, keys, children, live.ToDictionary(r => r.Id, r => r.Claim));
+        // Which tasks share a story's branch, and which story: two of them
+        // working at once push to the same branch. Read only when something
+        // holds a claim at all - a lineage with nobody in it never asks.
+        var shared = new Dictionary<long, long>();
+        if (live.Count > 0)
+        {
+            var priorities = await PriorityTree.ForAsync(db, ct);
+            foreach (var id in keys.Keys)
+                if (priorities.SharedStoryOf(id) is { } story) shared[id] = story;
+        }
+
+        return new ClaimLineage(this, now, parents, keys, children, live.ToDictionary(r => r.Id, r => r.Claim), shared);
     }
 
     /// <summary>
@@ -387,12 +398,14 @@ public sealed record ClaimSnapshot(
 /// <remarks>
 /// Ancestor or descendant, and nothing else. Siblings and cousins share no line
 /// - a parent's session builds what its children describe, and no other pair
-/// can duplicate each other.
+/// can duplicate each other. The one exception is two tasks under a story that
+/// shares one branch and one pull request: they are siblings and they push to
+/// the same branch, so they are one line for the purpose of who may be working.
 /// </remarks>
 public sealed class ClaimLineage
 {
     /// <summary>A lineage with nobody in it, for a refused scan.</summary>
-    public static readonly ClaimLineage Empty = new(null, default, [], [], [], []);
+    public static readonly ClaimLineage Empty = new(null, default, [], [], [], [], []);
 
     private readonly IssueClaims? _claims;
     private readonly DateTimeOffset _now;
@@ -400,12 +413,15 @@ public sealed class ClaimLineage
     private readonly Dictionary<long, string> _keys;
     private readonly Dictionary<long, List<long>> _children;
     private readonly Dictionary<long, ClaimSnapshot> _live;
+    private readonly Dictionary<long, long> _sharedStory;
 
     internal ClaimLineage(
         IssueClaims? claims, DateTimeOffset now,
         Dictionary<long, long?> parents, Dictionary<long, string> keys,
-        Dictionary<long, List<long>> children, Dictionary<long, ClaimSnapshot> live)
+        Dictionary<long, List<long>> children, Dictionary<long, ClaimSnapshot> live,
+        Dictionary<long, long> sharedStory)
     {
+        _sharedStory = sharedStory;
         _claims = claims;
         _now = now;
         _parents = parents;
@@ -460,6 +476,19 @@ public sealed class ClaimLineage
             }
 
             generation = next;
+        }
+
+        // Then sideways, for a task whose story shares one branch: a sibling
+        // under the same story that somebody is working would be pushing to the
+        // very branch this one would. Claimed ones only, in key order, so the
+        // sentence names the same sibling on every pass.
+        if (_sharedStory.TryGetValue(issueId, out var story))
+        {
+            foreach (var id in _live.Keys.Where(id => id != issueId && _sharedStory.GetValueOrDefault(id, -1) == story)
+                         .OrderBy(id => _keys.GetValueOrDefault(id, ""), StringComparer.Ordinal))
+            {
+                if (Named(id, heldToken, "sharing this story's branch") is { } beside) return beside;
+            }
         }
 
         return null;

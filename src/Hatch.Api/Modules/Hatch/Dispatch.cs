@@ -175,8 +175,12 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         // order, since both calls read the same verdicts and builds fetched
         // above.
         IReadOnlyDictionary<long, TrainSlot> trainSlots = new Dictionary<long, TrainSlot>();
-        if (merges is not null && byColumn.TryGetValue(merges.Id, out var merging))
+        if (merges is not null && byColumn.TryGetValue(merges.Id, out var inTrain))
         {
+            // A task waiting on its story's pull request has none of its own to
+            // merge, so it has no place in the train - and left in, a row with no
+            // checks at all would be elected head over a real pull request.
+            var merging = inTrain.Where(i => !family.IsWaiting(i.Id)).ToList();
             var judged = merging.ToDictionary(i => i.Id, i => MergeWork.Judge(
                 i.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
                 verdicts.TryGetValue(i.Id, out var v) ? v : [],
@@ -762,6 +766,14 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         if (to is null)
             return $"there is no column after \"{from.Name}\", so there is nowhere for this to go";
 
+        // A task whose work is pushed to its story's branch has nothing left for
+        // an agent to do and no pull request of its own to merge: it waits for the
+        // story's. Said ahead of the merges column's judgement and the review
+        // column's conflict and build checks, both of which read a branch named
+        // for this issue's own key and would find none.
+        if (gate.WaitingOn(issue.Id, statuses) is { } storyKey)
+            return $"waiting on {storyKey}'s pull request - its work is pushed to the story's branch, and the story opens the one pull request";
+
         if (from.MergesPullRequest)
         {
             var judgement = MergeWork.Judge(
@@ -884,7 +896,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         // An epic has its own version of this rule, just below, with its own
         // sentence and its own scope - this one is guarded off epics so the
         // two do not both speak for the same issue.
-        if (issue.Type != "epic" && from.Id == implementation?.Id && family.OpenChildren(issue.Id).Count > 0)
+        if (issue.Type != "epic" && from.Id == implementation?.Id && family.OpenWorkChildren(issue.Id).Count > 0)
             return "its children are the work, and some are still open";
 
         // An epic is verified by its own stories, not merely cleared off one
@@ -1266,9 +1278,9 @@ public sealed class PriorityTree
     // The one-PR walk needs two things the other two do not: each issue's type,
     // to find the nearest story, and each story's own override. Kept beside
     // _rows rather than widening its tuple, which every other walk destructures.
-    private readonly Dictionary<long, (string Type, bool? OnePr, bool ProjectOnePr)> _onePr;
+    private readonly Dictionary<long, (string Type, bool? OnePr, bool ProjectOnePr, int StatusId, bool HasPr)> _onePr;
 
-    internal PriorityTree(Dictionary<long, (long?, string, int, int)> rows, Dictionary<long, (string, bool?, bool)>? onePr = null)
+    internal PriorityTree(Dictionary<long, (long?, string, int, int)> rows, Dictionary<long, (string, bool?, bool, int, bool)>? onePr = null)
     {
         _rows = rows;
         _onePr = onePr ?? new();
@@ -1281,6 +1293,7 @@ public sealed class PriorityTree
             {
                 i.Id, i.ParentId, i.Priority, i.PreApproval, ProjectKey = i.Project!.Key, i.Number,
                 i.Type, i.OnePullRequest, ProjectOnePr = i.Project!.OnePullRequest,
+                i.StatusId, HasPr = i.PullRequestUrl != null && i.PullRequestUrl != "",
             })
             .ToListAsync(ct);
 
@@ -1288,7 +1301,7 @@ public sealed class PriorityTree
             rows.ToDictionary(
                 r => r.Id,
                 r => ((long?)r.ParentId, IssueKey.Format(r.ProjectKey, r.Number), r.Priority, r.PreApproval)),
-            rows.ToDictionary(r => r.Id, r => (r.Type, r.OnePullRequest, r.ProjectOnePr)));
+            rows.ToDictionary(r => r.Id, r => (r.Type, r.OnePullRequest, r.ProjectOnePr, r.StatusId, r.HasPr)));
     }
 
     internal bool TryGet(long id, out (long? ParentId, string Key, int Priority, int PreApproval) row) => _rows.TryGetValue(id, out row);
@@ -1368,6 +1381,63 @@ public sealed class PriorityTree
 
         return (false, own, null);
     }
+
+    /// <summary>
+    /// The story whose pull request this task is waiting on, or null - a task
+    /// under a story that shares one pull request, that has pushed to the
+    /// story's branch and stands in the review column or past it, with no pull
+    /// request of its own.
+    /// </summary>
+    /// <remarks>
+    /// Such a task is finished as far as the story is concerned - the next
+    /// sibling is pulled, an edge between siblings clears, and the story moves
+    /// on to open the one pull request - and it is not finished as far as the
+    /// board is concerned: it ends in a terminal column only when that pull
+    /// request merges. A task with a pull request of its own is not waiting on
+    /// the story's, so a story flipped on after some of its tasks had begun
+    /// leaves those tasks exactly as they were. See
+    /// <c>docs/hatch.md</c>, "One pull request".
+    /// </remarks>
+    public string? WaitingOn(long issueId, List<EfHatchStatus> statuses)
+    {
+        if (!_onePr.TryGetValue(issueId, out var row) || row.Type != "task" || row.HasPr) return null;
+        if (!Columns.AtOrPastReview(statuses, row.StatusId)) return null;
+
+        var (onePr, _, storyKey) = EffectiveOnePr(issueId);
+        return onePr ? storyKey : null;
+    }
+
+    /// <summary>
+    /// Every task waiting on this story's pull request - see <see cref="WaitingOn"/>.
+    /// What a merged story takes to its own terminal column with it.
+    /// </summary>
+    public IReadOnlyList<long> WaitingUnder(long storyId, List<EfHatchStatus> statuses) =>
+        !_rows.TryGetValue(storyId, out var story)
+            ? []
+            : _onePr.Keys.Where(id => WaitingOn(id, statuses) == story.Key).Order().ToList();
+
+    /// <summary>
+    /// The story a task shares the pull request of, by its row and with no
+    /// regard to where the task stands - the question the claim lineage and the
+    /// dependency gate ask about two tasks that are not yet, or no longer,
+    /// waiting. Null for anything that is not a task under such a story, and
+    /// for a task that already has a pull request of its own.
+    /// </summary>
+    public long? SharedStoryOf(long issueId)
+    {
+        if (!_onePr.TryGetValue(issueId, out var self) || self.Type != "task" || self.HasPr) return null;
+        if (!EffectiveOnePr(issueId).OnePr) return null;
+
+        var seen = new HashSet<long>();
+        long? at = issueId;
+        while (at is { } id && seen.Add(id))
+        {
+            if (_onePr.TryGetValue(id, out var row) && row.Type == "story") return id;
+            at = TryGet(id, out var found) ? found.ParentId : null;
+        }
+
+        return null;
+    }
 }
 
 // ---- Dependencies ----
@@ -1415,10 +1485,23 @@ public sealed class DependencyGate
         var unmet = await db.Dependencies.AsNoTracking()
             .Where(d => !terminal.Contains(d.DependsOn!.StatusId))
             .OrderBy(d => d.DependsOn!.Project!.Key).ThenBy(d => d.DependsOn!.Number)
-            .Select(d => new { d.IssueId, ProjectKey = d.DependsOn!.Project!.Key, d.DependsOn!.Number })
+            .Select(d => new { d.IssueId, d.DependsOnId, ProjectKey = d.DependsOn!.Project!.Key, d.DependsOn!.Number })
             .ToListAsync(ct);
 
         var tree = await PriorityTree.ForAsync(db, ct);
+
+        // The one exception to "satisfied means done": a task under a story that
+        // shares one pull request, waiting on its pull request, satisfies an
+        // edge from a sibling task under the same story. Building on a
+        // sibling's unmerged commits is the point of a shared branch, and the
+        // sibling it waits on can only reach a terminal column once the whole
+        // story does - so holding the edge would hold the story for ever.
+        // Edges to or from anything outside that story stay as strict as ever.
+        unmet = unmet
+            .Where(r => !(tree.WaitingOn(r.DependsOnId, statuses) is not null
+                && tree.SharedStoryOf(r.IssueId) is { } story
+                && tree.SharedStoryOf(r.DependsOnId) == story))
+            .ToList();
 
         return new DependencyGate(
             unmet.GroupBy(r => r.IssueId).ToDictionary(
@@ -1467,6 +1550,12 @@ public sealed class DependencyGate
 
     /// <summary>Whether one pull request is shared across the story this issue sits under - see <see cref="PriorityTree.EffectiveOnePr"/>.</summary>
     public (bool OnePr, bool? Own, string? FromKey) EffectiveOnePr(long issueId) => _tree.EffectiveOnePr(issueId);
+
+    /// <summary>The story whose pull request this task is waiting on, or null - see <see cref="PriorityTree.WaitingOn"/>.</summary>
+    public string? WaitingOn(long issueId, List<EfHatchStatus> statuses) => _tree.WaitingOn(issueId, statuses);
+
+    /// <summary>The story this task shares the branch and pull request of, or null - see <see cref="PriorityTree.SharedStoryOf"/>.</summary>
+    public long? SharedStoryOf(long issueId) => _tree.SharedStoryOf(issueId);
 }
 
 /// <summary>
@@ -1485,7 +1574,7 @@ public sealed record UnmetEdge(string BlockerKey, string? HolderKey);
 public sealed class FamilyGate
 {
     /// <summary>A gate that folds nothing, for a refused scan - so <c>Scan.Family</c> is never null.</summary>
-    public static readonly FamilyGate None = new([], [], [], []);
+    public static readonly FamilyGate None = new([], [], [], [], []);
 
     /// <summary>
     /// The sentence for an issue with nothing filed under it at all - shared
@@ -1500,15 +1589,17 @@ public sealed class FamilyGate
     private readonly HashSet<long> _open;
     private readonly Dictionary<long, int> _statusById;
     private readonly Dictionary<long, (long? ParentId, string Type, string Key, int StatusId)> _byId;
+    private readonly HashSet<long> _waiting;
 
     private FamilyGate(
         Dictionary<long, List<long>> children, HashSet<long> open, Dictionary<long, int> statusById,
-        Dictionary<long, (long? ParentId, string Type, string Key, int StatusId)> byId)
+        Dictionary<long, (long? ParentId, string Type, string Key, int StatusId)> byId, HashSet<long> waiting)
     {
         _children = children;
         _open = open;
         _statusById = statusById;
         _byId = byId;
+        _waiting = waiting;
     }
 
     public static async Task<FamilyGate> ForAsync(
@@ -1536,8 +1627,31 @@ public sealed class FamilyGate
             siblings.Add(row.Id);
         }
 
-        return new FamilyGate(children, open, statusById, byId);
+        // Every task waiting on its story's pull request, found once for the
+        // pass - see PriorityTree.WaitingOn. A board that shares no pull request
+        // anywhere has an empty set and every rule below is exactly as it was.
+        var tree = await PriorityTree.ForAsync(db, ct);
+        var waiting = rows.Where(r => tree.WaitingOn(r.Id, statuses) is not null).Select(r => r.Id).ToHashSet();
+
+        return new FamilyGate(children, open, statusById, byId, waiting);
     }
+
+    /// <summary>
+    /// Whether this issue is a task waiting on its story's pull request - see
+    /// <see cref="PriorityTree.WaitingOn"/>.
+    /// </summary>
+    public bool IsWaiting(long issueId) => _waiting.Contains(issueId);
+
+    /// <summary>
+    /// The direct children whose work is not yet done: <see cref="OpenChildren"/>
+    /// less the ones waiting on the story's pull request, which are finished as
+    /// far as the story is concerned. Asked by the fold that holds a story out of
+    /// review while its children are the work; <see cref="OpenChildren"/> itself
+    /// still counts a waiting task, because it has not merged - which is what
+    /// keeps a story from being closed over a pull request nobody has opened.
+    /// </summary>
+    public IReadOnlyList<long> OpenWorkChildren(long issueId) =>
+        OpenChildren(issueId).Where(id => !_waiting.Contains(id)).ToList();
 
     /// <summary>The direct children of this issue, in board order.</summary>
     public IReadOnlyList<long> Children(long issueId) =>
@@ -1621,6 +1735,12 @@ public sealed class FamilyGate
         {
             if (siblingId == issue.Id) continue;
             if (!_statusById.TryGetValue(siblingId, out var siblingStatusId)) continue;
+
+            // Finished, as far as the parent is concerned: it has pushed to the
+            // shared branch and waits there for the one pull request to merge.
+            // Without this the next sibling would wait for a merge that cannot
+            // happen until every sibling is done.
+            if (_waiting.Contains(siblingId)) continue;
 
             var siblingIndex = board.FindIndex(s => s.Id == siblingStatusId);
             if (siblingIndex <= targetIndex) continue; // not pulled past yet, or deferred (-1)

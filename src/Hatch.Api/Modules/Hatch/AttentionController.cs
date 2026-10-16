@@ -207,8 +207,12 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
         var closesTo = Columns.Closes(statuses, review);
         var family = closesTo is not null ? await FamilyGate.ForAsync(db, statuses, ct) : null;
 
+        // A task waiting on its story's pull request has none of its own by
+        // design - the story opens the one - so it is not an issue that has
+        // sat in review with nowhere to review it. See PriorityTree.WaitingOn.
         var withoutPr = inReview.Count(i =>
             string.IsNullOrWhiteSpace(i.PullRequestUrl)
+            && tree.WaitingOn(i.Id, statuses) is null
             && !(family is not null
                 && tree.EffectivePreApproval(i.Id).Level == PreApprovalLevels.PreApproved
                 && family.Children(i.Id).Count > 0

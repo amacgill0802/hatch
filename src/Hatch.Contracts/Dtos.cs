@@ -1590,6 +1590,18 @@ public record IssueDependencyRequest(string DependsOnKey);
 /// (<c>"its stall question lapsed after 5 minutes untouched"</c>). Null on
 /// every row that is clear for the ordinary reason, which is most of them.
 /// </param>
+/// <param name="BranchKey">
+/// The key the branch for this dispatch is named for. For a task under a story
+/// that shares one pull request, and with no pull request of its own, the
+/// story's key: every task of that story pushes to the story's branch, and the
+/// story's closeout opens the one pull request. Otherwise the issue's own key.
+/// Decided here and never by the client - whether a story shares is a live,
+/// inherited fact. A task that already has an open branch of its own on origin
+/// keeps it: that is a fact about git, which only a runner can see, so the
+/// client applies it on top of this. Null from a server that predates it, where
+/// the client reads the issue's own key.
+/// </param>
+/// <param name="BranchTitle">The title the branch's slug is cut from: the story's, where <paramref name="BranchKey"/> is the story's.</param>
 public record WorkDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -1611,7 +1623,9 @@ public record WorkDto(
     IReadOnlyList<StatusDto>? Statuses = null,
     string? ClearNote = null,
     string? Landing = null,
-    bool ChecksRequired = true);
+    bool ChecksRequired = true,
+    string? BranchKey = null,
+    string? BranchTitle = null);
 
 /// <summary>
 /// The two numbers a send-back for an over-long brief carried, and whether
@@ -1781,6 +1795,14 @@ public record QueueEntryDto(
 /// project keys and two projects may share a repository. Absent from a
 /// board that predates it.
 /// </param>
+/// <param name="BranchKey">
+/// The key the row's branch is named for. The row's own <paramref name="Key"/>
+/// in every row this list holds: a task waiting on its story's pull request has
+/// no branch of its own to check and is left out of the list, so the key here is
+/// always the one the poll should look for. Null from a server that predates it,
+/// where the client reads <paramref name="Key"/>.
+/// </param>
+/// <param name="BranchTitle">The title the branch's slug is cut from, or null where <paramref name="BranchKey"/> is null.</param>
 public record ReviewCheckDto(
     string Key,
     IReadOnlyList<WorkRepositoryDto> Repositories,
@@ -1789,7 +1811,9 @@ public record ReviewCheckDto(
     string? PullRequestUrl = null,
     MergeWorkDto? MergeWork = null,
     string ProjectKey = "",
-    string Landing = Landings.PullRequest);
+    string Landing = Landings.PullRequest,
+    string? BranchKey = null,
+    string? BranchTitle = null);
 
 /// <summary>The kind of work an issue in the merges column is, and why it is not work where it is not - see <see cref="Hatch.Api.Modules.Hatch.MergeWork.Judgement"/>.</summary>
 /// <param name="IsHead">

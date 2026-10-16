@@ -105,6 +105,20 @@ public static class Columns
     }
 
     /// <summary>
+    /// Whether a column is the review column or stands to its right, and is
+    /// not terminal - the lane a task is finished in once its work is pushed.
+    /// A deferred column is on no lane, so it is never in this one.
+    /// </summary>
+    public static bool AtOrPastReview(List<EfHatchStatus> statuses, int statusId)
+    {
+        if (AwaitingReview(statuses) is not { } review) return false;
+
+        var board = Board(statuses);
+        var at = board.FindIndex(s => s.Id == statusId);
+        return at >= 0 && at >= board.FindIndex(s => s.Id == review.Id) && !board[at].IsTerminal;
+    }
+
+    /// <summary>
     /// The column a person ticked <see cref="EfHatchStatus.MergesPullRequest"/>
     /// on - found the same way <see cref="AwaitingReview"/> is, off the board
     /// rather than off a name.
