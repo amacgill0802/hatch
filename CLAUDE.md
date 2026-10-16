@@ -156,11 +156,15 @@ one loads on every increment. Two rules from it matter enough to repeat:
   is there: it records the sha AER-12's work reached the trunk at, in this
   checkout's own origin remote.
 - **Never move a ticket to a terminal or deferred status** — only the
-  operator does. The prompt's "Where this increment ends" section names
-  where this one stops.
+  operator does, or the board itself, carrying a pre-approved parent
+  through with no session (the close hop); a deferred status stays the
+  operator's alone, with no exception. The prompt's "Where this increment
+  ends" section names where this one stops.
 - **Never move a ticket into a protected column** — only an owner or
-  approver does. A `403` there is the gate working, the same as a scope
-  refusal (see "The key").
+  approver does, or the board itself, carrying a pre-approved issue through
+  with no session (the approve hop), since a pre-approval is that owner's
+  or approver's own permission given in advance. A `403` there is the gate
+  working, the same as a scope refusal (see "The key").
 - **End by saying what you did**, in the `work-log` block the prompt's
   closing section describes — `hatch` lifts it into the work log row.
 
