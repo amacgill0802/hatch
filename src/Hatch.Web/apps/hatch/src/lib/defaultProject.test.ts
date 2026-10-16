@@ -40,6 +40,8 @@ const project = (over: Partial<Project>): Project => ({
   members: [],
   canApprove: false,
   canAdminister: false,
+  landing: 'pull-request',
+  checksRequired: true,
   ...over,
 });
 

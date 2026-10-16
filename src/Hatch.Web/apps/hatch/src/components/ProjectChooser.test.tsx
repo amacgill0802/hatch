@@ -19,6 +19,8 @@ function project(overrides: Partial<Project>): Project {
     members: [],
     canApprove: false,
     canAdminister: false,
+    landing: 'pull-request',
+    checksRequired: true,
     ...overrides,
   };
 }
