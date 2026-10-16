@@ -81,6 +81,26 @@ public sealed class Tally
         ExhaustedKnown = true;
     }
 
+    /// <summary>
+    /// The probe's own session window, read back against the carried instant
+    /// while the wait is already running - the probe is the authority and the
+    /// sentence that started the wait was only ever the first guess. Room left
+    /// ends the wait outright; a disagreeing reset instant replaces the carried
+    /// one; no session window at all touches nothing.
+    /// </summary>
+    public void CorrectExhausted(UsageWindow? session)
+    {
+        if (ExhaustedUntil is null || session is null) return;
+
+        if (session.Utilization < 1) { ClearExhausted(); return; }
+
+        if (session.ResetsAt is { } resetsAt && resetsAt != ExhaustedUntil)
+        {
+            ExhaustedUntil = resetsAt;
+            ExhaustedKnown = true;
+        }
+    }
+
     /// <summary>The sentence naming what ended the run.</summary>
     public string? StopWhy { get; set; }
 
@@ -886,7 +906,10 @@ public sealed class GoToWorkCommand(Runtime runtime)
                     probedAt = probeNow;
                     var probed = await probe.ProbeAsync(runtime.TempDirectory, ct);
                     if (probed is not null && UsageReport.Parse(probed) is { } windows)
+                    {
                         runtime.Readout.SetUsage(windows, probeNow);
+                        tally.CorrectExhausted(windows.FirstOrDefault(w => w.Window == "session"));
+                    }
                 }
             }
 
@@ -986,7 +1009,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 var waiting = $"out of Claude usage until {UsageLimit.Clock(until, tally.ExhaustedKnown, runtime.Clock)}";
                 line.Line = waiting;
                 await SayQuietlyAsync(exhausted, now, interval, once,
-                    digest: "exhausted",
+                    digest: $"exhausted:{until:O}",
                     still: "hatch: still out of Claude usage",
                     inFull: () =>
                     {

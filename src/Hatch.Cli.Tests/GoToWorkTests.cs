@@ -1451,6 +1451,87 @@ public sealed class GoToWorkTests
 
     // ---- A usage limit's own wait ----
 
+    /// <summary>
+    /// The probe is the authority over the sentence that started the wait:
+    /// still exhausted, since the window is still at 100%, but the reset
+    /// instant it names replaces the one carried in - and the "out of Claude
+    /// usage" sentence prints once for the correction, not once per probe that
+    /// lands on the same corrected reading afterwards.
+    /// </summary>
+    [Fact]
+    public async Task A_probed_reset_that_disagrees_with_the_carried_instant_replaces_it_and_says_so_once()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        var start = DateTimeOffset.UtcNow;
+        var carriedUntil = start.AddHours(1);
+        Carrying(h, new NightState { ExhaustedUntil = carriedUntil });
+
+        // Real time rather than a FakeTimeProvider: the exhausted wait's own
+        // nap is a Task.Delay against the runtime clock, and a fake clock only
+        // ever advances when something reads it - it does not drive a pending
+        // timer forward on its own, so a delay against one just hangs. A few
+        // real seconds, polled every --interval 1, is what the existing
+        // until/reset tests above already use for the same reason.
+        var correctedAt = start.AddSeconds(3);
+        var fake = new FakeProbingSessions
+        {
+            Behaviour = () => [Fixtures.UsageReport([("session", 100, correctedAt.ToString("O"))]), Fixtures.Result(turns: 0)],
+        };
+
+        var runtime = h.Supervised with { Sessions = fake };
+
+        Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync(["--interval", "1", "--max-runs", "1"], default));
+
+        Assert.Single(fake.Inner.Spawned);
+        Assert.Contains(h.Say.Said, l => l.Contains(UsageLimit.Clock(correctedAt, known: true), StringComparison.Ordinal));
+        Assert.DoesNotContain(h.Say.Said, l => l.Contains(UsageLimit.Clock(carriedUntil, known: true), StringComparison.Ordinal));
+        Assert.Single(h.Say.Said, l => l.Contains("out of Claude usage until", StringComparison.Ordinal));
+    }
+
+    /// <summary>A session window with room left ends the wait outright, the moment the probe says so - never waiting on the stale instant.</summary>
+    [Fact]
+    public async Task A_probed_session_with_room_ends_the_wait_at_once()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        Carrying(h, new NightState { ExhaustedUntil = DateTimeOffset.UtcNow.AddDays(1) });
+
+        var fake = new FakeProbingSessions
+        {
+            Behaviour = () => [Fixtures.UsageReport([("session", 42, null)]), Fixtures.Result(turns: 0)],
+        };
+
+        var runtime = h.Supervised with { Sessions = fake };
+
+        Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync(["--once"], default));
+
+        Assert.Single(fake.Inner.Spawned);
+        Assert.DoesNotContain(h.Say.Said, l => l.Contains("out of Claude usage", StringComparison.Ordinal));
+    }
+
+    /// <summary>No session window in the probe's answer - or no answer at all - touches nothing; the carried sentence still stands.</summary>
+    [Fact]
+    public async Task A_probe_that_answers_nothing_leaves_the_sentence_standing()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        var start = DateTimeOffset.UtcNow;
+        var carriedUntil = start.AddSeconds(3);
+        Carrying(h, new NightState { ExhaustedUntil = carriedUntil });
+
+        var fake = new FakeProbingSessions { Behaviour = () => null };
+        var runtime = h.Supervised with { Sessions = fake };
+
+        Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync(["--interval", "1", "--max-runs", "1"], default));
+
+        Assert.Single(fake.Inner.Spawned);
+        Assert.Contains(h.Say.Said, l => l.Contains(UsageLimit.Clock(carriedUntil, known: true), StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task Source_changed_during_the_wait_restarts_the_loop_and_carries_the_instant_forward()
     {

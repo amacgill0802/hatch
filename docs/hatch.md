@@ -4672,6 +4672,20 @@ the loop working correctly against a spent account, not a broken increment. See
 [runners on the board](#runners-on-the-board) for what a runner does about the
 account itself.
 
+**The wait re-asks the same probe.** The sentence above is only the first
+guess at when the account resets - the exhausted wait does not simply sit
+until the wall clock reaches it. HA-173's own `/usage` probe ("Between
+sessions, HA-173 asks a second source", above) already runs at the top of
+every pass, including every pass through this wait, and for as long as the
+wait lasts its session window is the authority over the sentence, not the
+other way round: room left in that window clears
+the wait outright, this same pass, whatever instant the sentence gave; a reset
+instant that disagrees with the one carried in replaces it, in either
+direction; and a probe with no session window at all - or no answer at all -
+touches nothing, leaving the sentence standing. A correction says itself once,
+the same "out of Claude usage until ..." line the sentence itself prints, and
+not again merely because a later probe lands on the same corrected reading.
+
 **Neither is a preemption.** The board can order the runner holding the
 lowest-priority ticket to stand down for an emergency one — see
 [what a runner does, in order](#what-a-runner-does-in-order), where the `200`
