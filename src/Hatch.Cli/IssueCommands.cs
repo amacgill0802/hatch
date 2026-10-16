@@ -126,6 +126,13 @@ public sealed class IssueCommands(Cli cli)
         if (issue.DependentKeys.Count > 0) cli.Say.Line($"blocks:   {string.Join(", ", issue.DependentKeys)}");
         if (issue.ReadyAt is { Length: > 0 } ready) cli.Say.Line($"ready:    {ready}");
         if (issue.DueAt is { Length: > 0 } due) cli.Say.Line($"due:      {due}");
+        foreach (var landing in issue.Landings ?? [])
+        {
+            var seen = landing.ContainedBy is { Length: > 0 } containedBy
+                ? $", seen on {landing.Trunk} at {containedBy[..7]}"
+                : "";
+            cli.Say.Line($"landed:   {landing.Trunk} at {landing.Sha[..7]} ({landing.Canonical}){seen}");
+        }
         cli.Say.Line("");
         cli.Say.Lines(issue.Description.ReplaceLineEndings("\n").Split('\n'));
         cli.Say.Line("");
