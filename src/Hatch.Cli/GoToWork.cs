@@ -983,7 +983,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 // its own heartbeat by nobody but the page.
                 idle.Clear();
                 busy.Clear();
-                var waiting = $"out of Claude usage until {UsageLimit.Clock(until)}";
+                var waiting = $"out of Claude usage until {UsageLimit.Clock(until, tally.ExhaustedKnown, runtime.Clock)}";
                 line.Line = waiting;
                 await SayQuietlyAsync(exhausted, now, interval, once,
                     digest: "exhausted",
