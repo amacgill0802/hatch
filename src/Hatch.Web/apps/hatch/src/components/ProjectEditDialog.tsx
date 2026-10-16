@@ -311,9 +311,21 @@ export function ProjectEditDialog({
               />
               Checks are required
             </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={draft.onePullRequest}
+                onChange={(e) => setDraft((d) => d && { ...d, onePullRequest: e.target.checked })}
+              />
+              A story's tasks share one branch and one pull request
+            </label>
+            <p className="hatch-section-hint text-muted">
+              The default for every story in this project; a story can override it either way.
+              Off, each task gets its own branch and pull request, merged one after another.
+            </p>
           </>
         ) : (
-          <p>{`${draft.landing === 'trunk' ? 'On the trunk' : 'By pull request'}, checks ${draft.checksRequired ? 'required' : 'not required'}.`}</p>
+          <p>{`${draft.landing === 'trunk' ? 'On the trunk' : 'By pull request'}, checks ${draft.checksRequired ? 'required' : 'not required'}, ${draft.onePullRequest ? 'one pull request per story' : 'one pull request per task'}.`}</p>
         )}
 
         <h2 className="hatch-section-title">Members</h2>

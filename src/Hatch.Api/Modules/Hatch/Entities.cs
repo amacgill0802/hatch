@@ -115,6 +115,16 @@ public class EfHatchProject
     public string Landing { get; set; } = Landings.PullRequest;
 
     public bool ChecksRequired { get; set; } = true;
+
+    /// <summary>
+    /// Whether a story's tasks share the story's branch and one pull request
+    /// - the project default, which a story's own
+    /// <see cref="EfHatchIssue.OnePullRequest"/> overrides. Off unless a
+    /// person turns it on: it changes how every story under the project is
+    /// worked, so it is an owner's call, written by
+    /// <see cref="ProjectsController.PutLanding"/> and nowhere else.
+    /// </summary>
+    public bool OnePullRequest { get; set; }
 }
 
 /// <summary>
@@ -786,6 +796,27 @@ public class EfHatchIssue
     /// out, it reads whatever it reads next.</para>
     /// </remarks>
     public int PreApproval { get; set; }
+
+    /// <summary>
+    /// Whether this story's tasks share the story's branch and one pull
+    /// request. Null inherits the project's default
+    /// (<see cref="EfHatchProject.OnePullRequest"/>), true is on, false is off.
+    /// Meaningful on a story only; <see cref="IssueOnePrController"/> refuses
+    /// any other type.
+    /// </summary>
+    /// <remarks>
+    /// Open to agent keys, unlike <see cref="Priority"/> and
+    /// <see cref="PreApproval"/>: it decides how work is branched, not which
+    /// gates the loop may pass unattended, and a story's author is the one who
+    /// knows whether its tasks build on one another. It can be changed at any
+    /// time - a task that already has its own branch or pull request keeps
+    /// them, and a task that starts afterwards follows the setting.
+    ///
+    /// Derived at read, never copied: <c>PriorityTree.EffectiveOnePr</c> walks
+    /// to the nearest story at or above an issue and answers with that story's
+    /// own value, else the project's.
+    /// </remarks>
+    public bool? OnePullRequest { get; set; }
 
     /// <summary>
     /// When an increment last left this ticket where it found it. Null for
@@ -1525,6 +1556,13 @@ public class EfHatchIssueEvent
     /// by name, the same as <see cref="PriorityChanged"/>.
     /// </summary>
     public const string PreApprovalChanged = "pre_approval_changed";
+
+    /// <summary>
+    /// A story's one-PR override changed - see
+    /// <see cref="EfHatchIssue.OnePullRequest"/>. The payload carries both
+    /// sides as <c>on</c>, <c>off</c> or <c>inherit</c>.
+    /// </summary>
+    public const string OnePrChanged = "one_pr_changed";
 
     /// <summary>An increment left this ticket where it found it - see <see cref="EfHatchIssue.StalledAt"/>.</summary>
     public const string Stalled = "stalled";

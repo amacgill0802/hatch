@@ -284,6 +284,16 @@ export const setPriority = (key: string, priority: 'normal' | 'expedited' | 'eme
     ...asJson({ priority }),
   });
 
+/** A story's own say over whether its tasks share its branch and one pull
+    request: `on`, `off`, or `inherit` to follow the project's default. Open to
+    an API key, unlike priority and express - it decides how a story is
+    branched, not what the loop reaches for - see IssueOnePrController. */
+export const setOnePr = (key: string, value: 'on' | 'off' | 'inherit') =>
+  fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/one-pr`, {
+    method: 'PUT',
+    ...asJson({ value }),
+  });
+
 /** Carried past a column marked *Express skips* with no session. Its own
     route rather than a field on the patch, and for the same reason expedite
     has one: writing it is closed to an API key, because express decides

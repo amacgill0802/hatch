@@ -60,6 +60,7 @@ const PROJECT: Project = {
   canAdminister: false,
   landing: 'pull-request',
   checksRequired: true,
+  onePullRequest: false,
 };
 
 const OTHER: Project = {
@@ -77,6 +78,7 @@ const OTHER: Project = {
   canAdminister: false,
   landing: 'pull-request',
   checksRequired: true,
+  onePullRequest: false,
 };
 
 const noop = () => undefined;

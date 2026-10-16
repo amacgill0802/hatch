@@ -5637,3 +5637,54 @@ button.hatch-option.chosen {
     transition: none;
   }
 }
+
+/* The one-pull-request control on a story's page - see OnePrControl. Three
+   steps drawn like the pre-approval band's, and a line saying what is in
+   effect. --success for on, the same hue .hatch-express takes. */
+.hatch-one-pr {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.hatch-one-pr-steps {
+  display: inline-flex;
+  gap: var(--sp-1);
+}
+
+.hatch-one-pr-step {
+  padding: var(--sp-1) var(--sp-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--t-label);
+  cursor: pointer;
+}
+
+.hatch-one-pr-step:hover:not(:disabled) {
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.hatch-one-pr-step:disabled {
+  cursor: default;
+}
+
+.hatch-one-pr-step.here {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--on-accent);
+}
+
+.hatch-one-pr-said {
+  color: var(--muted);
+  font-size: var(--t-label);
+}
+
+.hatch-one-pr-said.on {
+  color: var(--success-ink);
+  font-weight: 600;
+}

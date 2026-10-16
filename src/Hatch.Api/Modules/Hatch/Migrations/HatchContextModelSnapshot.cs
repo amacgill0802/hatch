@@ -235,6 +235,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<int>("Number")
                         .HasColumnType("integer");
 
+                    b.Property<bool?>("OnePullRequest")
+                        .HasColumnType("boolean");
+
                     b.Property<long?>("ParentId")
                         .HasColumnType("bigint");
 
@@ -584,6 +587,11 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<int>("NextIssueNumber")
                         .IsConcurrencyToken()
                         .HasColumnType("integer");
+
+                    b.Property<bool>("OnePullRequest")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
 
                     b.HasKey("Id");
 

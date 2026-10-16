@@ -931,6 +931,7 @@ public class WorkController(
         foreach (var c in children)
         {
             var (effectivePreApproval, effectivePreApprovalFrom) = gate.EffectivePreApproval(c.Id);
+            var (onePr, onePrOwn, onePrFrom) = gate.EffectiveOnePr(c.Id);
             childCards.Add(new IssueCardDto(
                 IssueKey.Format(c.ProjectKey, c.Number),
                 c.ProjectKey,
@@ -952,7 +953,10 @@ public class WorkController(
                 StalledAt: c.StalledAt,
                 StalledWhy: c.StalledWhy,
                 Held: c.Held,
-                PullRequestUrl: c.PullRequestUrl));
+                PullRequestUrl: c.PullRequestUrl,
+                OnePr: onePr,
+                OnePrOwn: onePrOwn,
+                OnePrFrom: onePrFrom));
         }
 
         var playbook = to is null

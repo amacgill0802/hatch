@@ -215,6 +215,7 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
         {
             e.Property(p => p.Landing).HasDefaultValue(Landings.PullRequest);
             e.Property(p => p.ChecksRequired).HasDefaultValue(true);
+            e.Property(p => p.OnePullRequest).HasDefaultValue(false);
         });
 
         // Cascade with the project: a project can only be deleted empty of

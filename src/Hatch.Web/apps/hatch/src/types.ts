@@ -39,6 +39,9 @@ export interface Project {
   canAdminister: boolean;
   landing: 'pull-request' | 'trunk';
   checksRequired: boolean;
+  /** The project's default for whether a story's tasks share the story's branch
+      and one pull request. See ProjectDto.OnePullRequest. */
+  onePullRequest: boolean;
 }
 
 /** One git remote bound to a project, as the server reads it back. */
@@ -236,6 +239,17 @@ export interface IssueCard {
   /** The pull request recorded on this issue, or null where none is. See
       IssueCardDto.PullRequestUrl. */
   pullRequestUrl: string | null;
+  /** Whether this issue's story shares one branch and one pull request across
+      its tasks - the nearest story's own override, else the project's default.
+      Walked live at read; false where no story sits above. See
+      IssueCardDto.OnePr. */
+  onePr: boolean;
+  /** This story's own override: true, false, or null to follow the project.
+      Always null on anything but a story. See IssueCardDto.OnePrOwn. */
+  onePrOwn: boolean | null;
+  /** The story `onePr` was read from, or null when it is this issue's own, the
+      project's, or does not exist. See IssueCardDto.OnePrFrom. */
+  onePrFrom: string | null;
 }
 
 /** The lease a running dispatcher holds on an issue - see IssueClaimDto.
@@ -438,6 +452,12 @@ export interface Issue {
       effective level is this issue's own, or none. See
       IssueCard.preApprovalFrom and IssueDto.PreApprovalFrom. */
   preApprovalFrom: string | null;
+  /** See IssueCard.onePr and IssueDto.OnePr. */
+  onePr: boolean;
+  /** See IssueCard.onePrOwn and IssueDto.OnePrOwn. */
+  onePrOwn: boolean | null;
+  /** See IssueCard.onePrFrom and IssueDto.OnePrFrom. */
+  onePrFrom: string | null;
   /** When an increment last left this ticket where it found it, or null.
       See IssueCard.stalledAt and IssueDto.StalledAt. */
   stalledAt: string | null;
@@ -532,6 +552,7 @@ export type IssueEventKind =
   | 'priority_changed'
   | 'express_changed'
   | 'pre_approval_changed'
+  | 'one_pr_changed'
   | 'wip_limit_changed'
   | 'dependency_added'
   | 'dependency_removed'
@@ -695,6 +716,7 @@ export interface ProjectPatchRequest {
 export interface ProjectLandingWriteRequest {
   landing?: 'pull-request' | 'trunk' | null;
   checksRequired?: boolean | null;
+  onePullRequest?: boolean | null;
 }
 
 export interface StatusCreateRequest {

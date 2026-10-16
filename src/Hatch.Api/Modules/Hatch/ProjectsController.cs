@@ -467,8 +467,8 @@ public class ProjectsController(
     }
 
     /// <summary>
-    /// How a project expects its work to land - <see cref="EfHatchProject.Landing"/>
-    /// and <see cref="EfHatchProject.ChecksRequired"/>. Only an owner may call this;
+    /// How a project expects its work to land - <see cref="EfHatchProject.Landing"/>,
+    /// <see cref="EfHatchProject.ChecksRequired"/> and <see cref="EfHatchProject.OnePullRequest"/>. Only an owner may call this;
     /// unlike <see cref="PatchProject"/>, which never reads either field, this is the
     /// only route that writes them.
     /// </summary>
@@ -489,15 +489,17 @@ public class ProjectsController(
             return BadRequest($"landing is \"{Landings.PullRequest}\" or \"{Landings.Trunk}\" - not \"{request.Landing}\"");
 
         var unchanged = (landing is null || landing == project.Landing) &&
-            (request.ChecksRequired is null || request.ChecksRequired == project.ChecksRequired);
+            (request.ChecksRequired is null || request.ChecksRequired == project.ChecksRequired) &&
+            (request.OnePullRequest is null || request.OnePullRequest == project.OnePullRequest);
 
         if (!unchanged)
         {
             if (landing is not null) project.Landing = landing;
             if (request.ChecksRequired is { } checksRequired) project.ChecksRequired = checksRequired;
+            if (request.OnePullRequest is { } onePullRequest) project.OnePullRequest = onePullRequest;
 
             await db.SaveChangesAsync(ct);
-            logger.LogInformation("Project {ProjectKey} landing set to {Landing}/{ChecksRequired} by {Actor}", project.Key, project.Landing, project.ChecksRequired, await caller.ActorNameAsync(ct));
+            logger.LogInformation("Project {ProjectKey} landing set to {Landing}/{ChecksRequired}/{OnePullRequest} by {Actor}", project.Key, project.Landing, project.ChecksRequired, project.OnePullRequest, await caller.ActorNameAsync(ct));
         }
 
         var count = await db.Issues.CountAsync(i => i.ProjectId == id, ct);
@@ -571,7 +573,7 @@ public class ProjectsController(
         EfHatchProject project, int issueCount, IReadOnlyList<ProjectRepositoryDto> repositories, DateTimeOffset? logoUpdatedAt,
         IReadOnlyList<ProjectMemberDto> members, bool canApprove, bool canAdminister) =>
         new(project.Id, project.Key, project.Name, issueCount, project.CreatedAt, project.Color, project.Icon, repositories, logoUpdatedAt,
-            members, canApprove, canAdminister, project.Landing, project.ChecksRequired);
+            members, canApprove, canAdminister, project.Landing, project.ChecksRequired, project.OnePullRequest);
 
     private async Task<List<ProjectMemberDto>> LiveMembersAsync(int projectId, CancellationToken ct)
     {

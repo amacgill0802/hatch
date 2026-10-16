@@ -1263,17 +1263,32 @@ public sealed class PriorityTree
 
     private readonly Dictionary<long, (long? ParentId, string Key, int Priority, int PreApproval)> _rows;
 
-    internal PriorityTree(Dictionary<long, (long?, string, int, int)> rows) => _rows = rows;
+    // The one-PR walk needs two things the other two do not: each issue's type,
+    // to find the nearest story, and each story's own override. Kept beside
+    // _rows rather than widening its tuple, which every other walk destructures.
+    private readonly Dictionary<long, (string Type, bool? OnePr, bool ProjectOnePr)> _onePr;
+
+    internal PriorityTree(Dictionary<long, (long?, string, int, int)> rows, Dictionary<long, (string, bool?, bool)>? onePr = null)
+    {
+        _rows = rows;
+        _onePr = onePr ?? new();
+    }
 
     public static async Task<PriorityTree> ForAsync(HatchContext db, CancellationToken ct)
     {
         var rows = await db.Issues.AsNoTracking()
-            .Select(i => new { i.Id, i.ParentId, i.Priority, i.PreApproval, ProjectKey = i.Project!.Key, i.Number })
+            .Select(i => new
+            {
+                i.Id, i.ParentId, i.Priority, i.PreApproval, ProjectKey = i.Project!.Key, i.Number,
+                i.Type, i.OnePullRequest, ProjectOnePr = i.Project!.OnePullRequest,
+            })
             .ToListAsync(ct);
 
-        return new PriorityTree(rows.ToDictionary(
-            r => r.Id,
-            r => ((long?)r.ParentId, IssueKey.Format(r.ProjectKey, r.Number), r.Priority, r.PreApproval)));
+        return new PriorityTree(
+            rows.ToDictionary(
+                r => r.Id,
+                r => ((long?)r.ParentId, IssueKey.Format(r.ProjectKey, r.Number), r.Priority, r.PreApproval)),
+            rows.ToDictionary(r => r.Id, r => (r.Type, r.OnePullRequest, r.ProjectOnePr)));
     }
 
     internal bool TryGet(long id, out (long? ParentId, string Key, int Priority, int PreApproval) row) => _rows.TryGetValue(id, out row);
@@ -1318,6 +1333,40 @@ public sealed class PriorityTree
         }
 
         return (PreApprovalLevels.None, null);
+    }
+
+    /// <summary>
+    /// Whether the stories' tasks share one branch and pull request, live on
+    /// this issue: the nearest story at or above it, and that story's own
+    /// override if it carries one, else its project's default. An issue with no
+    /// story above it - an epic, or a task filed straight under one - is off,
+    /// because there is no story whose pull request it could share.
+    /// </summary>
+    /// <remarks>
+    /// <c>Own</c> is this issue's own override, which only a story carries.
+    /// <c>FromKey</c> is the story the value was read from, and is null when
+    /// that is the issue itself or when there is no story at all; with a null
+    /// <c>FromKey</c> and a null <c>Own</c>, a story's value came from its
+    /// project. Derived at read and never copied, the same as
+    /// <see cref="EffectivePreApproval"/>.
+    /// </remarks>
+    public (bool OnePr, bool? Own, string? FromKey) EffectiveOnePr(long issueId)
+    {
+        _onePr.TryGetValue(issueId, out var self);
+        var own = self.Type == "story" ? self.OnePr : null;
+
+        var seen = new HashSet<long>();
+        long? at = issueId;
+
+        while (at is { } id && seen.Add(id))
+        {
+            if (_onePr.TryGetValue(id, out var row) && row.Type == "story")
+                return (row.OnePr ?? row.ProjectOnePr, own, id == issueId ? null : _rows[id].Key);
+
+            at = TryGet(id, out var found) ? found.ParentId : null;
+        }
+
+        return (false, own, null);
     }
 }
 
@@ -1415,6 +1464,9 @@ public sealed class DependencyGate
 
     /// <summary>The pre-approval live on this issue - see <see cref="PriorityTree.EffectivePreApproval"/>.</summary>
     public (int Level, string? FromKey) EffectivePreApproval(long issueId) => _tree.EffectivePreApproval(issueId);
+
+    /// <summary>Whether one pull request is shared across the story this issue sits under - see <see cref="PriorityTree.EffectiveOnePr"/>.</summary>
+    public (bool OnePr, bool? Own, string? FromKey) EffectiveOnePr(long issueId) => _tree.EffectiveOnePr(issueId);
 }
 
 /// <summary>

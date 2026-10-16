@@ -210,8 +210,11 @@ into a closed set the browser owns, not the server, nullable the same way),
 `Landing` (`"pull-request"` default, or `"trunk"` - how a project's finished
 work reaches the trunk, by pull request or pushed straight to it), and
 `ChecksRequired` (`bool`, default `true` - whether a trunk tip with no checks
-run on it yet counts as green). A project may also carry an uploaded logo, in
-its own table — see [Logo](#logo).
+run on it yet counts as green), and `OnePullRequest` (`bool`, default `false` -
+the project's default for whether a story's tasks share the story's branch and
+one pull request, which a story can override either way - see
+[One pull request](#one-pull-request)). A project may also carry an uploaded
+logo, in its own table — see [Logo](#logo).
 
 A project exists so an issue can be called `AER-12` rather than `#4471`, and so
 two efforts can number themselves independently. It is deliberately **not a
@@ -1195,6 +1198,43 @@ should chain them. Both verbs — `POST` and `DELETE` on
 is no `GET`: both lists ride `IssueDto`, where the board, the page and a client
 at a terminal need them anyway. Both directions land in the issue's history, on the issue that
 waits and on it alone.
+
+### One pull request
+
+Whether a story's tasks share the story's branch and one pull request, instead
+of one branch and one pull request each, merged one after another. The goal is a
+story done with fewer obstacles: no merge needed between siblings.
+
+It is answered at two levels. The **project** holds a default
+(`EfHatchProject.OnePullRequest`, off), and a **story** may override it
+(`EfHatchIssue.OnePullRequest`, a nullable bool: null inherits, true is on,
+false is off). Only a story carries an override; any other type is refused.
+
+The effective value is **derived at read and never copied**, the same way
+[pre-approval](#express) is. `PriorityTree.EffectiveOnePr` walks to the nearest
+story at or above an issue and answers with that story's override, else its
+project's default; an issue with no story above it - an epic, or a task filed
+straight under one - reads off, because there is no story whose pull request it
+could share. Reparenting, or flipping either level, changes what everything
+beneath reads on the next request with no write to the issues beneath.
+`IssueDto` and `IssueCardDto` carry `onePr` (the effective value), `onePrOwn`
+(this story's own override, null when it inherits) and `onePrFrom` (the story a
+task read it from, null when it is its own, the project's, or absent).
+
+**Who may set what.** The project default is a person's, and an owner's: it
+changes how every story under the project is worked, and it rides the same
+route as the landing policy (`PUT /projects/{id}/landing`, `{ onePullRequest }`).
+A story's override is open to anyone or anything, an API key included - it decides
+how a story is branched, not what the loop reaches for or which gates it may
+pass unattended, so it is not the edge [priority and pre-approval](#the-one-edge-that-is-deliberately-cut)
+are. It can be changed at any time: a task that already has its own branch or
+pull request keeps them, and a task that starts afterwards follows the setting
+as it then reads. Setting what a story already holds writes nothing; a change
+writes a `one_pr_changed` event carrying both sides as `on`, `off` or `inherit`.
+
+At a terminal, `hatch show` prints the line wherever it is on or a story has
+been told one way or the other. There is no `hatch` command that sets it: a
+session that must goes through `hatch api PUT /api/hatch/issues/{key}/one-pr`.
 
 ### WIP
 
@@ -2214,7 +2254,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/projects/{id}` | PATCH, DELETE | PATCH name and key, and carries `color`/`icon`; DELETE 409s unless the project is empty, and takes its [repositories](#repository) with it |
 | `/projects/{id}/repositories` | GET | The ordered list of remotes, in `SortOrder` — see [Repository](#repository) |
 | `/projects/{id}/repositories` | PUT | **Person only** — plain `[RequireRole(User)]`. The whole ordered list, `[{ remote, baseBranch? }]`; refused as a whole, naming the entry, on an empty, over-limit, unparseable or duplicate remote. Re-sending the same list writes nothing |
-| `/projects/{id}/landing` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ landing?, checksRequired? }` — `landing` is `"pull-request"` or `"trunk"`; `403` naming the project's key from anybody but an owner, `400` naming the bad value on an unknown `landing`, `404` on an unknown project. Re-sending what it already holds writes nothing |
+| `/projects/{id}/landing` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ landing?, checksRequired?, onePullRequest? }` — `onePullRequest` is the project's default for [one pull request](#one-pull-request); `landing` is `"pull-request"` or `"trunk"`; `403` naming the project's key from anybody but an owner, `400` naming the bad value on an unknown `landing`, `404` on an unknown project. Re-sending what it already holds writes nothing |
 | `/projects/{id}/members` | GET | Who owns or approves on this project — open to a key, reading who is on a project is not a power |
 | `/projects/{id}/members/{personId}` | PUT | **Person only** — plain `[RequireRole(User)]`, and only an owner of the project may call it. `{ role }` — `"owner"` or `"approver"`. `403` from anybody else, `400` on an unknown person or role, `409` where it would leave the project with no owner |
 | `/projects/{id}/members/{personId}` | DELETE | **Person only**, owner only, the same guard as the PUT beside it. `409` where it would leave the project with no owner |
@@ -2246,6 +2286,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/issues/{key}/priority` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ priority }` — `"paused"`, `"economy"`, `"low"`, `"normal"`, `"expedited"` or `"emergency"`. Every level but paused floats on the board and is taken first by the dispatcher, most severe first; paused sinks to the bottom and is folded by every dispatch with its own sentence. Setting what it already holds writes nothing; an unknown name is `400` |
 | `/issues/{key}/expedite` | PUT | **Person only** — plain `[RequireRole(User)]`. Legacy two-level alias for `/priority` above. `{ expedited }` — `true` sets expedited, `false` sets normal. Setting what it already holds writes nothing |
 | `/issues/{key}/pre-approval` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action so it holds with the wall off. `{ level }` — `"none"`, `"express"` or `"preapproved"` — see [Express](#express). Express needs the same permission a move into the column that feeds implementation needs; preapproved needs an approver. Setting what it already holds writes nothing; an unknown name is `400` |
+| `/issues/{key}/one-pr` | PUT | **Open to a key** — `[RequireRole(User, AcceptScope = hatch)]`. `{ value }` — `"on"`, `"off"` or `"inherit"` (the project's default) — see [One pull request](#one-pull-request). A story only: anything else is `400` naming its type; an unknown value is `400`. Setting what it already holds writes nothing |
 | `/issues/{key}/express` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ express }` — see [Express](#express). Setting what it already holds writes nothing. Now an alias for `/pre-approval` above, sharing its guards |
 | `/issues/{key}/stall` | PUT | Carries no `[RequireRole]` at all — a dispatcher is exactly who leaves this mark. `{ why }` — the sentence an increment leaves behind it saying why it left the ticket where it found it; sets `StalledAt` to now and `StalledWhy` to it, normalised and capped the way claim chatter is. Always writes, so a second mark replaces the first on the row but still leaves its own `stalled` event behind it |
 | `/issues/{key}/hold` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action: an agent that could hold its own ticket could park it off the board for the night. `{ held }` — holds it or resumes it. Resuming clears `StalledAt` and `StalledWhy` together, so *Resume now* leaves nothing behind for the dispatcher to fold on, even where nothing had set `held` true. Setting what it already holds writes nothing and does not move `UpdatedAt` — except that `held: false` still clears a stall mark where one is there to clear |

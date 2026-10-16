@@ -767,6 +767,80 @@ public class ProjectsControllerTests
         Assert.False(patched.ChecksRequired);
     }
 
+    [Fact]
+    public async Task AProject_StartsWithOnePullRequestOff()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+
+        Assert.False(created.OnePullRequest);
+        Assert.False(Value(await h.Projects.GetProjects(default)).Single(p => p.Id == created.Id).OnePullRequest);
+    }
+
+    [Fact]
+    public async Task AnOwnerSettingOnePullRequest_RoundTripsAndLeavesLandingAlone()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+
+        var written = Value(await h.Projects.PutLanding(created.Id, new ProjectLandingWriteRequest(null, null, true), default));
+
+        Assert.True(written.OnePullRequest);
+        Assert.Equal(Landings.PullRequest, written.Landing);
+        Assert.True(written.ChecksRequired);
+        Assert.True(Value(await h.Projects.GetProjects(default)).Single(p => p.Id == created.Id).OnePullRequest);
+    }
+
+    [Fact]
+    public async Task OmittingOnePullRequest_LeavesItWhereItWas()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        await h.Projects.PutLanding(created.Id, new ProjectLandingWriteRequest(null, null, true), default);
+
+        var written = Value(await h.Projects.PutLanding(created.Id, new ProjectLandingWriteRequest(Landings.Trunk, false), default));
+
+        Assert.True(written.OnePullRequest);
+    }
+
+    [Fact]
+    public async Task OnePullRequest_CanBeTurnedBackOff()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        await h.Projects.PutLanding(created.Id, new ProjectLandingWriteRequest(null, null, true), default);
+
+        var written = Value(await h.Projects.PutLanding(created.Id, new ProjectLandingWriteRequest(null, null, false), default));
+
+        Assert.False(written.OnePullRequest);
+    }
+
+    [Fact]
+    public async Task ANonOwnerApprover_CannotSetOnePullRequest()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        var approver = h.Actors.AddPerson("Alice");
+        await h.Projects.PutMember(created.Id, approver.Id, new ProjectMemberWriteRequest(ProjectMemberRole.Approver), default);
+        h.Actors.Me = approver;
+
+        var result = await h.Projects.PutLanding(created.Id, new ProjectLandingWriteRequest(null, null, true), default);
+
+        Assert.Equal(403, ((ObjectResult)result.Result!).StatusCode);
+        Assert.False((await h.Db.Projects.FindAsync(created.Id))!.OnePullRequest);
+    }
+
+    [Fact]
+    public async Task AKey_CannotSetOnePullRequest()
+    {
+        var h = await NewAsync(program: true);
+
+        var result = await h.Projects.PutLanding(h.ProjectId, new ProjectLandingWriteRequest(null, null, true), default);
+
+        Assert.Equal(403, ((ObjectResult)result.Result!).StatusCode);
+        Assert.False((await h.Db.Projects.FindAsync(h.ProjectId))!.OnePullRequest);
+    }
+
     // ---- Harness ----
 
     private static readonly byte[] Png = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x01];

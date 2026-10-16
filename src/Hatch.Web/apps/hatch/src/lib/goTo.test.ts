@@ -29,6 +29,9 @@ const card = (key: string, over: Partial<IssueCard> = {}): IssueCard => ({
   stalledWhy: null,
   held: false,
   pullRequestUrl: null,
+  onePr: false,
+  onePrOwn: null,
+  onePrFrom: null,
   ...over,
 });
 

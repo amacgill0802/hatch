@@ -22,7 +22,7 @@ public record ProjectDto(
     int Id, string Key, string Name, int IssueCount, DateTimeOffset CreatedAt, string? Color, string? Icon,
     IReadOnlyList<ProjectRepositoryDto> Repositories, DateTimeOffset? LogoUpdatedAt,
     IReadOnlyList<ProjectMemberDto> Members, bool CanApprove, bool CanAdminister,
-    string Landing = Landings.PullRequest, bool ChecksRequired = true);
+    string Landing = Landings.PullRequest, bool ChecksRequired = true, bool OnePullRequest = false);
 
 /// <summary>A stored image, as the markdown that shows it will name it: <c>/api/hatch/images/{id}</c>.</summary>
 public record ImageDto(Guid Id);
@@ -70,7 +70,8 @@ public record ProjectMemberWriteRequest(string Role);
 
 /// <summary>A write to a project's landing settings - <c>null</c> on either field leaves it alone.</summary>
 /// <param name="Landing">One of <see cref="Landings"/>.</param>
-public record ProjectLandingWriteRequest(string? Landing, bool? ChecksRequired);
+/// <param name="OnePullRequest">The project default for whether a story's tasks share its branch and one pull request - see <see cref="EfHatchProject.OnePullRequest"/>. Null leaves it alone.</param>
+public record ProjectLandingWriteRequest(string? Landing, bool? ChecksRequired, bool? OnePullRequest = null);
 
 // ---- Statuses ----
 
@@ -295,6 +296,19 @@ public record AssigneeDto(string Kind, Guid Id, string Name);
 /// The ancestor <paramref name="PreApproval"/> was inherited from, or null
 /// when the effective level is this issue's own, or None.
 /// </param>
+/// <param name="OnePr">
+/// Whether this issue's story shares one branch and one pull request across
+/// its tasks - walked live, at read, to the nearest story at or above this
+/// issue, whose own override wins and whose project's default fills in where
+/// it has none; never stored or copied. False where no story sits above. See
+/// <see cref="EfHatchIssue.OnePullRequest"/>. Trailing and defaulted for the
+/// reason <paramref name="OpenQuestions"/> is.
+/// </param>
+/// <param name="OnePrOwn">The override this story's own row carries - true, false, or null for "inherit the project's default". Always null on anything but a story.</param>
+/// <param name="OnePrFrom">
+/// The story <paramref name="OnePr"/> was read from, or null when the value is
+/// this issue's own, comes from its project, or does not exist.
+/// </param>
 public record IssueCardDto(
     string Key,
     string ProjectKey,
@@ -319,7 +333,10 @@ public record IssueCardDto(
     DateTimeOffset? StalledAt = null,
     string? StalledWhy = null,
     bool Held = false,
-    string? PullRequestUrl = null);
+    string? PullRequestUrl = null,
+    bool OnePr = false,
+    bool? OnePrOwn = null,
+    string? OnePrFrom = null);
 
 /// <summary>
 /// The lease a running dispatcher holds on an issue, or null where nothing
@@ -451,6 +468,19 @@ public record IssueClaimDto(
 /// anywhere else - the same judgement <see cref="ReviewCheckDto.MergeWork"/>
 /// carries for the CLI's poll.
 /// </param>
+/// <param name="OnePr">
+/// Whether this issue's story shares one branch and one pull request across
+/// its tasks - walked live, at read, to the nearest story at or above this
+/// issue, whose own override wins and whose project's default fills in where
+/// it has none; never stored or copied. False where no story sits above. See
+/// <see cref="EfHatchIssue.OnePullRequest"/>. Trailing and defaulted for the
+/// reason <paramref name="OpenQuestions"/> is.
+/// </param>
+/// <param name="OnePrOwn">The override this story's own row carries - true, false, or null for "inherit the project's default". Always null on anything but a story.</param>
+/// <param name="OnePrFrom">
+/// The story <paramref name="OnePr"/> was read from, or null when the value is
+/// this issue's own, comes from its project, or does not exist.
+/// </param>
 public record IssueDto(
     string Key,
     int ProjectId,
@@ -489,7 +519,10 @@ public record IssueDto(
     string? StalledWhy = null,
     bool Held = false,
     int StallResumeSeconds = 0,
-    MergeWorkDto? MergeWork = null);
+    MergeWorkDto? MergeWork = null,
+    bool OnePr = false,
+    bool? OnePrOwn = null,
+    string? OnePrFrom = null);
 
 /// <summary>Taking the lease: who is asking is the credential's to say, so the body names only where from.</summary>
 /// <param name="Runner">The checkout holding it - <c>host:/path/to/checkout</c>, as the runner names itself.</param>
@@ -1406,6 +1439,14 @@ public record PriorityRequest(string Priority);
 /// route both marks and unmarks, and the caller says which it meant.
 /// </summary>
 public record ExpressRequest(bool Express);
+
+/// <summary>
+/// A story's one-PR override: <c>"on"</c>, <c>"off"</c> or <c>"inherit"</c>
+/// (the project's default). A string rather than a nullable boolean, because
+/// a JSON null and an absent field read the same on the wire and "inherit"
+/// should be something the caller says.
+/// </summary>
+public record OnePrRequest(string Value);
 
 /// <summary>
 /// The level to set, by name - <c>"none"</c>, <c>"express"</c> or

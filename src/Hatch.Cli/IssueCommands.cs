@@ -105,6 +105,10 @@ public sealed class IssueCommands(Cli cli)
         else if (issue.Priority == PriorityLevels.PausedName)
             cli.Say.Line($"priority:  paused - set aside; the loop leaves it where it stands{inherited}");
         if (issue.Express) cli.Say.Line("express:  yes - carried past a column marked to skip, with no session");
+
+        // Said only where it is on, or where a story has been told one way or
+        // the other; a project that never turned it on has nothing to report.
+        if (issue.OnePr || issue.OnePrOwn is not null) cli.Say.Line(OnePrLine(issue));
         if (issue.Type == "epic")
         {
             cli.Say.Line(issue.WipLimit is { } limit
@@ -123,6 +127,23 @@ public sealed class IssueCommands(Cli cli)
 
         PrintComments(cli.Say, comments);
         return 0;
+    }
+
+    /// <summary>
+    /// Whether the story's tasks share its branch and one pull request, and where
+    /// the value comes from, in the shape the other inherited lines above are
+    /// printed. Read-only here: a person sets the project's default in the
+    /// browser and a story's override through the API.
+    /// </summary>
+    public static string OnePrLine(IssueDto issue)
+    {
+        var value = issue.OnePr ? "on" : "off";
+        var source = issue.OnePrOwn is not null ? "set on this story"
+            : issue.OnePrFrom is { Length: > 0 } from ? $"inherited from {from}"
+            : issue.Type == "story" ? "the project's default"
+            : "not under a story";
+
+        return $"one-pr:   {value} ({source})";
     }
 
     public static readonly string[] CommentsUsage =
