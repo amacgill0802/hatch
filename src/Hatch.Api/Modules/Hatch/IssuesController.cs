@@ -935,6 +935,8 @@ public class IssuesController(
         var issue = await LoadAsync(key, ct);
         if (issue is null) return NotFound();
 
+        if (await CheckClaimMoveRefusalAsync(issue, key, ct) is { } checkRefusal) return Conflict(checkRefusal);
+
         if (await OverrideRefusal(request.WipOverride, ct) is { } notAPerson) return notAPerson;
 
         var status = await db.Statuses.FirstOrDefaultAsync(s => s.Id == request.StatusId, ct);
@@ -1076,6 +1078,26 @@ public class IssuesController(
                 StatusCode = StatusCodes.Status403Forbidden,
             }
             : null;
+
+    /// <summary>
+    /// A key, not a person, and only while the issue's live claim is under a
+    /// check playbook - see <see cref="VerdictsController.PostVerdict"/> for
+    /// the same <c>ClaimPlaybookId</c> read. A check session judges an issue;
+    /// it does not move the ticket itself. Unconditional on
+    /// <c>changedColumn</c>, unlike <see cref="ProtectedMoveRefusalAsync"/> -
+    /// this is about what the claim is for, not where the move lands, so it
+    /// refuses a same-column reorder too.
+    /// </summary>
+    private async Task<string?> CheckClaimMoveRefusalAsync(EfHatchIssue issue, string key, CancellationToken ct)
+    {
+        if (!await caller.IsProgramAsync(ct)) return null;
+        if (issue.ClaimPlaybookId is not { } playbookId) return null;
+        if (!claims.IsLive(ClaimSnapshot.Of(issue), time.GetUtcNow())) return null;
+
+        var isCheck = await db.Playbooks.AsNoTracking()
+            .Where(p => p.Id == playbookId).Select(p => p.IsCheck).FirstOrDefaultAsync(ct);
+        return isCheck ? $"{key}'s live claim is a check's - a session judges here, it does not move the ticket" : null;
+    }
 
     /// <summary>
     /// A person, not a key. Moving an issue to another project is the
