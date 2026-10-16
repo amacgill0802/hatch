@@ -553,7 +553,7 @@ the bulk endpoint and the plan reads. Read it on demand.
 ### Reaching Hatch
 
 `hatch` is the calls a working session actually makes — `board`, `next`,
-`queue`, `show`, `comments`, `start`, `move`, `comment`, `pr`, `depends`, `ask`,
+`queue`, `show`, `comments`, `start`, `move`, `comment`, `pr`, `depends`, `one-pr`, `ask`,
 `questions`, `answer`, `config`, `work`, `go-to-work`, `do-my-work`, and `api`
 for everything else. It finds a column by name rather than by id — on the
 letters and digits alone, so `todo` at a terminal reaches the column the board
@@ -1025,6 +1025,8 @@ hatch pr AER-12 https://...       ...or say where, having opened one
 hatch pr AER-12 --clear           ...or take it off the one it has
 hatch depends AER-13 AER-12       AER-13 waits on AER-12
 hatch depends AER-13 --remove AER-12        ...no longer
+hatch one-pr AER-5                whether the story's tasks share its branch and one PR
+hatch one-pr AER-5 on             ...turn it on for this story (or off, or inherit)
 hatch answer                      answer the open questions, one at a time, here
 hatch api GET /api/hatch/issues?statusId=2
 hatch api PATCH /api/hatch/issues/AER-12 '{"dueAt":"2026-10-01"}'

@@ -56,6 +56,7 @@ namespace Hatch.Cli;
 [JsonSerializable(typeof(IssueMoveRequest))]
 [JsonSerializable(typeof(IssuePatchRequest))]
 [JsonSerializable(typeof(IssueDependencyRequest))]
+[JsonSerializable(typeof(OnePrRequest))]
 [JsonSerializable(typeof(WorkLogEntryRequest))]
 [JsonSerializable(typeof(ClaimRequest))]
 [JsonSerializable(typeof(ClaimHeartbeatRequest))]

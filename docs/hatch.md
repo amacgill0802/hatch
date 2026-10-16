@@ -1232,9 +1232,9 @@ pull request keeps them, and a task that starts afterwards follows the setting
 as it then reads. Setting what a story already holds writes nothing; a change
 writes a `one_pr_changed` event carrying both sides as `on`, `off` or `inherit`.
 
-At a terminal, `hatch show` prints the line wherever it is on or a story has
-been told one way or the other. There is no `hatch` command that sets it: a
-session that must goes through `hatch api PUT /api/hatch/issues/{key}/one-pr`.
+At a terminal, `hatch one-pr <key> [on|off|inherit]` reads and sets it, and
+`hatch show` prints the line wherever it is on or a story has been told one way
+or the other.
 
 ### WIP
 
@@ -4919,7 +4919,7 @@ itself writes, rather than a second write racing the first.
 
 The CLI is one program — [`src/Hatch.Cli`](../src/Hatch.Cli), published as a
 single binary called `hatch`. Every command is a command of it: `board`, `next`,
-`queue`, `show`, `start`, `move`, `comment`, `pr`, `depends`, `ask`,
+`queue`, `show`, `start`, `move`, `comment`, `pr`, `depends`, `one-pr`, `ask`,
 `questions`, `answer`, `api`, `config`, `work` and `go-to-work`.
 
 One command in it is not for a person: `inbox`, which the hooks a spawned session
@@ -5507,7 +5507,7 @@ the plan reads — and is read on demand.
 ### Reaching Hatch
 
 `hatch` is the calls a working session actually makes — `board`, `next`,
-`queue`, `show`, `start`, `move`, `comment`, `pr`, `depends`, `ask`,
+`queue`, `show`, `start`, `move`, `comment`, `pr`, `depends`, `one-pr`, `ask`,
 `questions`, `answer`, `config`, `work`, `go-to-work`, `do-my-work`, and `api`
 for everything else. It finds a column by name rather than by id — on the
 letters and digits alone, so `todo` at a terminal reaches the column the board

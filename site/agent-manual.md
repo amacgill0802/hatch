@@ -45,6 +45,7 @@ hatch: no such command "<x>" - `hatch --help` lists them.
 | `comment` | no | yes |
 | `pr` | no | read: no; set: yes |
 | `depends` | no | read: no; add/remove: yes |
+| `one-pr` | no | read: no; set: yes |
 | `ask` | no | yes |
 | `questions` | no | no |
 | `answer` | no | yes |
@@ -312,6 +313,22 @@ nothing`, then `a, b wait on <key>` or `nothing waits on <key>`. An edge
 gates one move, into the implementation column (the one ticked *Code written
 here* on the Statuses page, or the one just left of review where none is), and
 clears when the issue it names is in a terminal column.
+
+### `hatch one-pr AER-5 [on|off|inherit]`
+
+- One argument: reads the issue and prints one line, `one-pr:   on (set on this
+  story)`, `one-pr:   off (the project's default)` or `one-pr:   on (inherited
+  from AER-5)` for a task under a story.
+- A second argument: `PUT /api/hatch/issues/<key>/one-pr`. `on` and `off`
+  override the project's default for this story; `inherit` goes back to
+  following it. A story only - any other type is refused by the server. Open to
+  a key, unlike priority and pre-approval; the project's default is an owner's,
+  set from the project's edit dialog.
+- Changeable at any time. A task that already has its own branch or pull
+  request keeps them; a task that starts afterwards follows the setting.
+
+`hatch show` prints the same line wherever the value is on, or a story has been
+told one way or the other.
 
 ### `hatch ask AER-12 "the question" [--option "Label: detail"]... [--recommend "Label: detail"]`
 
@@ -834,12 +851,13 @@ own `--max-spend` could raise its own budget. `--mine` is shown on the row
 |---|---|---|
 | GET | `/api/hatch/board` | `board`, `next`, `move`, the `config` probe |
 | GET | `/api/hatch/statuses` | `show` |
-| GET | `/api/hatch/issues/{key}` | `show`, `pr` read, `depends` read |
+| GET | `/api/hatch/issues/{key}` | `show`, `pr` read, `depends` read, `one-pr` read |
 | GET | `/api/hatch/issues?ancestorKey=…` | the idle report under an epic |
 | GET | `/api/hatch/issues/{key}/comments` | `show`, `comments` |
 | POST | `/api/hatch/issues/{key}/comments` | `comment`, `ask`, `answer`, the stall comment, the let-go comment |
 | POST | `/api/hatch/issues/{key}/move` | `move`, `start` |
 | PATCH | `/api/hatch/issues/{key}` | `pr` set and clear |
+| PUT | `/api/hatch/issues/{key}/one-pr` | `one-pr` set |
 | POST, DELETE | `/api/hatch/issues/{key}/dependencies[/{other}]` | `depends` |
 | GET | `/api/hatch/questions?open=…`, `/api/hatch/issues/{key}/questions?open=…` | `questions`, `answer`, before and after an increment |
 | GET | `/api/hatch/work/queue?offsetMinutes=…[&ancestorKey=…][&mine=true]` | `queue`, the picker, the idle report |

@@ -327,6 +327,10 @@ public sealed class Board(HatchClient client)
         Client.WriteAsync<IssueDto>(
             HttpMethod.Delete, $"/api/hatch/issues/{key}/dependencies/{dependsOnKey}", null, ct);
 
+    /// <summary>A story's own say over whether its tasks share one branch and one pull request: <c>on</c>, <c>off</c> or <c>inherit</c>.</summary>
+    public Task<IssueDto?> SetOnePrAsync(string key, string value, CancellationToken ct) =>
+        Client.WriteAsync<IssueDto>(HttpMethod.Put, $"/api/hatch/issues/{key}/one-pr", new OnePrRequest(value), ct);
+
     /// <summary>An answer to a question, which is a comment that names the one it answers.</summary>
     public Task<CommentDto?> AnswerAsync(string key, long questionId, string body, CancellationToken ct) =>
         Client.PostAsync<CommentDto>(
