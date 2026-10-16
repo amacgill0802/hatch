@@ -226,6 +226,8 @@ public sealed class WorkCommand(Runtime runtime)
             work.Playbook?.DeniedTools is { Count: > 0 } denied
                 ? $"# tools: denied {string.Join(", ", denied)}"
                 : "# tools: all");
+        if (work.Playbook?.IsCheck == true)
+            runtime.Say.Line($"# check: pass -> {work.ToStatus?.Name ?? "?"}, fail -> {work.FailStatusName ?? "?"}");
         if (Prompt.OverrideLine(work, model, effort) is { } chose) runtime.Say.Line($"# {chose}");
 
         // What the branch step would do, read from the refs as they stand - so
