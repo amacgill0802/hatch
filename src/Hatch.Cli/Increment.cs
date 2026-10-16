@@ -84,6 +84,14 @@ public sealed class IncrementReport
     public string? BuildSha { get; set; }
 
     /// <summary>
+    /// Why a check increment failed through the <c>LetGo</c> path: the tree
+    /// changed, or the session ended with no verdict to apply. Null for a
+    /// check increment that passed or moved on a first fail, and for every
+    /// increment that is not a check at all.
+    /// </summary>
+    public string? CheckReason { get; set; }
+
+    /// <summary>
     /// The session ended because its Claude account ran out of usage - when it
     /// expects to reset, or null when this was an ordinary increment.
     /// </summary>
@@ -208,6 +216,7 @@ public sealed class IncrementReport
         : FixPushed ? $"fix pushed, build pending{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
         : HardLimited ? $"the hard limit was hit at {Format.Compact(HardLimitedAtTokens!.Value)} tokens"
             + (Filed.Count > 0 ? $", filed {Filed.Count} under it" : ", its continuation could not be filed")
+        : CheckReason is { Length: > 0 } cr ? $"{cr}{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
         : Filed.Count > 0 ? (Clamped ? $"clamped at {Format.Compact(ClampedAtTokens!.Value)} tokens, filed {Filed.Count} under it" : $"filed {Filed.Count} under it")
         : Stalled && StillFailing.Count > 0
             ? $"its build still fails ({string.Join(", ", StillFailing)}){(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
@@ -274,6 +283,7 @@ public sealed class Increment(
         IReadOnlyList<BranchEntry>? branches = null,
         ConflictRun? conflict = null,
         BuildRun? build = null,
+        Func<CancellationToken, Task<bool>>? checkTreeUnchanged = null,
         string runnerName = "",
         int incrementNumber = 1)
     {
@@ -453,6 +463,15 @@ public sealed class Increment(
                 // did is on origin's branch. Whether that fixed the build is the
                 // board's to say, later, when the build on the new tip has run.
                 if (build is not null && claim.Lost is null && !report.UsageLimited && !report.Preempted) await JudgeBuildAsync(report, build, ct);
+
+                // The verdict on a check increment: the tree first - a check
+                // that left anything uncommitted or moved HEAD is not one
+                // whose verdict belongs on the ticket - then the apply call
+                // itself. Same guards as the other two judgments, plus
+                // HardLimited: a check that was stopped for crossing its hard
+                // limit has nothing finished to apply either.
+                if (checkTreeUnchanged is not null && claim.Lost is null && !report.UsageLimited && !report.Preempted && !report.HardLimited)
+                    await JudgeCheckAsync(report, work, claim, checkTreeUnchanged, ct);
 
                 // Whatever the session asked for on its way out. This is the
                 // half of the loop that makes asking worth doing: an unattended
@@ -678,6 +697,69 @@ public sealed class Increment(
         report.StillFailing = build.Found.Names;
         say.Line("");
         say.Line($"hatch: {report.Key} pushed nothing - its build still fails ({string.Join(", ", report.StillFailing)})");
+    }
+
+    /// <summary>
+    /// What became of a check session: the tree first, since a verdict about a
+    /// tree the session left changed is not this ticket's to apply, then the
+    /// server's own read of what the verdict was and where it moved the ticket.
+    /// Sets <see cref="IncrementReport.Moved"/> and <see cref="IncrementReport.Stalled"/>
+    /// unconditionally - overriding whatever the plain column read already set
+    /// them to - so a child filed mid-session never reads as this check's own
+    /// progress.
+    /// </summary>
+    private async Task JudgeCheckAsync(
+        IncrementReport report, WorkDto work, Claim claim, Func<CancellationToken, Task<bool>> treeUnchanged, CancellationToken ct)
+    {
+        bool clean;
+        try
+        {
+            clean = await treeUnchanged(ct);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            say.Complain($"hatch: {report.Key} - could not verify the tree after the check - {e.Message}");
+            report.Flag ??= "whether the check's tree is clean is not known - the check failed";
+            return;
+        }
+
+        if (!clean)
+        {
+            (report.Moved, report.Stalled) = (false, true);
+            report.CheckReason = "the check changed the tree, so its verdict was not applied";
+            say.Line("");
+            say.Line($"hatch: {report.Key} left its tree changed - the check's verdict was not applied");
+            return;
+        }
+
+        IssueDto? applied;
+        try
+        {
+            applied = await board.VerdictAsync(checkouts, report.Key, claim.Token, ct);
+        }
+        catch (HatchException e)
+        {
+            say.Complain(e.Message);
+            report.Flag ??= "whether the check's verdict was applied is not known - the apply call failed";
+            return;
+        }
+
+        if (applied is null)
+        {
+            (report.Moved, report.Stalled) = (false, true);
+            report.CheckReason = "the check ended without a verdict";
+            say.Line("");
+            say.Line($"hatch: {report.Key} ended without a verdict - nothing was applied");
+            return;
+        }
+
+        report.Ended = work.Statuses?.FirstOrDefault(s => s.Id == applied.StatusId)?.Name ?? report.Ended;
+        report.Moved = applied.StatusId != work.FromStatus.Id;
+        report.Stalled = !report.Moved;
+        say.Line("");
+        say.Line(report.Moved
+            ? $"hatch: {report.Key} {work.FromStatus.Name} -> {report.Ended}"
+            : $"hatch: {report.Key} held in \"{report.Ended}\" - a second consecutive fail");
     }
 
     // ---- The session ----

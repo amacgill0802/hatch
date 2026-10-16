@@ -71,6 +71,15 @@ public interface IWorkspace
     Verdict? Check(string key);
 
     /// <summary>
+    /// Whether the tree is exactly as a check session was given it: nothing
+    /// uncommitted, and <c>HEAD</c> still at <paramref name="head"/> - which is
+    /// <see cref="BranchEntry.Head"/>, what <see cref="Enter"/> left it at, not
+    /// <see cref="BranchEntry.Sha"/>, which is where the branch stood before
+    /// the trunk was merged forward into it.
+    /// </summary>
+    bool TreeUnchanged(string head);
+
+    /// <summary>
     /// The trunk into the issue's branch on origin, when it is not there
     /// already - fetching first, so the answer is about origin's branch as it
     /// is now.

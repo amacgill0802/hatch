@@ -547,6 +547,35 @@ public sealed class WorkCommand(Runtime runtime)
                 {
                     var code = await AttachAsync(work, model, effort, claim, chosen, entering.Entries, found, built, ct);
                     owned = true;
+
+                    // work -i has no LetGo or stall-counting concept - that is
+                    // for an unattended loop that would otherwise fail all
+                    // night, and there is a person watching this session - so
+                    // either outcome is one plain comment, not the report/LetGo
+                    // machinery the headless path uses.
+                    if (work.Playbook?.IsCheck == true)
+                    {
+                        var clean = await lifecycle.TreeUnchangedAsync(chosen, entering.Entries, ct);
+                        if (!clean)
+                        {
+                            await runtime.Board.CommentAsync(
+                                work.Issue.Key, "This check session left the tree changed, so its verdict was not applied.", ct);
+                        }
+                        else
+                        {
+                            try
+                            {
+                                var applied = await runtime.Board.VerdictAsync(runtime.Checkouts, work.Issue.Key, claim.Token, ct);
+                                if (applied is null)
+                                    await runtime.Board.CommentAsync(work.Issue.Key, "This check session ended without a verdict.", ct);
+                            }
+                            catch (HatchException e)
+                            {
+                                runtime.Say.Complain($"hatch: {work.Issue.Key} - the verdict could not be applied - {e.Message}");
+                            }
+                        }
+                    }
+
                     return code;
                 }
 
@@ -565,6 +594,7 @@ public sealed class WorkCommand(Runtime runtime)
                         work, chosen.Root, model, effort, quiet, claim, skip.Token, ct, chosen.AddDirs, chosen.Repositories, entering.Entries,
                         found is null ? null : new ConflictRun(found, judge => lifecycle.JudgeAsync(work, chosen, judge)),
                         built is null ? null : new BuildRun(built, judge => lifecycle.JudgeBuildAsync(work.Issue.Key, built, chosen, judge)),
+                        work.Playbook?.IsCheck == true ? ct2 => lifecycle.TreeUnchangedAsync(chosen, entering.Entries, ct2) : (Func<CancellationToken, Task<bool>>?)null,
                         runnerName: runtime.RunnerName, incrementNumber: 1);
                 }
                 finally
