@@ -180,6 +180,7 @@ public class IssuesController(
         {
             var (effective, effectiveFrom) = priorities.Effective(i.Id);
             var (effectivePreApproval, effectivePreApprovalFrom) = priorities.EffectivePreApproval(i.Id);
+            var (onePr, onePrOwn, onePrFrom) = priorities.EffectiveOnePr(i.Id);
 
             cards.Add(new IssueCardDto(
                 IssueKey.Format(i.ProjectKey, i.Number),
@@ -207,7 +208,10 @@ public class IssuesController(
                 StalledAt: i.StalledAt,
                 StalledWhy: i.StalledWhy,
                 Held: i.Held,
-                PullRequestUrl: i.PullRequestUrl));
+                PullRequestUrl: i.PullRequestUrl,
+                OnePr: onePr,
+                OnePrOwn: onePrOwn,
+                OnePrFrom: onePrFrom));
         }
 
         return cards;

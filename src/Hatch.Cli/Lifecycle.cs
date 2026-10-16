@@ -23,7 +23,11 @@ public sealed record PreemptionInfo(string EmergencyKey, string EmergencyTitle, 
 public sealed record HardLimitInfo(long Tokens, int? Requests, string? SessionId);
 
 /// <summary>What <see cref="Lifecycle.LeaveAsync"/> learned on its way out.</summary>
-/// <param name="HasPullRequest">Whether a pull request is recorded on the issue.</param>
+/// <param name="HasPullRequest">
+/// Whether a pull request is recorded on the issue - or, for a task that shares
+/// its story's branch, is none the task is owed, since the story's closeout
+/// opens the one.
+/// </param>
 /// <param name="BranchOnOrigin">Whether any checkout found a branch on origin for the issue.</param>
 /// <param name="FiledKey">
 /// The continuation task's key, when a hard limit filed one - <see cref="GoToWork"/>
@@ -49,16 +53,67 @@ public sealed record Entering(IReadOnlyList<BranchEntry> Entries, bool Asked);
 public sealed class Lifecycle(Runtime runtime)
 {
     /// <summary>
+    /// Which branch this dispatch's work goes on, after git has had its say. The
+    /// server names the story's branch for a task under a story that shares one
+    /// pull request (<see cref="WorkDto.BranchKey"/>), but it cannot see git, and
+    /// two things in git take that back - leaving the dispatch on the task's
+    /// own key, exactly as it would be with sharing off:
+    /// </summary>
+    /// <remarks>
+    /// <para>The task already has an unmerged branch of its own on origin. It was
+    /// begun before the story was flipped on, and a branch under review is
+    /// somebody's to read: it keeps its own branch and, at the end, its own pull
+    /// request.</para>
+    ///
+    /// <para>Every branch the story has on origin is already in the trunk. The
+    /// story's pull request merged early, and a task that arrives after it has no
+    /// branch to join and no pull request coming to carry it, so it is cut its
+    /// own and opens its own - rather than a <c>-2</c> branch named for a story
+    /// that is done.</para>
+    ///
+    /// Called with the refs current, after the reset. Nothing is changed, so the
+    /// dry run asks it too.
+    /// </remarks>
+    public WorkDto Settle(WorkDto work, Checkouts.Choice chosen)
+    {
+        if (!Branches.IsShared(work)) return work;
+
+        var workspaces = chosen.Resets.Select(r => runtime.Workspace(r.Path, r.BaseBranch)).ToList();
+        var story = work.BranchKey!;
+
+        string? reason = null;
+        if (workspaces.Any(w => w.Presence(work.Issue.Key) == BranchPresence.Open))
+        {
+            reason = "it already has a branch of its own on origin, so it keeps it";
+        }
+        else
+        {
+            var onStory = workspaces.Select(w => w.Presence(story)).ToList();
+            if (!onStory.Contains(BranchPresence.Open) && onStory.Contains(BranchPresence.MergedOnly))
+                reason = $"{story}'s branch has already merged into the trunk, so it is cut a branch of its own and opens its own pull request";
+        }
+
+        if (reason is null) return work;
+
+        runtime.Say.Line($"hatch: {work.Issue.Key} shares {story}'s pull request, but {reason}");
+        return work with { BranchKey = null, BranchTitle = null };
+    }
+
+    /// <summary>
     /// The branch, in every checkout the increment serves. A checkout that has
-    /// no branch for the key stays on the trunk and is told what to cut.
+    /// no branch for the key stays on the trunk and is told what to cut. The key
+    /// is the branch's (<see cref="Branches.KeyOf"/>): the story's, for a task
+    /// that shares one, and the issue's own otherwise.
     /// </summary>
     public async Task<Entering> EnterAsync(WorkDto work, Checkouts.Choice chosen, CancellationToken ct)
     {
         var key = work.Issue.Key;
+        var branchKey = Branches.KeyOf(work);
+        var branchTitle = Branches.TitleOf(work);
         var answer = Answer(work);
 
         var entries = chosen.Resets
-            .Select(r => runtime.Workspace(r.Path, r.BaseBranch).Enter(key, work.Issue.Title, answer))
+            .Select(r => runtime.Workspace(r.Path, r.BaseBranch).Enter(branchKey, branchTitle, answer))
             .ToList();
 
         // Two or more branches and nobody has said which: the runner does not
@@ -71,14 +126,17 @@ public sealed class Lifecycle(Runtime runtime)
         var offered = candidates.Take(QuestionOptionDto.MaxPerQuestion).ToList();
 
         runtime.Say.Line("");
-        runtime.Say.Line($"hatch: {key} has {candidates.Count} unmerged branches on origin, and it is not the runner's to choose:");
+        runtime.Say.Line($"hatch: {branchKey} has {candidates.Count} unmerged branches on origin, and it is not the runner's to choose:");
         foreach (var name in candidates) runtime.Say.Line($"hatch:   {name}");
 
         try
         {
+            // Asked on this ticket even when the branch is its story's: it is
+            // this ticket the answer unblocks, and its answer arrives in this
+            // ticket's own questions, where the next dispatch reads it.
             await runtime.Board.AskAsync(
                 key,
-                Branches.Question(key),
+                Branches.Question(branchKey),
                 offered.Select(name => new QuestionOptionDto(name, "On origin, and not merged into the trunk yet.")).ToList(),
                 ct);
             runtime.Say.Line($"hatch:   asked on {key}; nothing is spawned until somebody answers");
@@ -99,7 +157,7 @@ public sealed class Lifecycle(Runtime runtime)
     {
         var answer = Answer(work);
         return chosen.Resets
-            .Select(r => runtime.Workspace(r.Path, r.BaseBranch).Plan(work.Issue.Key, work.Issue.Title, answer))
+            .Select(r => runtime.Workspace(r.Path, r.BaseBranch).Plan(Branches.KeyOf(work), Branches.TitleOf(work), answer))
             .ToList();
     }
 
@@ -109,7 +167,7 @@ public sealed class Lifecycle(Runtime runtime)
     /// </summary>
     private static string? Answer(WorkDto work) =>
         work.Questions
-            .Where(q => q.Body.StartsWith(Branches.Question(work.Issue.Key), StringComparison.Ordinal) && q.Answers.Count > 0)
+            .Where(q => q.Body.StartsWith(Branches.Question(Branches.KeyOf(work)), StringComparison.Ordinal) && q.Answers.Count > 0)
             .Select(q => q.Answers[^1].Body)
             .LastOrDefault();
 
@@ -144,6 +202,8 @@ public sealed class Lifecycle(Runtime runtime)
         UsageLimitInfo? limit = null, PreemptionInfo? preempted = null, HardLimitInfo? hardLimit = null)
     {
         var key = work.Issue.Key;
+        var branchKey = Branches.KeyOf(work);
+        var shared = Branches.IsShared(work);
         var lines = new List<string>();
 
         try
@@ -157,20 +217,25 @@ public sealed class Lifecycle(Runtime runtime)
             var pushed = new List<(string Path, LimitPushed Result)>();
             if (limit is not null || preempted is not null || hardLimit is not null)
                 foreach (var (path, baseBranch) in chosen.Resets)
-                    pushed.Add((path, runtime.Workspace(path, baseBranch).PushForLimit(key, work.Issue.Title)));
+                    pushed.Add((path, runtime.Workspace(path, baseBranch).PushForLimit(branchKey, Branches.TitleOf(work))));
 
-            var pullRequest = await HasPullRequestAsync(key, ct);
+            // The pull request that matters is the branch's: a task that shares
+            // its story's branch has none of its own, and the story's is the one
+            // that gets the trunk merged into the branch.
+            var pullRequest = await HasPullRequestAsync(branchKey, ct);
             var branchOnOrigin = false;
 
             foreach (var (path, baseBranch) in chosen.Resets)
             {
-                var left = runtime.Workspace(path, baseBranch).Leave(key, pullRequest);
+                var left = runtime.Workspace(path, baseBranch).Leave(branchKey, pullRequest);
                 var where = chosen.Resets.Count > 1 ? $"{Path.GetFileName(path.TrimEnd('/', '\\'))}: " : "";
                 lines.AddRange(left.Notes.Select(n => $"- {where}{n}"));
 
                 if (left.Found is { } found)
                 {
-                    await ReportAsync(key, chosen, path, found, ct);
+                    // Filed on the issue the branch belongs to: a conflict on the
+                    // shared branch is the story's, and holds every sibling.
+                    await ReportAsync(branchKey, chosen, path, found, ct);
                     if (found.Kind != MergeVerdicts.None) branchOnOrigin = true;
                 }
             }
@@ -194,12 +259,15 @@ public sealed class Lifecycle(Runtime runtime)
                 return new LeaveOutcome(pullRequest, false, filed?.Key);
             }
 
-            if (lines.Count == 0) return new LeaveOutcome(pullRequest, branchOnOrigin);
+            // A task on its story's branch is not owed a pull request of its own:
+            // the story's closeout opens the one, so "pushed with none recorded"
+            // is the design for it and not a branch nobody can find a review for.
+            if (lines.Count == 0) return new LeaveOutcome(pullRequest || shared, branchOnOrigin);
 
             await runtime.Board.CommentAsync(
                 key, "The runner tidied the tree after this increment:\n\n" + string.Join('\n', lines), ct);
 
-            return new LeaveOutcome(pullRequest, branchOnOrigin);
+            return new LeaveOutcome(pullRequest || shared, branchOnOrigin);
         }
         catch (Exception e)
         {
@@ -419,7 +487,7 @@ public sealed class Lifecycle(Runtime runtime)
     /// </remarks>
     public async Task<BuildFound> RecheckBuildAsync(WorkDto work, Checkouts.Choice chosen, CancellationToken ct)
     {
-        var key = work.Issue.Key;
+        var key = Branches.KeyOf(work);
         var repos = new List<BuiltRepo>();
         var unknown = false;
         var reported = true;
@@ -528,7 +596,7 @@ public sealed class Lifecycle(Runtime runtime)
 
     private async Task<Rechecked> CheckAllAsync(WorkDto work, Checkouts.Choice chosen, bool fetch, CancellationToken ct)
     {
-        var key = work.Issue.Key;
+        var key = Branches.KeyOf(work);
         var verdicts = new List<Checked>();
         var unknown = false;
         var reported = true;

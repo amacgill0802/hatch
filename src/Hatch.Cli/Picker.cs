@@ -238,6 +238,14 @@ public sealed class Picker(
                     continue;
                 }
 
+                // Best-effort and non-fatal by design: losing this write loses
+                // the move-refusal protection for this one dispatch, not the
+                // claim itself, so the walk claims the ticket either way
+                // rather than treating a failed attach as a reason to release
+                // and move on.
+                if (work.Playbook is { Id: var playbookId } && !await claim.AttachPlaybookAsync(playbookId, ct))
+                    say.Complain($"hatch: {key} - could not attach its playbook to the claim");
+
                 var resolved = Clones.Resolve(work, checkouts, standingRoot, standingBaseBranch, workspace, clone);
                 checkouts = resolved.Checkouts;
 

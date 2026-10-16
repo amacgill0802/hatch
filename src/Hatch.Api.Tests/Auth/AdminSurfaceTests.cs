@@ -426,6 +426,13 @@ public class AdminSurfaceTests
         // The level by name, same two gates as above - HA-470.
         "IssuePreApprovalController.PutIssuePreApproval",
 
+        // A story's own say over whether its tasks share one branch and one
+        // pull request. Unlike its neighbours it is open to a key - it decides
+        // how a story is branched, not what the loop reaches for or passes - so
+        // it is here and not in PersonOnly. The project's default, which changes
+        // how every story is worked, is an owner's: ProjectsController.PutLanding.
+        "IssueOnePrController.PutIssueOnePr",
+
         // Holding and resuming a ticket - an agent that could hold its own
         // ticket could park it off the board for the night. Stalling is the
         // other write IssueStallController makes, and it is open to a key on

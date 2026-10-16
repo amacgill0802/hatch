@@ -33,6 +33,9 @@ const card = (key: string, statusId: number): IssueCard => ({
   stalledWhy: null,
   held: false,
   pullRequestUrl: null,
+  onePr: false,
+  onePrOwn: null,
+  onePrFrom: null,
 });
 
 const rect = (left: number, top: number, width: number, height: number): ClientRect => ({

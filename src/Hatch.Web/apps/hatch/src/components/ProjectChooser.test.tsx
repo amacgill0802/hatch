@@ -21,6 +21,7 @@ function project(overrides: Partial<Project>): Project {
     canAdminister: false,
     landing: 'pull-request',
     checksRequired: true,
+    onePullRequest: false,
     ...overrides,
   };
 }

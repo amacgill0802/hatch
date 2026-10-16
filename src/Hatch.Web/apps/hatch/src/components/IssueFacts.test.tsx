@@ -20,6 +20,9 @@ const issue = (over: Partial<Issue> = {}): Issue => ({
   readyAt: null,
   dueAt: null,
   pullRequestUrl: null,
+  onePr: false,
+  onePrOwn: null,
+  onePrFrom: null,
   modelOverride: null,
   effortOverride: null,
   assignee: null,
@@ -59,6 +62,7 @@ const project = (over: Partial<Project> = {}): Project => ({
   canAdminister: false,
   landing: 'pull-request',
   checksRequired: true,
+  onePullRequest: false,
   ...over,
 });
 
@@ -83,6 +87,9 @@ describe('IssueFacts', () => {
         readyAt: '2026-01-05T00:00:00Z',
         dueAt: '2026-01-10T00:00:00Z',
         pullRequestUrl: 'https://example.com/pr/1',
+        onePr: false,
+        onePrOwn: null,
+        onePrFrom: null,
         modelOverride: 'claude-opus-5',
         effortOverride: 'high',
         wipLimit: 3,

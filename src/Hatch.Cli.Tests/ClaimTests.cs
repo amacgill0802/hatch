@@ -425,6 +425,44 @@ public sealed class ClaimTests
         await claim.ReleaseAsync();
     }
 
+    /// <summary>HA-582: a playbook matched after the take rides the same heartbeat route, carrying only the id.</summary>
+    [Fact]
+    public async Task AttachPlaybookAsync_sends_the_id_on_the_heartbeat_route_and_returns_true_on_204()
+    {
+        using var h = new Harness();
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+
+        // The background heartbeat is running throughout too, so the call this
+        // proves is picked out by its PlaybookId rather than its position.
+        var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
+
+        var attached = await claim!.AttachPlaybookAsync(7, default);
+
+        Assert.True(attached);
+        var sent = Assert.Single(Beats(h), b => b.PlaybookId == 7);
+        Assert.Equal(Token, sent.Token);
+        Assert.Null(sent.Chatter);
+
+        await claim.ReleaseAsync();
+    }
+
+    [Fact]
+    public async Task AttachPlaybookAsync_returns_false_rather_than_throwing_on_a_refusal()
+    {
+        using var h = new Harness();
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.InternalServerError, "boom");
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+
+        var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
+
+        Assert.False(await claim!.AttachPlaybookAsync(7, default));
+
+        await claim.ReleaseAsync();
+    }
+
     /// <summary>
     /// The release is best-effort, and it is not the caller's ninety seconds to
     /// spend: against an origin that never answers, it gives up within its own

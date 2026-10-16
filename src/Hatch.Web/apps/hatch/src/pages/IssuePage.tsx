@@ -22,11 +22,13 @@ import {
   setPriority,
   setPreApproval,
   setHold,
+  setOnePr,
   setWipLimit,
 } from '../api/client';
 import { AssigneeField } from '../components/AssigneeField';
 import { PriorityControl } from '../components/PriorityControl';
 import { PreApprovalControl } from '../components/PreApprovalControl';
+import { OnePrControl, type OnePrSetting } from '../components/OnePrControl';
 import { ClaimPanel } from '../components/ClaimPanel';
 import { StallPanel } from '../components/StallPanel';
 import { ClearClaimDialog } from '../components/ClearClaimDialog';
@@ -50,6 +52,7 @@ import { ProseClamp } from '../components/ProseClamp';
 import { TypeBadge } from '../components/TypeBadge';
 import { WorkLog } from '../components/WorkLog';
 import { assigneeHint } from '../lib/assignee';
+import { onePrSaid } from '../lib/onePr';
 import { childTypes } from '../lib/childTypes';
 import { parentCandidates, parentHint } from '../lib/parents';
 import { moveBlocked } from '../lib/protectedColumns';
@@ -120,6 +123,8 @@ export function IssuePage() {
      answering, `aria-busy`, until the server replies - `PriorityControl`'s own
      flag, the way `StatusPicker`'s pill carries one. */
   const [priorityBusy, setPriorityBusy] = useState(false);
+  /* A one-PR press is already out - the same shape as `priorityBusy`. */
+  const [onePrBusy, setOnePrBusy] = useState(false);
   /* A pre-approval press is already out - PreApprovalControl's own flag, the
      same shape priorityBusy is. */
   const [preApprovalBusy, setPreApprovalBusy] = useState(false);
@@ -350,6 +355,25 @@ export function IssuePage() {
         setError(message(err));
       } finally {
         setPriorityBusy(false);
+      }
+    },
+    [key, load],
+  );
+
+  /* A story's own say over whether its tasks share its branch and one pull
+     request. Its own call for the reason `savePriority` is, though unlike it
+     the write is open to an API key - and otherwise exactly it: re-read, so the
+     control and the trail redraw from the server's answer. */
+  const saveOnePr = useCallback(
+    async (setting: OnePrSetting) => {
+      setOnePrBusy(true);
+      try {
+        await setOnePr(key, setting);
+        await load();
+      } catch (err) {
+        setError(message(err));
+      } finally {
+        setOnePrBusy(false);
       }
     },
     [key, load],
@@ -681,6 +705,25 @@ export function IssuePage() {
               onChange={(level) => void savePreApproval(level)}
             />
           </Field>
+
+          {/* A story answers for its tasks, so it gets the control; a task under
+              one that shares a pull request says so, since "why is there no PR
+              on this" is the question that value answers. Anything else has no
+              story to share with and shows nothing. */}
+          {issue.type === 'story' && (
+            <Field
+              label="One pull request"
+              as="div"
+              hint="Whether this story's tasks share its branch and open one pull request, merged once, instead of one each. Locked once any task under it has started: work begun on one branch cannot be moved onto the other."
+            >
+              <OnePrControl issue={issue} busy={onePrBusy} onChange={(setting) => void saveOnePr(setting)} />
+            </Field>
+          )}
+          {issue.type !== 'story' && issue.onePr && (
+            <Field label="One pull request" as="div" hint="This task shares its story's branch; the story opens the one pull request.">
+              <span className="hatch-one-pr-said on">{onePrSaid(issue)}</span>
+            </Field>
+          )}
 
           <MomentField
             label="Ready"

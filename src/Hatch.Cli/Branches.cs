@@ -21,6 +21,19 @@ public enum BranchKind
     Failed,
 }
 
+/// <summary>What origin has for a key - see <see cref="IWorkspace.Presence"/>.</summary>
+public enum BranchPresence
+{
+    /// <summary>No branch on origin names the key.</summary>
+    None,
+
+    /// <summary>At least one branch names it and is not in the trunk yet.</summary>
+    Open,
+
+    /// <summary>Branches name it, and every one is already in the trunk.</summary>
+    MergedOnly,
+}
+
 /// <summary>What merging the trunk into the branch came to.</summary>
 public enum MergeOutcome
 {
@@ -154,7 +167,11 @@ public static class Branches
 
     /// <summary>
     /// Whether a branch is this issue's: the lowercased key, or that and a hyphen
-    /// and anything. Hyphen-anchored, so <c>ha-3</c> is not <c>ha-31-x</c>.
+    /// and anything. Hyphen-anchored, so <c>ha-3</c> is not <c>ha-31-x</c>. The
+    /// match runs from the key to the branch and never the other way, so a number
+    /// <see cref="Free"/> appends - <c>ha-3-thing-2</c>, or <c>ha-3-2</c> when the
+    /// key is the whole name - is only ever more of the name: <c>ha-3-2</c> is
+    /// <c>ha-3</c>'s, and is not, and cannot be mistaken for, <c>ha-32</c>'s.
     /// </summary>
     public static bool Names(string branch, string key)
     {
@@ -197,8 +214,8 @@ public static class Branches
     }
 
     /// <summary>
-    /// A name that does not exist: the wanted one, or the wanted one with the
-    /// first free number after it.
+    /// A name that does not exist: the wanted one, or the wanted one with a
+    /// hyphen and the first free number after it - <c>-2</c>, then <c>-3</c>.
     /// </summary>
     public static string Free(string wanted, Func<string, bool> taken)
     {
@@ -226,6 +243,28 @@ public static class Branches
             .ToList();
         return named.Count == 1 ? named[0] : null;
     }
+
+    /// <summary>
+    /// Whether this dispatch's work goes on a branch named for another issue - a
+    /// task under a story that shares one pull request. The server decides it
+    /// (<see cref="WorkDto.BranchKey"/>), and <see cref="Lifecycle.Settle"/> hands
+    /// it back to the task's own where git says it should not apply.
+    /// </summary>
+    public static bool IsShared(WorkDto work) =>
+        work.BranchKey is { Length: > 0 } key && !key.Equals(work.Issue.Key, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The key every git call for this dispatch names its branch by - the issue's own, unless it shares.</summary>
+    public static string KeyOf(WorkDto work) => IsShared(work) ? work.BranchKey! : work.Issue.Key;
+
+    /// <summary>
+    /// The title the branch's slug is cut from - the story's, when the branch is
+    /// the story's. A response that names the story's key and not its title gets
+    /// no slug at all, and so a branch named for the key alone: never the key
+    /// cut into its own slug, which every sibling that follows would have to
+    /// join.
+    /// </summary>
+    public static string TitleOf(WorkDto work) =>
+        IsShared(work) ? work.BranchTitle ?? "" : work.Issue.Title;
 
     /// <summary>The prefix every which-branch question starts with, so a later pass can find its answer.</summary>
     public static string Question(string key) => $"Which branch should {key} continue on?";

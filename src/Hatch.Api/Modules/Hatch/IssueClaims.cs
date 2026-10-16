@@ -180,7 +180,7 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
     /// already in the order the board draws them, which is the order
     /// <see cref="ClaimLineage.Holder"/> names a holder in.
     /// </remarks>
-    public async Task<ClaimLineage> LineageAsync(HatchContext db, DateTimeOffset now, CancellationToken ct)
+    public async Task<ClaimLineage> LineageAsync(HatchContext db, DateTimeOffset now, CancellationToken ct, PriorityTree? priorities = null)
     {
         var cutoff = Cutoff(now);
         var quietCutoff = QuietCutoff(now);
@@ -221,7 +221,18 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
             siblings.Add(row.Id);
         }
 
-        return new ClaimLineage(this, now, parents, keys, children, live.ToDictionary(r => r.Id, r => r.Claim));
+        // Which tasks share a story's branch, and which story: two of them
+        // working at once push to the same branch. Read only when something
+        // holds a claim at all - a lineage with nobody in it never asks.
+        var shared = new Dictionary<long, long>();
+        if (live.Count > 0)
+        {
+            priorities ??= await PriorityTree.ForAsync(db, ct);
+            foreach (var id in keys.Keys)
+                if (priorities.SharedStoryOf(id) is { } story) shared[id] = story;
+        }
+
+        return new ClaimLineage(this, now, parents, keys, children, live.ToDictionary(r => r.Id, r => r.Claim), shared);
     }
 
     /// <summary>
@@ -295,26 +306,44 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
     /// string clears it. Already normalised by the caller - see
     /// <see cref="IssueClaimController"/>.
     /// </param>
+    /// <param name="playbookId">
+    /// Null leaves <c>ClaimPlaybookId</c> alone; a value overwrites it. There
+    /// is no third state to clear it back to null from a heartbeat.
+    /// </param>
     public async Task<bool> TryRefreshAsync(
-        HatchContext db, long issueId, Guid token, string? chatter, DateTimeOffset now, CancellationToken ct)
+        HatchContext db, long issueId, Guid token, string? chatter, int? playbookId, DateTimeOffset now,
+        CancellationToken ct)
     {
         var cutoff = Cutoff(now);
         var quietCutoff = QuietCutoff(now);
         var live = db.Issues.Where(i => i.Id == issueId && i.ClaimToken == token && i.ClaimHeartbeatAt >= cutoff
             && (quietCutoff == null || (i.ClaimChatterAt ?? i.ClaimedAt) >= quietCutoff));
 
-        var written = chatter switch
+        var written = (chatter, playbookId) switch
         {
-            null => await live.ExecuteUpdateAsync(s => s
+            (null, null) => await live.ExecuteUpdateAsync(s => s
                 .SetProperty(i => i.ClaimHeartbeatAt, now), ct),
-            "" => await live.ExecuteUpdateAsync(s => s
+            (null, { } id) => await live.ExecuteUpdateAsync(s => s
+                .SetProperty(i => i.ClaimHeartbeatAt, now)
+                .SetProperty(i => i.ClaimPlaybookId, id), ct),
+            ("", null) => await live.ExecuteUpdateAsync(s => s
                 .SetProperty(i => i.ClaimHeartbeatAt, now)
                 .SetProperty(i => i.ClaimChatter, (string?)null)
                 .SetProperty(i => i.ClaimChatterAt, (DateTimeOffset?)null), ct),
-            _ => await live.ExecuteUpdateAsync(s => s
+            ("", { } id) => await live.ExecuteUpdateAsync(s => s
+                .SetProperty(i => i.ClaimHeartbeatAt, now)
+                .SetProperty(i => i.ClaimChatter, (string?)null)
+                .SetProperty(i => i.ClaimChatterAt, (DateTimeOffset?)null)
+                .SetProperty(i => i.ClaimPlaybookId, id), ct),
+            (_, null) => await live.ExecuteUpdateAsync(s => s
                 .SetProperty(i => i.ClaimHeartbeatAt, now)
                 .SetProperty(i => i.ClaimChatter, chatter)
                 .SetProperty(i => i.ClaimChatterAt, (DateTimeOffset?)now), ct),
+            (_, { } id) => await live.ExecuteUpdateAsync(s => s
+                .SetProperty(i => i.ClaimHeartbeatAt, now)
+                .SetProperty(i => i.ClaimChatter, chatter)
+                .SetProperty(i => i.ClaimChatterAt, (DateTimeOffset?)now)
+                .SetProperty(i => i.ClaimPlaybookId, id), ct),
         };
 
         return written == 1;
@@ -387,12 +416,14 @@ public sealed record ClaimSnapshot(
 /// <remarks>
 /// Ancestor or descendant, and nothing else. Siblings and cousins share no line
 /// - a parent's session builds what its children describe, and no other pair
-/// can duplicate each other.
+/// can duplicate each other. The one exception is two tasks under a story that
+/// shares one branch and one pull request: they are siblings and they push to
+/// the same branch, so they are one line for the purpose of who may be working.
 /// </remarks>
 public sealed class ClaimLineage
 {
     /// <summary>A lineage with nobody in it, for a refused scan.</summary>
-    public static readonly ClaimLineage Empty = new(null, default, [], [], [], []);
+    public static readonly ClaimLineage Empty = new(null, default, [], [], [], [], []);
 
     private readonly IssueClaims? _claims;
     private readonly DateTimeOffset _now;
@@ -400,12 +431,15 @@ public sealed class ClaimLineage
     private readonly Dictionary<long, string> _keys;
     private readonly Dictionary<long, List<long>> _children;
     private readonly Dictionary<long, ClaimSnapshot> _live;
+    private readonly Dictionary<long, long> _sharedStory;
 
     internal ClaimLineage(
         IssueClaims? claims, DateTimeOffset now,
         Dictionary<long, long?> parents, Dictionary<long, string> keys,
-        Dictionary<long, List<long>> children, Dictionary<long, ClaimSnapshot> live)
+        Dictionary<long, List<long>> children, Dictionary<long, ClaimSnapshot> live,
+        Dictionary<long, long> sharedStory)
     {
+        _sharedStory = sharedStory;
         _claims = claims;
         _now = now;
         _parents = parents;
@@ -460,6 +494,19 @@ public sealed class ClaimLineage
             }
 
             generation = next;
+        }
+
+        // Then sideways, for a task whose story shares one branch: a sibling
+        // under the same story that somebody is working would be pushing to the
+        // very branch this one would. Claimed ones only, in the order they were filed, so the
+        // sentence names the same sibling on every pass.
+        if (_sharedStory.TryGetValue(issueId, out var story))
+        {
+            foreach (var id in _live.Keys.Where(id => id != issueId && _sharedStory.GetValueOrDefault(id, -1) == story)
+                         .Order())
+            {
+                if (Named(id, heldToken, "sharing this story's branch") is { } beside) return beside;
+            }
         }
 
         return null;

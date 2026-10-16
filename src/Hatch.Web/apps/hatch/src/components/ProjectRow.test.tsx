@@ -18,6 +18,7 @@ const BASE: Project = {
   canAdminister: false,
   landing: 'pull-request',
   checksRequired: true,
+  onePullRequest: false,
 };
 
 const noop = () => undefined;

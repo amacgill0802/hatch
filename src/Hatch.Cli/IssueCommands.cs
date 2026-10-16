@@ -120,6 +120,10 @@ public sealed class IssueCommands(Cli cli)
             cli.Say.Line($"pre-approval:  express - carried past a column marked to skip, with no session{preApprovalFrom}");
         else if (issue.PreApproval == PreApprovalLevels.PreApprovedName)
             cli.Say.Line($"pre-approval:  preapproved - approved and closed by the loop once green{preApprovalFrom}");
+
+        // Said only where it is on, or where a story has been told one way or
+        // the other; a project that never turned it on has nothing to report.
+        if (issue.OnePr || issue.OnePrOwn is not null) cli.Say.Line(OnePrCommand.Draw(issue));
         if (issue.Type == "epic")
         {
             cli.Say.Line(issue.WipLimit is { } limit

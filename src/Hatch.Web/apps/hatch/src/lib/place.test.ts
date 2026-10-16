@@ -35,6 +35,9 @@ const card = (
   stalledWhy: null,
   held: false,
   pullRequestUrl: null,
+  onePr: false,
+  onePrOwn: null,
+  onePrFrom: null,
 });
 
 /* The board as the API hands it over: grouped by column, ranked within it. */

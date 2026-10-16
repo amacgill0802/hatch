@@ -42,6 +42,7 @@ const project = (over: Partial<Project>): Project => ({
   canAdminister: false,
   landing: 'pull-request',
   checksRequired: true,
+  onePullRequest: false,
   ...over,
 });
 

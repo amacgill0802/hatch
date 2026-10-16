@@ -16,6 +16,7 @@ export interface ProjectDraft {
     repositories: ProjectRepositoryWriteRequest[];
     landing: 'pull-request' | 'trunk';
     checksRequired: boolean;
+    onePullRequest: boolean;
   };
   name: string;
   key: string;
@@ -24,6 +25,7 @@ export interface ProjectDraft {
   repositories: ProjectRepositoryWriteRequest[];
   landing: 'pull-request' | 'trunk';
   checksRequired: boolean;
+  onePullRequest: boolean;
 }
 
 export interface ProjectDraftDiff {
@@ -47,6 +49,7 @@ export function openProjectDraft(project: Project): ProjectDraft {
       repositories,
       landing: project.landing,
       checksRequired: project.checksRequired,
+      onePullRequest: project.onePullRequest,
     },
     name: project.name,
     key: project.key,
@@ -55,6 +58,7 @@ export function openProjectDraft(project: Project): ProjectDraft {
     repositories,
     landing: project.landing,
     checksRequired: project.checksRequired,
+    onePullRequest: project.onePullRequest,
   };
 }
 
@@ -82,6 +86,7 @@ export function projectLandingDiff(draft: ProjectDraft): ProjectLandingWriteRequ
   const fields: ProjectLandingWriteRequest = {};
   if (draft.landing !== draft.known.landing) fields.landing = draft.landing;
   if (draft.checksRequired !== draft.known.checksRequired) fields.checksRequired = draft.checksRequired;
+  if (draft.onePullRequest !== draft.known.onePullRequest) fields.onePullRequest = draft.onePullRequest;
 
   return Object.keys(fields).length > 0 ? fields : null;
 }

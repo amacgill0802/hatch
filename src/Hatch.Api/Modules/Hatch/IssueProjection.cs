@@ -179,6 +179,7 @@ public static class IssueProjection
             var projectKey = issue.Project?.Key ?? projectKeys[issue.ProjectId];
             var (effective, effectiveFrom) = priorities.Effective(issue.Id);
             var (effectivePreApproval, effectivePreApprovalFrom) = priorities.EffectivePreApproval(issue.Id);
+            var (onePr, onePrOwn, onePrFrom) = priorities.EffectiveOnePr(issue.Id);
 
             MergeWorkDto? mergeWork = null;
             if (issue.StatusId == mergesId)
@@ -230,7 +231,10 @@ public static class IssueProjection
                 issue.Held,
                 claims.StallResumeSeconds,
                 mergeWork,
-                landings.TryGetValue(issue.Id, out var landed) ? landed : []);
+                landings.TryGetValue(issue.Id, out var landed) ? landed : [],
+                onePr,
+                onePrOwn,
+                onePrFrom);
         });
     }
 

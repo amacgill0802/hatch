@@ -107,6 +107,32 @@ public class AttentionControllerTests
     }
 
     [Fact]
+    public async Task Attention_LeavesOutATaskWaitingOnItsStorysPullRequest_FromInReviewWithoutPullRequest()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", "shares one pull request", h.InProgress);
+        story.OnePullRequest = true;
+        await h.Db.SaveChangesAsync();
+        await h.FileAsync("task", "pushed to the story's branch", h.Review, parentId: story.Id);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        Assert.Equal(0, attention.InReviewWithoutPullRequest);
+    }
+
+    [Fact]
+    public async Task Attention_StillCountsATaskInReviewWithNoPullRequest_WhereTheStoryDoesNotShareOne()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", "does not share", h.InProgress);
+        await h.FileAsync("task", "has nowhere to be reviewed", h.Review, parentId: story.Id);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        Assert.Equal(1, attention.InReviewWithoutPullRequest);
+    }
+
+    [Fact]
     public async Task Attention_CountsAChildlessPreApprovedRowWithNoPullRequest()
     {
         var h = await NewAsync();

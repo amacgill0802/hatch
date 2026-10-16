@@ -118,6 +118,7 @@ public class BoardController(
         {
             var (effective, effectiveFrom) = priorities.Effective(i.Id);
             var (effectivePreApproval, effectivePreApprovalFrom) = priorities.EffectivePreApproval(i.Id);
+            var (onePr, onePrOwn, onePrFrom) = priorities.EffectiveOnePr(i.Id);
             return new IssueCardDto(
                 IssueKey.Format(i.ProjectKey, i.Number),
                 i.ProjectKey,
@@ -142,7 +143,10 @@ public class BoardController(
                 StalledAt: i.StalledAt,
                 StalledWhy: i.StalledWhy,
                 Held: i.Held,
-                PullRequestUrl: i.PullRequestUrl);
+                PullRequestUrl: i.PullRequestUrl,
+                OnePr: onePr,
+                OnePrOwn: onePrOwn,
+                OnePrFrom: onePrFrom);
         }).ToList();
 
         return new BoardDto(statusDtos, cards, wip?.ToDto());
