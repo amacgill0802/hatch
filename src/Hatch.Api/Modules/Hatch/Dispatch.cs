@@ -236,7 +236,9 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                     var hopKind = HopKind(issue, status, to, family, statuses, wip, parent, playbook, sendBackStreak, claimed.Claims!.StallResumeLimit, gate.EffectivePreApproval(issue.Id).Level, merged, built, claimed.Now);
                     var hop = hopKind is not null;
                     var hopUnder = hopKind == HopKinds.Under ? parent?.Key : null;
-                    var rowTo = hopKind == HopKinds.Approve ? Columns.Advance(statuses, status) : to;
+                    var rowTo = hopKind == HopKinds.Approve ? Columns.Advance(statuses, status)
+                        : hopKind == HopKinds.Close ? Columns.Closes(statuses, status)
+                        : to;
                     var letGo = issue.StalledAt is not null ? letGoCounts?.GetValueOrDefault(issue.Id, 0) ?? 0 : 0;
                     var blocked = Blocked(
                         issue, status, rowTo, playbook, waiting, letGo, sendBackStreak, loop, pace, gate, family, claimed,
@@ -779,7 +781,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             return judgement.Sentence;
         }
 
-        if (to.IsTerminal)
+        if (to.IsTerminal && hopKind != HopKinds.Close)
             return $"the next column is \"{to.Name}\", and only the operator moves work there";
 
         if (to.IsProtected && hopKind != HopKinds.Approve)
@@ -1020,6 +1022,16 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                    issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
                    verdicts, builds, issue.PullRequestClosedAt, now).Kind is WorkKinds.Merge or WorkKinds.Update)
             return HopKinds.Approve;
+
+        if (Columns.AwaitingReview(statuses)?.Id == from.Id
+            && Columns.Closes(statuses, from) is not null
+            && effectivePreApproval == PreApprovalLevels.PreApproved
+            && issue.PullRequestUrl is not { Length: > 0 }
+            && family.Children(issue.Id).Count > 0
+            && (issue.Type == "epic"
+                ? family.EpicFold(issue.Id, statuses) is null
+                : family.OpenChildren(issue.Id).Count == 0))
+            return HopKinds.Close;
 
         return null;
     }

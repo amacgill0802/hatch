@@ -54,6 +54,9 @@ public class IssueClaimController(
         if (runner.Length > EfHatchIssue.MaxClaimRunnerLength)
             return BadRequest($"a runner is at most {EfHatchIssue.MaxClaimRunnerLength} characters");
 
+        if (request.PlaybookId is { } playbookId && !await db.Playbooks.AnyAsync(p => p.Id == playbookId, ct))
+            return BadRequest($"there is no playbook {playbookId}");
+
         var now = time.GetUtcNow();
 
         // Read first, because the refusal has to name a holder and that
@@ -75,7 +78,7 @@ public class IssueClaimController(
         var token = Guid.NewGuid();
         var actor = await caller.ActorNameAsync(ct);
 
-        if (!await claims.TryTakeAsync(db, issue.Id, token, actor, runner, now, ct))
+        if (!await claims.TryTakeAsync(db, issue.Id, token, actor, runner, request.PlaybookId, now, ct))
         {
             // Somebody won the race between that read and this write. Say who,
             // from the row as it stands now - and where the re-read finds it

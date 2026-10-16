@@ -262,7 +262,7 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
     /// last one's last words.
     /// </remarks>
     public async Task<bool> TryTakeAsync(
-        HatchContext db, long issueId, Guid token, string actor, string runner,
+        HatchContext db, long issueId, Guid token, string actor, string runner, int? playbookId,
         DateTimeOffset now, CancellationToken ct)
     {
         var cutoff = Cutoff(now);
@@ -279,7 +279,8 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
                 .SetProperty(i => i.ClaimedAt, now)
                 .SetProperty(i => i.ClaimHeartbeatAt, now)
                 .SetProperty(i => i.ClaimChatter, (string?)null)
-                .SetProperty(i => i.ClaimChatterAt, (DateTimeOffset?)null), ct) == 1;
+                .SetProperty(i => i.ClaimChatterAt, (DateTimeOffset?)null)
+                .SetProperty(i => i.ClaimPlaybookId, playbookId), ct) == 1;
     }
 
     /// <summary>
@@ -339,7 +340,7 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
         HatchContext db, long issueId, CancellationToken ct) =>
         await Clear(db.Issues.Where(i => i.Id == issueId && i.ClaimToken != null), ct) == 1;
 
-    /// <summary>The seven columns back to unclaimed, written once so the two release lanes cannot clear different things.</summary>
+    /// <summary>The eight columns back to unclaimed, written once so the two release lanes cannot clear different things.</summary>
     private static Task<int> Clear(IQueryable<EfHatchIssue> rows, CancellationToken ct) =>
         rows.ExecuteUpdateAsync(s => s
             .SetProperty(i => i.ClaimToken, (Guid?)null)
@@ -348,7 +349,8 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
             .SetProperty(i => i.ClaimedAt, (DateTimeOffset?)null)
             .SetProperty(i => i.ClaimHeartbeatAt, (DateTimeOffset?)null)
             .SetProperty(i => i.ClaimChatter, (string?)null)
-            .SetProperty(i => i.ClaimChatterAt, (DateTimeOffset?)null), ct);
+            .SetProperty(i => i.ClaimChatterAt, (DateTimeOffset?)null)
+            .SetProperty(i => i.ClaimPlaybookId, (int?)null), ct);
 }
 
 /// <summary>

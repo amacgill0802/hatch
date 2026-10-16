@@ -95,4 +95,40 @@ public sealed class UsageLimitTests
         Assert.Null(UsageLimit.Recognise(null, EndedAt));
         Assert.Null(UsageLimit.Recognise("", EndedAt));
     }
+
+    [Fact]
+    public void A_known_zones_offset_is_printed_as_given_even_when_it_is_UTC()
+    {
+        var at = DateTimeOffset.Parse("2026-09-28T23:40:00+00:00");
+
+        Assert.Equal("11:40pm", UsageLimit.Clock(at, known: true));
+    }
+
+    [Fact]
+    public void A_known_zones_offset_is_printed_as_given()
+    {
+        var at = DateTimeOffset.Parse("2026-09-28T19:40:00-04:00");
+
+        Assert.Equal("7:40pm", UsageLimit.Clock(at, known: true));
+    }
+
+    [Fact]
+    public void The_backstop_reads_in_the_runners_own_local_zone_not_the_UTC_it_carries()
+    {
+        var at = DateTimeOffset.Parse("2026-09-28T23:00:00+00:00");
+        var local = new FrozenClock(new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.FromHours(-5)));
+
+        Assert.Equal("6:00pm", UsageLimit.Clock(at, known: false, local));
+    }
+
+    [Fact]
+    public void The_backstop_sentence_names_the_local_hour_not_the_UTC_one_end_to_end()
+    {
+        var hit = UsageLimit.Recognise("You've hit your session limit · resets soon, we promise", EndedAt);
+        var local = new FrozenClock(new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.FromHours(-5)));
+
+        Assert.NotNull(hit);
+        Assert.False(hit!.Value.ResetKnown);
+        Assert.Equal("6:00pm", UsageLimit.Clock(hit.Value.ResetAt, hit.Value.ResetKnown, local));
+    }
 }

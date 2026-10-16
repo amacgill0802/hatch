@@ -890,6 +890,14 @@ public class EfHatchIssue
     public DateTimeOffset? ClaimChatterAt { get; set; }
 
     /// <summary>
+    /// Which playbook this claim was taken under, or null where none was
+    /// named. Set once at take time and cleared at release exactly like the
+    /// other claim columns - a bare id, with no navigation property, matching
+    /// the shape of the rest of this row.
+    /// </summary>
+    public int? ClaimPlaybookId { get; set; }
+
+    /// <summary>
     /// The person this issue belongs to, or null. At most one of this and
     /// <see cref="AssigneeApiKeyId"/> is ever set - the controller clears the
     /// other on every write, and a check constraint refuses a row wearing both.

@@ -493,7 +493,11 @@ public record IssueDto(
 
 /// <summary>Taking the lease: who is asking is the credential's to say, so the body names only where from.</summary>
 /// <param name="Runner">The checkout holding it - <c>host:/path/to/checkout</c>, as the runner names itself.</param>
-public record ClaimRequest(string Runner)
+/// <param name="PlaybookId">
+/// Which playbook this take is under, or null where none is named. Informational
+/// only - the server validates it names a real row and never re-derives it.
+/// </param>
+public record ClaimRequest(string Runner, int? PlaybookId = null)
 {
     /// <summary>
     /// The longest runner the server will accept. Here rather than on the
@@ -1616,7 +1620,7 @@ public static class WorkKinds
     public const string Pending = "pending";
 }
 
-/// <summary>Which of the six reasons carried a hop - see WorkDto.HopKind.</summary>
+/// <summary>Which of the seven reasons carried a hop - see WorkDto.HopKind.</summary>
 public static class HopKinds
 {
     /// <summary>An express issue, in a column marked <see cref="StatusDto.ExpressSkips"/>.</summary>
@@ -1648,6 +1652,12 @@ public static class HopKinds
     /// merge or bring current - see HA-560.
     /// </summary>
     public const string Approve = "approve";
+
+    /// <summary>
+    /// A pre-approved issue in review with no pull request, whose children are
+    /// all done - see HA-472.
+    /// </summary>
+    public const string Close = "close";
 }
 
 /// <summary>
