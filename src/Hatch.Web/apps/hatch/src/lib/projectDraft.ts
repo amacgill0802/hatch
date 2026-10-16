@@ -5,7 +5,7 @@
    newly-added entry has no `canonical` yet. No DOM. */
 
 import { normalizeProjectKey, rekeyObjection } from './projectKey';
-import type { Project, ProjectPatchRequest, ProjectRepositoryWriteRequest } from '../types';
+import type { Project, ProjectLandingWriteRequest, ProjectPatchRequest, ProjectRepositoryWriteRequest } from '../types';
 
 export interface ProjectDraft {
   known: {
@@ -14,12 +14,16 @@ export interface ProjectDraft {
     color: string | null;
     icon: string | null;
     repositories: ProjectRepositoryWriteRequest[];
+    landing: 'pull-request' | 'trunk';
+    checksRequired: boolean;
   };
   name: string;
   key: string;
   color: string | null;
   icon: string | null;
   repositories: ProjectRepositoryWriteRequest[];
+  landing: 'pull-request' | 'trunk';
+  checksRequired: boolean;
 }
 
 export interface ProjectDraftDiff {
@@ -35,12 +39,22 @@ function sameRepositories(a: ProjectRepositoryWriteRequest[], b: ProjectReposito
 export function openProjectDraft(project: Project): ProjectDraft {
   const repositories = project.repositories.map(({ remote, baseBranch }) => ({ remote, baseBranch }));
   return {
-    known: { name: project.name, key: project.key, color: project.color, icon: project.icon, repositories },
+    known: {
+      name: project.name,
+      key: project.key,
+      color: project.color,
+      icon: project.icon,
+      repositories,
+      landing: project.landing,
+      checksRequired: project.checksRequired,
+    },
     name: project.name,
     key: project.key,
     color: project.color,
     icon: project.icon,
     repositories,
+    landing: project.landing,
+    checksRequired: project.checksRequired,
   };
 }
 
@@ -61,4 +75,13 @@ export function projectDraftDiff(draft: ProjectDraft): ProjectDraftDiff {
     patch: Object.keys(patchFields).length > 0 ? patchFields : null,
     repositories: sameRepositories(draft.repositories, draft.known.repositories) ? null : draft.repositories,
   };
+}
+
+/** Why Save sends a landing PUT, or doesn't - a sparse diff the same way projectDraftDiff's patchFields is. */
+export function projectLandingDiff(draft: ProjectDraft): ProjectLandingWriteRequest | null {
+  const fields: ProjectLandingWriteRequest = {};
+  if (draft.landing !== draft.known.landing) fields.landing = draft.landing;
+  if (draft.checksRequired !== draft.known.checksRequired) fields.checksRequired = draft.checksRequired;
+
+  return Object.keys(fields).length > 0 ? fields : null;
 }

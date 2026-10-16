@@ -43,6 +43,7 @@ import type {
   HatchImage,
   Project,
   ProjectCreateRequest,
+  ProjectLandingWriteRequest,
   ProjectMember,
   ProjectPatchRequest,
   ProjectRepository,
@@ -118,6 +119,8 @@ export const deleteProject = (id: number) =>
   fetchJson<void>(`/api/hatch/projects/${id}`, { method: 'DELETE' });
 export const putProjectRepositories = (id: number, request: ProjectRepositoryWriteRequest[]) =>
   fetchJson<ProjectRepository[]>(`/api/hatch/projects/${id}/repositories`, { method: 'PUT', ...asJson(request) });
+export const putProjectLanding = (id: number, request: ProjectLandingWriteRequest) =>
+  fetchJson<Project>(`/api/hatch/projects/${id}/landing`, { method: 'PUT', ...asJson(request) });
 export const putProjectMember = (id: number, personId: string, role: string) =>
   fetchJson<ProjectMember[]>(`/api/hatch/projects/${id}/members/${seg(personId)}`, { method: 'PUT', ...asJson({ role }) });
 export const deleteProjectMember = (id: number, personId: string) =>

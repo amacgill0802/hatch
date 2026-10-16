@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { openProjectDraft, projectDraftDiff, projectDraftKeyObjection, type ProjectDraft } from './projectDraft';
+import { openProjectDraft, projectDraftDiff, projectDraftKeyObjection, projectLandingDiff, type ProjectDraft } from './projectDraft';
 
 describe('openProjectDraft', () => {
   it('seeds known and the working fields from a Project', () => {
@@ -16,6 +16,8 @@ describe('openProjectDraft', () => {
       members: [],
       canApprove: false,
       canAdminister: false,
+      landing: 'pull-request' as const,
+      checksRequired: true,
     };
 
     const draft = openProjectDraft(project);
@@ -28,6 +30,8 @@ describe('openProjectDraft', () => {
       color: '#6b7280',
       icon: 'rocket',
       repositories: [{ remote: 'a', baseBranch: 'main' }],
+      landing: 'pull-request',
+      checksRequired: true,
     });
   });
 
@@ -45,6 +49,8 @@ describe('openProjectDraft', () => {
       members: [],
       canApprove: false,
       canAdminister: false,
+      landing: 'pull-request' as const,
+      checksRequired: true,
     };
 
     const draft = openProjectDraft(project);
@@ -60,40 +66,42 @@ describe('projectDraftDiff', () => {
     color: '#6b7280',
     icon: 'rocket',
     repositories: [{ remote: 'a', baseBranch: 'main' }],
+    landing: 'pull-request' as const,
+    checksRequired: true,
   };
 
   it('is empty when nothing changed', () => {
-    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: known.icon, repositories: known.repositories };
+    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: known.icon, repositories: known.repositories, landing: known.landing, checksRequired: known.checksRequired };
     expect(projectDraftDiff(draft)).toEqual({ patch: null, repositories: null });
   });
 
   it('carries only name when only name changed', () => {
-    const draft: ProjectDraft = { known, name: 'Renamed', key: known.key, color: known.color, icon: known.icon, repositories: known.repositories };
+    const draft: ProjectDraft = { known, name: 'Renamed', key: known.key, color: known.color, icon: known.icon, repositories: known.repositories, landing: known.landing, checksRequired: known.checksRequired };
     expect(projectDraftDiff(draft)).toEqual({ patch: { name: 'Renamed' }, repositories: null });
   });
 
   it('carries only key when only key changed', () => {
-    const draft: ProjectDraft = { known, name: known.name, key: 'NEW', color: known.color, icon: known.icon, repositories: known.repositories };
+    const draft: ProjectDraft = { known, name: known.name, key: 'NEW', color: known.color, icon: known.icon, repositories: known.repositories, landing: known.landing, checksRequired: known.checksRequired };
     expect(projectDraftDiff(draft)).toEqual({ patch: { key: 'NEW' }, repositories: null });
   });
 
   it('carries only color when only color changed', () => {
-    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: '#111827', icon: known.icon, repositories: known.repositories };
+    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: '#111827', icon: known.icon, repositories: known.repositories, landing: known.landing, checksRequired: known.checksRequired };
     expect(projectDraftDiff(draft)).toEqual({ patch: { color: '#111827' }, repositories: null });
   });
 
   it('carries only icon when only icon changed', () => {
-    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: 'comet', repositories: known.repositories };
+    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: 'comet', repositories: known.repositories, landing: known.landing, checksRequired: known.checksRequired };
     expect(projectDraftDiff(draft)).toEqual({ patch: { icon: 'comet' }, repositories: null });
   });
 
   it('sends an empty string to clear color', () => {
-    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: null, icon: known.icon, repositories: known.repositories };
+    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: null, icon: known.icon, repositories: known.repositories, landing: known.landing, checksRequired: known.checksRequired };
     expect(projectDraftDiff(draft)).toEqual({ patch: { color: '' }, repositories: null });
   });
 
   it('sends an empty string to clear icon', () => {
-    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: null, repositories: known.repositories };
+    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: null, repositories: known.repositories, landing: known.landing, checksRequired: known.checksRequired };
     expect(projectDraftDiff(draft)).toEqual({ patch: { icon: '' }, repositories: null });
   });
 
@@ -110,6 +118,8 @@ describe('projectDraftDiff', () => {
       color: reorderedKnown.color,
       icon: reorderedKnown.icon,
       repositories: [repositories[1], repositories[0]],
+      landing: reorderedKnown.landing,
+      checksRequired: reorderedKnown.checksRequired,
     };
 
     const diff = projectDraftDiff(draft);
@@ -129,7 +139,7 @@ describe('projectDraftDiff', () => {
     { label: 'a removed entry', repositories: [] },
     { label: 'an edited baseBranch', repositories: [{ remote: 'a', baseBranch: 'develop' }] },
   ])('reports a change on $label', ({ repositories }) => {
-    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: known.icon, repositories };
+    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: known.icon, repositories, landing: known.landing, checksRequired: known.checksRequired };
 
     const diff = projectDraftDiff(draft);
 
@@ -145,9 +155,43 @@ describe('projectDraftDiff', () => {
       color: known.color,
       icon: known.icon,
       repositories: known.repositories.map((r) => ({ ...r })),
+      landing: known.landing,
+      checksRequired: known.checksRequired,
     };
 
     expect(projectDraftDiff(draft).repositories).toBeNull();
+  });
+});
+
+describe('projectLandingDiff', () => {
+  const known = {
+    name: 'Aerial',
+    key: 'AER',
+    color: '#6b7280',
+    icon: 'rocket',
+    repositories: [{ remote: 'a', baseBranch: 'main' }],
+    landing: 'pull-request' as const,
+    checksRequired: true,
+  };
+
+  it('is null when nothing changed', () => {
+    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: known.icon, repositories: known.repositories, landing: known.landing, checksRequired: known.checksRequired };
+    expect(projectLandingDiff(draft)).toBeNull();
+  });
+
+  it('carries only landing when only landing changed', () => {
+    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: known.icon, repositories: known.repositories, landing: 'trunk', checksRequired: known.checksRequired };
+    expect(projectLandingDiff(draft)).toEqual({ landing: 'trunk' });
+  });
+
+  it('carries only checksRequired when only checksRequired changed', () => {
+    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: known.icon, repositories: known.repositories, landing: known.landing, checksRequired: false };
+    expect(projectLandingDiff(draft)).toEqual({ checksRequired: false });
+  });
+
+  it('carries both when both changed', () => {
+    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: known.icon, repositories: known.repositories, landing: 'trunk', checksRequired: false };
+    expect(projectLandingDiff(draft)).toEqual({ landing: 'trunk', checksRequired: false });
   });
 });
 
@@ -158,8 +202,10 @@ describe('projectDraftKeyObjection', () => {
     color: '#6b7280',
     icon: 'rocket',
     repositories: [{ remote: 'a', baseBranch: 'main' }],
+    landing: 'pull-request' as const,
+    checksRequired: true,
   };
-  const withKey = (key: string): ProjectDraft => ({ known, name: known.name, key, color: known.color, icon: known.icon, repositories: known.repositories });
+  const withKey = (key: string): ProjectDraft => ({ known, name: known.name, key, color: known.color, icon: known.icon, repositories: known.repositories, landing: known.landing, checksRequired: known.checksRequired });
 
   it('is no objection when the key is unchanged', () => {
     expect(projectDraftKeyObjection(withKey('AER'), '')).toBeNull();

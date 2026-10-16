@@ -37,6 +37,8 @@ export interface Project {
   members: ProjectMember[];
   canApprove: boolean;
   canAdminister: boolean;
+  landing: 'pull-request' | 'trunk';
+  checksRequired: boolean;
 }
 
 /** One git remote bound to a project, as the server reads it back. */
@@ -688,6 +690,11 @@ export interface ProjectPatchRequest {
   key?: string | null;
   color?: string | null;
   icon?: string | null;
+}
+
+export interface ProjectLandingWriteRequest {
+  landing?: 'pull-request' | 'trunk' | null;
+  checksRequired?: boolean | null;
 }
 
 export interface StatusCreateRequest {
