@@ -81,7 +81,9 @@ public static class Fixtures
         bool inReview = false,
         SentBackDto? sentBack = null,
         IReadOnlyList<StatusDto>? statuses = null,
-        bool isCheck = false) =>
+        bool isCheck = false,
+        string? lastCheckFindings = null,
+        string? failStatusName = null) =>
         new(
             Issue: issue ?? Issue(key),
             FromStatus: Status(3, from),
@@ -100,7 +102,9 @@ public static class Fixtures
             LetGo: letGo,
             InReview: inReview,
             SentBack: sentBack,
-            Statuses: statuses ?? [Status(2, "To Do"), Status(3, "In Progress"), Status(4, "In Review")]);
+            Statuses: statuses ?? [Status(2, "To Do"), Status(3, "In Progress"), Status(4, "In Review")],
+            LastCheckFindings: lastCheckFindings,
+            FailStatusName: failStatusName);
 
     /// <summary>The dispatch of an issue in review whose branch conflicts: review to itself, with the board's verdict on it.</summary>
     public static WorkDto ConflictWork(
