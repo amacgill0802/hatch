@@ -7099,6 +7099,190 @@ public class WorkControllerTests
             "AER-404", new PullRequestClosedRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default)).Result);
     }
 
+    // ---- Verdict apply ----
+
+    [Fact]
+    public async Task VerdictWork_Pass_MovesTheIssueToReviewAndRecordsTheFindings()
+    {
+        var h = await NewAsync();
+        var playbookId = await h.CheckingAsync();
+        var issue = await h.FileAsync("task", "being checked", h.Checking);
+        var token = await h.ClaimAsync(issue, playbookId: playbookId);
+        await h.RecordVerdictAsync(issue, playbookId, token, CheckVerdicts.Pass, findings: "looks right");
+
+        var moved = Value(await h.Work.VerdictWork(Key(issue), token, ct: default));
+        var row = await h.Db.Issues.Include(i => i.Events).Include(i => i.Comments).FirstAsync(i => i.Id == issue.Id);
+
+        Assert.Equal(h.Review, moved.StatusId);
+        Assert.Equal(h.Review, row.StatusId);
+
+        var e = Assert.Single(row.Events);
+        Assert.Equal(EfHatchIssueEvent.StatusChanged, e.Kind);
+        var payload = JsonDocument.Parse(e.Payload!).RootElement;
+        Assert.Equal(CheckVerdicts.Pass, payload.GetProperty("verdict").GetString());
+        Assert.Equal(playbookId, payload.GetProperty("playbookId").GetInt32());
+
+        var comment = Assert.Single(row.Comments);
+        Assert.Equal(EfHatchComment.Verdict, comment.Kind);
+        Assert.Equal("looks right", comment.Body);
+
+        var verdictRow = await h.Db.Verdicts.FirstAsync(v => v.IssueId == issue.Id);
+        Assert.NotNull(verdictRow.AppliedAt);
+    }
+
+    [Fact]
+    public async Task VerdictWork_FirstFail_ReturnsTheIssueToImplementation()
+    {
+        var h = await NewAsync();
+        var playbookId = await h.CheckingAsync();
+        var issue = await h.FileAsync("task", "being checked", h.Checking);
+        var token = await h.ClaimAsync(issue, playbookId: playbookId);
+        await h.RecordVerdictAsync(issue, playbookId, token, CheckVerdicts.Fail, findings: "the build broke");
+
+        var moved = Value(await h.Work.VerdictWork(Key(issue), token, ct: default));
+        var row = await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id);
+
+        Assert.Equal(h.InProgress, moved.StatusId);
+        Assert.Equal(h.InProgress, row.StatusId);
+
+        var e = Assert.Single(row.Events);
+        Assert.Equal(EfHatchIssueEvent.StatusChanged, e.Kind);
+        var payload = JsonDocument.Parse(e.Payload!).RootElement;
+        Assert.Equal(CheckVerdicts.Fail, payload.GetProperty("verdict").GetString());
+    }
+
+    [Fact]
+    public async Task VerdictWork_SecondConsecutiveFail_HoldsTheIssueAndAsks()
+    {
+        var h = await NewAsync();
+        var playbookId = await h.CheckingAsync();
+        var issue = await h.FileAsync("task", "being checked a second time", h.Checking);
+
+        await h.LogEventAsync(
+            issue, EfHatchIssueEvent.StatusChanged,
+            new { from = "checking", to = "in progress", verdict = CheckVerdicts.Fail, playbookId },
+            h.Time.GetUtcNow().AddMinutes(-10));
+
+        var token = await h.ClaimAsync(issue, playbookId: playbookId);
+        await h.RecordVerdictAsync(issue, playbookId, token, CheckVerdicts.Fail, findings: "still broken");
+
+        var moved = Value(await h.Work.VerdictWork(Key(issue), token, ct: default));
+        var row = await h.Db.Issues.Include(i => i.Events).Include(i => i.Comments).FirstAsync(i => i.Id == issue.Id);
+
+        Assert.Equal(h.Checking, moved.StatusId);
+        Assert.Equal(h.Checking, row.StatusId);
+
+        Assert.Contains(row.Events, e => e.Kind == EfHatchIssueEvent.VerdictHeld);
+        Assert.Contains(row.Events, e => e.Kind == EfHatchIssueEvent.Asked);
+
+        var question = Assert.Single(row.Comments, c => c.Kind == EfHatchComment.Question);
+        Assert.Contains("still broken", question.Body);
+
+        var verdictComment = Assert.Single(row.Comments, c => c.Kind == EfHatchComment.Verdict);
+        Assert.Equal("still broken", verdictComment.Body);
+
+        var work = Value(await h.Work.GetWork(Key(issue), token, default));
+        Assert.Contains("unanswered question", work.Blocked);
+    }
+
+    [Fact]
+    public async Task VerdictWork_AnAnsweredEventBetweenTwoFails_ResetsTheStreak()
+    {
+        var h = await NewAsync();
+        var playbookId = await h.CheckingAsync();
+        var issue = await h.FileAsync("task", "being checked a third time", h.Checking);
+
+        var now = h.Time.GetUtcNow();
+        await h.LogEventAsync(
+            issue, EfHatchIssueEvent.StatusChanged,
+            new { from = "checking", to = "in progress", verdict = CheckVerdicts.Fail, playbookId },
+            now.AddMinutes(-30));
+        await h.LogEventAsync(
+            issue, EfHatchIssueEvent.StatusChanged,
+            new { from = "checking", to = "in progress", verdict = CheckVerdicts.Fail, playbookId },
+            now.AddMinutes(-20));
+        await h.LogEventAsync(issue, EfHatchIssueEvent.Answered, new { questionId = 1 }, now.AddMinutes(-10));
+
+        var token = await h.ClaimAsync(issue, playbookId: playbookId);
+        await h.RecordVerdictAsync(issue, playbookId, token, CheckVerdicts.Fail, findings: "a third try");
+
+        var moved = Value(await h.Work.VerdictWork(Key(issue), token, ct: default));
+
+        Assert.Equal(h.InProgress, moved.StatusId);
+    }
+
+    [Fact]
+    public async Task VerdictWork_Is409WhenTheIssueHoldsNoLiveClaim()
+    {
+        var h = await NewAsync();
+        var playbookId = await h.CheckingAsync();
+        var issue = await h.FileAsync("task", "unclaimed", h.Checking);
+
+        var result = await h.Work.VerdictWork(Key(issue), Guid.NewGuid(), ct: default);
+
+        Assert.Equal(
+            $"{Key(issue)} holds no live claim, so there is nothing for this token to match",
+            Assert.IsType<ConflictObjectResult>(result.Result).Value);
+    }
+
+    [Fact]
+    public async Task VerdictWork_Is409WhenTheTokenDoesNotMatchTheLiveClaim()
+    {
+        var h = await NewAsync();
+        var playbookId = await h.CheckingAsync();
+        var issue = await h.FileAsync("task", "claimed by somebody else's token", h.Checking);
+        await h.ClaimAsync(issue, playbookId: playbookId);
+
+        var result = await h.Work.VerdictWork(Key(issue), Guid.NewGuid(), ct: default);
+
+        Assert.Equal(
+            $"{Key(issue)}'s live claim does not match this token",
+            Assert.IsType<ConflictObjectResult>(result.Result).Value);
+    }
+
+    [Fact]
+    public async Task VerdictWork_Is404WhenNoVerdictWasRecordedUnderThisClaim()
+    {
+        var h = await NewAsync();
+        var playbookId = await h.CheckingAsync();
+        var issue = await h.FileAsync("task", "claimed but checked nothing yet", h.Checking);
+        var token = await h.ClaimAsync(issue, playbookId: playbookId);
+
+        var result = await h.Work.VerdictWork(Key(issue), token, ct: default);
+
+        Assert.Equal("no verdict was recorded under this claim", Assert.IsType<NotFoundObjectResult>(result.Result).Value);
+    }
+
+    [Fact]
+    public async Task VerdictWork_Is404WhenTheVerdictWasAlreadyApplied()
+    {
+        var h = await NewAsync();
+        var playbookId = await h.CheckingAsync();
+        var issue = await h.FileAsync("task", "already applied", h.Checking);
+        var token = await h.ClaimAsync(issue, playbookId: playbookId);
+        await h.RecordVerdictAsync(issue, playbookId, token, CheckVerdicts.Pass, appliedAt: h.Time.GetUtcNow());
+
+        var result = await h.Work.VerdictWork(Key(issue), token, ct: default);
+
+        Assert.Equal("no verdict was recorded under this claim", Assert.IsType<NotFoundObjectResult>(result.Result).Value);
+    }
+
+    [Fact]
+    public async Task VerdictWork_Is404ForAKeyThatDoesNotParse()
+    {
+        var h = await NewAsync();
+
+        Assert.IsType<NotFoundResult>((await h.Work.VerdictWork("nonsense", Guid.NewGuid(), ct: default)).Result);
+    }
+
+    [Fact]
+    public async Task VerdictWork_Is404ForAKeyThatDoesNotExist()
+    {
+        var h = await NewAsync();
+
+        Assert.IsType<NotFoundResult>((await h.Work.VerdictWork("AER-404", Guid.NewGuid(), ct: default)).Result);
+    }
+
     // ---- The review playbook ----
 
     [Fact]
@@ -8167,6 +8351,14 @@ public class WorkControllerTests
         public required int Done { get; init; }
         public required int Shelved { get; init; }
 
+        /// <summary>
+        /// Set by <see cref="CheckingAsync"/>, for a test that needs a check
+        /// column; 0 everywhere else, which is not a valid <c>EfHatchStatus.Id</c>
+        /// so a test that forgets to call it fails loudly rather than reading 0
+        /// as "no row".
+        /// </summary>
+        public int Checking { get; private set; }
+
         private int next = 1;
         private int nextRepoOrder;
 
@@ -8428,6 +8620,33 @@ public class WorkControllerTests
         }
 
         /// <summary>
+        /// A check column between <see cref="InProgress"/> and <see cref="Review"/>,
+        /// with an <c>IsCheck</c> playbook feeding it from <see cref="InProgress"/> -
+        /// for a verdict test, which needs somewhere for a check session's claim
+        /// to stand. The stock harness draws no such column, so
+        /// <see cref="Columns.Implementation"/> falls back to measuring off
+        /// <see cref="Columns.AwaitingReview"/>'s feeder - which, once this column
+        /// sits immediately before <see cref="Review"/>, would be this column and
+        /// not <see cref="InProgress"/>. <see cref="TickImplementationAsync"/> is
+        /// called here for that reason, so the fallback never has to run.
+        /// </summary>
+        public async Task<int> CheckingAsync()
+        {
+            var checking = new EfHatchStatus { Name = "checking", SortOrder = 33 };
+            Db.Statuses.Add(checking);
+            await Db.SaveChangesAsync();
+
+            var playbook = Playbook(InProgress, checking.Id, "", "sonnet", isCheck: true);
+            Db.Playbooks.Add(playbook);
+            await Db.SaveChangesAsync();
+
+            await TickImplementationAsync(InProgress);
+
+            Checking = checking.Id;
+            return playbook.Id;
+        }
+
+        /// <summary>
         /// Turns the stock board into Draft, Inbox, Backlog, To Do, Building,
         /// Rule Check, QA, Ready to Merge, Done, keeping every stock id: the
         /// five stock columns are renamed, four are added, and the deferred
@@ -8526,7 +8745,7 @@ public class WorkControllerTests
         /// is why the columns are the input.
         /// </summary>
         public async Task<Guid> ClaimAsync(
-            EfHatchIssue issue, string by = "hatch", string runner = "somewhere:/checkouts/one")
+            EfHatchIssue issue, string by = "hatch", string runner = "somewhere:/checkouts/one", int? playbookId = null)
         {
             var token = Guid.NewGuid();
             var now = Time.GetUtcNow();
@@ -8536,6 +8755,7 @@ public class WorkControllerTests
             issue.ClaimRunner = runner;
             issue.ClaimedAt = now;
             issue.ClaimHeartbeatAt = now;
+            issue.ClaimPlaybookId = playbookId;
             await Db.SaveChangesAsync();
 
             return token;
@@ -8614,6 +8834,33 @@ public class WorkControllerTests
             });
 
             await Db.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// A check session's verdict, written straight to the table - what the
+        /// route that writes it accepts and refuses is HA-554's business; these
+        /// tests are about what the apply endpoint does with a row once it is
+        /// there.
+        /// </summary>
+        public async Task<EfHatchVerdict> RecordVerdictAsync(
+            EfHatchIssue issue, int playbookId, Guid token, string verdict, string? findings = null, DateTimeOffset? appliedAt = null)
+        {
+            var row = new EfHatchVerdict
+            {
+                IssueId = issue.Id,
+                PlaybookId = playbookId,
+                StatusId = issue.StatusId,
+                Verdict = verdict,
+                Findings = findings,
+                Author = "hatch-agent",
+                ClaimToken = token,
+                CreatedAt = Now,
+                AppliedAt = appliedAt,
+            };
+
+            Db.Verdicts.Add(row);
+            await Db.SaveChangesAsync();
+            return row;
         }
 
         public async Task AnswerAsync(EfHatchIssue issue, EfHatchComment question, string body)
@@ -8829,7 +9076,8 @@ public class WorkControllerTests
     private static string Key(string projectKey, EfHatchIssue issue) => IssueKey.Format(projectKey, issue.Number);
 
     private static EfHatchPlaybook Playbook(
-        int from, int to, string types, string model, string shape = "any", int? briefLimit = null, int? projectId = null) => new()
+        int from, int to, string types, string model, string shape = "any", int? briefLimit = null,
+        int? projectId = null, bool isCheck = false) => new()
     {
         FromStatusId = from,
         ToStatusId = to,
@@ -8840,6 +9088,7 @@ public class WorkControllerTests
         Effort = "high",
         BriefLimit = briefLimit,
         ProjectId = projectId,
+        IsCheck = isCheck,
         CreatedAt = Now,
         UpdatedAt = Now,
     };

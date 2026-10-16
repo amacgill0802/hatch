@@ -1441,6 +1441,16 @@ public class EfHatchIssueEvent
     /// <summary>A check session recorded a verdict - see <see cref="EfHatchVerdict"/>. Written unconditionally: this is not a poll, so there is no "only when changed" guard.</summary>
     public const string VerdictRecorded = "verdict_recorded";
 
+    /// <summary>
+    /// A second consecutive fail of the same playbook, with no pass or answer
+    /// in between, held the issue rather than moving it - see
+    /// <see cref="WorkController.VerdictWork"/> and <see cref="VerdictStreak"/>.
+    /// Written beside the <c>question</c> comment it pairs with, not instead
+    /// of <see cref="VerdictRecorded"/>, which this call writes nothing of its
+    /// own: the row it is reading was already written by <c>POST .../verdicts</c>.
+    /// </summary>
+    public const string VerdictHeld = "verdict_held";
+
     public const string ParentChanged = "parent_changed";
 
     /// <summary>
