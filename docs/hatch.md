@@ -2750,6 +2750,21 @@ nothing is held, reads *Nothing approved has stopped merging.* The issue
 page's own chip draws only for a **hold** verdict, never a **pushback**
 one, even though this panel counts both the same way.
 
+Pre-approval reaches this panel's review half too, the same way it already
+reaches the merge column's. A row in `reviews` that is
+[pre-approved](#pre-approval) and whose branch the judge would merge, bring
+current, or is still progressing on its own is not listed here at all - it is
+the loop's to carry, not a person's to look at, the same reasoning
+`approvedWaiting` already rests on. One the judge still holds - a closed pull
+request, an ambiguous or missing branch, a stale unread tip - stays in the
+list, carrying `heldSentence`: the same sentence the merge column would print
+for it. `heldSentence` is null for every row that is not pre-approved, and for
+a pre-approved row that reaches this list for any other reason, since neither
+case is held. `inReviewWithoutPullRequest` carries the same carve-out forward:
+a pre-approved parent with no pull request and every child done - the close
+hop's own row - is not counted either, exactly as it is not a row in
+`reviews`.
+
 One endpoint rather than two, and that is the design rather than a convenience.
 The control's loudness is a single number; two polls can be a poll interval
 apart, and that disagreement shows on screen as a lit control whose panel is
@@ -3429,6 +3444,14 @@ bug per gap — and leaves the epic where it is. A filed gap flows like any
 other work, and the epic is folded here until it ships; then the epic is
 verified again. A deferred child's own criteria are named in the verdict, not
 refiled as new work.
+
+Once a parent - an epic or any other type - is verified and left standing in
+the review column, one more thing can carry it past the operator's press
+without one: a [pre-approved](#pre-approval) parent with no pull request
+recorded, every child done by its own type's rule, is closed by the pass
+itself - the **close** hop - rather than waiting for it. See [the
+hop](#the-hop) for the fold it checks and the column it lands in, rather than
+re-deriving either here.
 
 ### Preemption
 
