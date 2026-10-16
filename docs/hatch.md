@@ -206,8 +206,12 @@ context's live model and its stored snapshot disagree, the same way HA-150's
 `EfHatchProject` — `Key` (unique, `^[A-Z][A-Z0-9]{1,5}$`), `Name`,
 `NextIssueNumber`, `CreatedAt`, `Color` (`#rrggbb`, nullable - no default and no
 backfill, so the browser paints `--muted` when none is set), `Icon` (a slug
-into a closed set the browser owns, not the server, nullable the same way). A
-project may also carry an uploaded logo, in its own table — see [Logo](#logo).
+into a closed set the browser owns, not the server, nullable the same way),
+`Landing` (`"pull-request"` default, or `"trunk"` - how a project's finished
+work reaches the trunk, by pull request or pushed straight to it), and
+`ChecksRequired` (`bool`, default `true` - whether a trunk tip with no checks
+run on it yet counts as green). A project may also carry an uploaded logo, in
+its own table — see [Logo](#logo).
 
 A project exists so an issue can be called `AER-12` rather than `#4471`, and so
 two efforts can number themselves independently. It is deliberately **not a
@@ -2210,6 +2214,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/projects/{id}` | PATCH, DELETE | PATCH name and key, and carries `color`/`icon`; DELETE 409s unless the project is empty, and takes its [repositories](#repository) with it |
 | `/projects/{id}/repositories` | GET | The ordered list of remotes, in `SortOrder` — see [Repository](#repository) |
 | `/projects/{id}/repositories` | PUT | **Person only** — plain `[RequireRole(User)]`. The whole ordered list, `[{ remote, baseBranch? }]`; refused as a whole, naming the entry, on an empty, over-limit, unparseable or duplicate remote. Re-sending the same list writes nothing |
+| `/projects/{id}/landing` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ landing?, checksRequired? }` — `landing` is `"pull-request"` or `"trunk"`; `403` naming the project's key from anybody but an owner, `400` naming the bad value on an unknown `landing`, `404` on an unknown project. Re-sending what it already holds writes nothing |
 | `/projects/{id}/members` | GET | Who owns or approves on this project — open to a key, reading who is on a project is not a power |
 | `/projects/{id}/members/{personId}` | PUT | **Person only** — plain `[RequireRole(User)]`, and only an owner of the project may call it. `{ role }` — `"owner"` or `"approver"`. `403` from anybody else, `400` on an unknown person or role, `409` where it would leave the project with no owner |
 | `/projects/{id}/members/{personId}` | DELETE | **Person only**, owner only, the same guard as the PUT beside it. `409` where it would leave the project with no owner |

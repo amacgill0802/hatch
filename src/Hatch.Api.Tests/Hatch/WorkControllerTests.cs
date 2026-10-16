@@ -4374,6 +4374,188 @@ public class WorkControllerTests
         Assert.Null(work.Blocked);
     }
 
+    // ---- The close hop (HA-472) ----
+    //
+    // A pre-approved review row with no pull request, every child done by its
+    // type's own rule, is carried to the first terminal column with no
+    // session - the seventh hop, HopKinds.Close. Every other fold still holds
+    // it exactly as it holds any other issue, the same contract Express and
+    // Approve hold above.
+
+    [Fact]
+    public async Task Queue_ListsAPreApprovedReviewRowWithADoneChildAsClearAndAHopNamingDone()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "ready to close", h.Review);
+        await h.PreApprovedAsync(issue);
+        await h.FileAsync("task", "the only child", h.Done, parentId: issue.Id);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Close, entry.HopKind);
+        Assert.Equal(h.Done, entry.ToStatus!.Id);
+        Assert.Null(entry.Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_ListsAPreApprovedEpicRowWithADoneChildAsACloseHopToo()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("epic", "ready to close", h.Review);
+        await h.PreApprovedAsync(issue);
+        await h.FileAsync("story", "the only child", h.Done, parentId: issue.Id);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Close, entry.HopKind);
+        Assert.Equal(h.Done, entry.ToStatus!.Id);
+        Assert.Null(entry.Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_ListsAPreApprovedEpicRowWithOnlyADeferredChildAsACloseHopToo()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("epic", "ready to close", h.Review);
+        await h.PreApprovedAsync(issue);
+        await h.FileAsync("story", "shelved, not counted", h.Shelved, parentId: issue.Id);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        // FamilyGate.EpicFold excludes a deferred child entirely - not open,
+        // not counted - so this is still a close hop, the one place Close and
+        // a plain OpenChildren fold would disagree.
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Close, entry.HopKind);
+        Assert.Equal(h.Done, entry.ToStatus!.Id);
+        Assert.Null(entry.Blocked);
+    }
+
+    [Fact]
+    public async Task AStoryWithOnlyADeferredChild_IsNotACloseHop()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "not an epic", h.Review);
+        await h.PreApprovedAsync(issue);
+        await h.FileAsync("task", "shelved, still counted as open", h.Shelved, parentId: issue.Id);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        // FamilyGate.OpenChildren counts a deferred child as open, so this is
+        // not a close hop - the review self-move falls through to
+        // ReviewWork.Judge's own fold instead.
+        Assert.False(entry.Hop);
+        Assert.Contains("no runner has checked its branch", entry.Blocked);
+    }
+
+    [Fact]
+    public async Task AChildlessPreApprovedReviewRowWithNoPullRequest_IsNotACloseHop()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "nothing to close against", h.Review);
+        await h.PreApprovedAsync(issue);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.False(entry.Hop);
+        Assert.Contains("no runner has checked its branch", entry.Blocked);
+    }
+
+    [Fact]
+    public async Task APreApprovedParentWithADoneChildButAPullRequest_IsNotACloseHop()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "has a pull request after all", h.Review);
+        await h.PreApprovedAsync(issue);
+        await h.FileAsync("task", "the only child", h.Done, parentId: issue.Id);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        // Not an Approve hop either - MergeWork.Judge with nothing recorded
+        // is Pending, not Merge/Update.
+        Assert.False(entry.Hop);
+        Assert.Contains("no runner has checked its branch", entry.Blocked);
+    }
+
+    [Fact]
+    public async Task AnExpressOnlyParentWithADoneChild_IsNotACloseHop()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "express, not pre-approved", h.Review);
+        await h.ExpressAsync(issue);
+        await h.FileAsync("task", "the only child", h.Done, parentId: issue.Id);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.False(entry.Hop);
+        Assert.Contains("no runner has checked its branch", entry.Blocked);
+    }
+
+    [Fact]
+    public async Task APreApprovedParentWithAnOpenChild_IsNotACloseHop()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "still in flight", h.Review);
+        await h.PreApprovedAsync(issue);
+        await h.FileAsync("task", "still open", h.Todo, parentId: issue.Id);
+
+        // The child itself is walkable (todo, not terminal), so it shows up
+        // as its own row alongside the parent's - pick the parent's out by key.
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(issue));
+
+        Assert.False(entry.Hop);
+        Assert.Contains("no runner has checked its branch", entry.Blocked);
+    }
+
+    [Fact]
+    public async Task CloseHop_IsFoldedByALiveClaimSomebodyElseHolds()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "somebody's already on this", h.Review);
+        await h.PreApprovedAsync(issue);
+        await h.FileAsync("task", "the only child", h.Done, parentId: issue.Id);
+        await h.ClaimAsync(issue, by: "Ada");
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.NotNull(entry.Blocked);
+        Assert.False(entry.Hop);
+    }
+
+    [Fact]
+    public async Task CloseHop_IsFoldedByAnUnansweredQuestion()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "waiting on a person", h.Review);
+        await h.PreApprovedAsync(issue);
+        await h.FileAsync("task", "the only child", h.Done, parentId: issue.Id);
+        await h.AskAsync(issue, "per-node or global?");
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.Contains("unanswered question", entry.Blocked);
+        Assert.False(entry.Hop);
+    }
+
+    [Fact]
+    public async Task GetWork_OnAPreApprovedReviewRowWithADoneChild_NamesDoneAndIsAHop()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "ready to close", h.Review);
+        await h.PreApprovedAsync(issue);
+        await h.FileAsync("task", "the only child", h.Done, parentId: issue.Id);
+
+        var work = Value(await h.Work.GetWork(Key(issue), null, default));
+
+        Assert.Equal(h.Done, work.ToStatus!.Id);
+        Assert.True(work.Hop);
+        Assert.Equal(HopKinds.Close, work.HopKind);
+        Assert.Null(work.Blocked);
+    }
+
     // ---- Express is routing, never priority (HA-241) ----
     //
     // Express decides whether a column needs a session - it is in no OrderBy
