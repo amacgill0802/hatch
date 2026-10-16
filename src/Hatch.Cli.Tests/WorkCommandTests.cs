@@ -461,6 +461,19 @@ public sealed class WorkCommandTests
     }
 
     [Fact]
+    public async Task A_dry_run_prints_the_checks_pass_fail_destinations()
+    {
+        using var h = new Harness();
+        h.Wire.Json(
+            "GET", "/api/hatch/work/next",
+            Fixtures.Work("AER-1", isCheck: true, failStatusName: "To Do"));
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["--dry-run"], default));
+
+        Assert.Contains(h.Say.Said, l => l == "# check: pass -> In Review, fail -> To Do");
+    }
+
+    [Fact]
     public async Task A_dry_run_names_the_playbook_and_whose_it_was()
     {
         using var h = new Harness();
