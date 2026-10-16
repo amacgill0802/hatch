@@ -16,6 +16,7 @@ public sealed class UsageLimitTests
         Assert.NotNull(hit);
         Assert.True(hit!.Value.ResetKnown);
         Assert.Equal(DateTimeOffset.Parse("2026-09-28T23:40:00+00:00"), hit.Value.ResetAt);
+        Assert.Equal("session", hit.Value.Window);
     }
 
     [Fact]
@@ -36,6 +37,7 @@ public sealed class UsageLimitTests
         Assert.NotNull(hit);
         Assert.True(hit!.Value.ResetKnown);
         Assert.Equal(DateTimeOffset.Parse("2026-10-05T23:40:00+00:00"), hit.Value.ResetAt);
+        Assert.Equal("weekly", hit.Value.Window);
     }
 
     [Fact]
