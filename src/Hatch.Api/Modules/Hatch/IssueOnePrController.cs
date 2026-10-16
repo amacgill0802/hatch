@@ -66,7 +66,7 @@ public class IssueOnePrController(
 
         if (value != issue.OnePullRequest)
         {
-            if (await StartedAsync(issue, ct) is { } started)
+            if (await OnePrLock.FirstStartedAsync(db, issue, ct) is { } started)
                 return Conflict(
                     $"{key} has work under it that has already started ({started}), so whether its tasks share one " +
                     "pull request can no longer be changed - a task begun on one branch cannot be moved onto the other");
@@ -87,37 +87,6 @@ public class IssueOnePrController(
         }
 
         return await IssueProjection.ToDtoAsync(db, actors, issue, claims, time.GetUtcNow(), ct);
-    }
-
-    /// <summary>
-    /// The first descendant of the story that has started, as <c>AER-6 is in
-    /// "In Progress"</c>, or null while none has. Nothing has started on a board
-    /// with no implementation column to start in.
-    /// </summary>
-    private async Task<string?> StartedAsync(EfHatchIssue story, CancellationToken ct)
-    {
-        var statuses = await db.Statuses.AsNoTracking().OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync(ct);
-        if (Columns.Implementation(statuses) is not { } implementation) return null;
-
-        var board = Columns.Board(statuses);
-        var from = board.FindIndex(s => s.Id == implementation.Id);
-
-        var ids = await Rollup.DescendantIdsAsync(db, story.Id, ct);
-        if (ids.Count == 0) return null;
-
-        var rows = await db.Issues.AsNoTracking()
-            .Where(i => ids.Contains(i.Id))
-            .OrderBy(i => i.Rank).ThenBy(i => i.Id)
-            .Select(i => new { ProjectKey = i.Project!.Key, i.Number, i.StatusId })
-            .ToListAsync(ct);
-
-        foreach (var row in rows)
-        {
-            var at = board.FindIndex(s => s.Id == row.StatusId);
-            if (at >= from && at >= 0) return $"{IssueKey.Format(row.ProjectKey, row.Number)} is in \"{board[at].Name}\"";
-        }
-
-        return null;
     }
 
     private static bool TryParse(string? text, out bool? value)

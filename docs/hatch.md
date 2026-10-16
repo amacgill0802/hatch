@@ -1246,8 +1246,13 @@ story's cannot be given a pull request of its own, so a change would leave work
 that no longer agrees with its story. Setting what a story already holds is
 never refused and writes nothing; a change writes a `one_pr_changed` event
 carrying both sides as `on`, `off` or `inherit`. The project's default is not
-locked, and moves every story that inherits it: change it while no story that
-inherits it has work started.
+locked, but it cannot move a story under work already begun: a story with no
+setting of its own reads the default, so when the default changes
+(`PUT /projects/{id}/landing`) every story in the project that has started work
+and carries no setting is first given, as its own, the value it was reading —
+one `one_pr_changed` event on each, `inherit` to that value. Stories with
+nothing started keep following the default. "Started" is the same test the lock
+uses, so a story fixed this way is locked from then on like any other.
 
 **A task waiting on the story's pull request.** With the effective value on, a
 task that has pushed to the story's branch moves to the review column and

@@ -841,6 +841,175 @@ public class ProjectsControllerTests
         Assert.False((await h.Db.Projects.FindAsync(h.ProjectId))!.OnePullRequest);
     }
 
+    // ---- The project's one-PR default, and stories that have started ----
+    //
+    // A story with no setting of its own reads the project's default, so
+    // changing it would move the story under tasks already begun on one branch.
+    // The change fixes those stories at the value they were reading first.
+
+    private static async Task<(EfHatchStatus Todo, EfHatchStatus Doing)> BoardAsync(Harness h)
+    {
+        var todo = new EfHatchStatus { Name = "todo", SortOrder = 10 };
+        var doing = new EfHatchStatus { Name = "in progress", SortOrder = 20, IsImplementation = true };
+        h.Db.AddRange(todo, doing, new EfHatchStatus { Name = "done", SortOrder = 30, IsTerminal = true });
+
+        // The caller owns the project - only an owner writes its default.
+        h.Db.ProjectMembers.Add(new EfHatchProjectMember
+        {
+            ProjectId = h.ProjectId, PersonId = h.Nathan.Id, Role = ProjectMemberRole.Owner, CreatedAt = Now,
+        });
+        await h.Db.SaveChangesAsync();
+        return (todo, doing);
+    }
+
+    private static async Task<EfHatchIssue> IssueAsync(
+        Harness h, string type, int statusId, long? parentId = null, bool? onePr = null, int? projectId = null)
+    {
+        var project = projectId ?? h.ProjectId;
+        var issue = new EfHatchIssue
+        {
+            ProjectId = project,
+            Number = await h.Db.Issues.CountAsync(i => i.ProjectId == project) + 1,
+            Type = type, Title = type, Description = "", StatusId = statusId, Rank = 1024, ParentId = parentId,
+            OnePullRequest = onePr, CreatedBy = "operator", CreatedAt = Now, UpdatedAt = Now,
+        };
+        h.Db.Issues.Add(issue);
+        await h.Db.SaveChangesAsync();
+        return issue;
+    }
+
+    private static async Task SetDefaultAsync(Harness h, bool on) =>
+        Value(await h.Projects.PutLanding(h.ProjectId, new ProjectLandingWriteRequest(null, null, on), default));
+
+    [Fact]
+    public async Task ChangingTheDefault_FixesAStartedStoryAtTheValueItWasReading()
+    {
+        var h = await NewAsync();
+        var (todo, doing) = await BoardAsync(h);
+        await SetDefaultAsync(h, true);
+        var story = await IssueAsync(h, "story", doing.Id);
+        await IssueAsync(h, "task", doing.Id, story.Id);
+
+        await SetDefaultAsync(h, false);
+
+        h.Db.ChangeTracker.Clear();
+        var row = await h.Db.Issues.Include(i => i.Events).SingleAsync(i => i.Id == story.Id);
+        Assert.True(row.OnePullRequest);
+        var e = Assert.Single(row.Events);
+        Assert.Equal(EfHatchIssueEvent.OnePrChanged, e.Kind);
+        Assert.Equal("Nathan", e.Actor);
+        var payload = System.Text.Json.JsonDocument.Parse(e.Payload!).RootElement;
+        Assert.Equal("inherit", payload.GetProperty("from").GetString());
+        Assert.Equal("on", payload.GetProperty("to").GetString());
+        Assert.False((await h.Db.Projects.SingleAsync(p => p.Id == h.ProjectId)).OnePullRequest);
+    }
+
+    [Fact]
+    public async Task ChangingTheDefault_FixesTheOtherWayToo()
+    {
+        var h = await NewAsync();
+        var (_, doing) = await BoardAsync(h);
+        var story = await IssueAsync(h, "story", doing.Id);
+        await IssueAsync(h, "task", doing.Id, story.Id);
+
+        await SetDefaultAsync(h, true);
+
+        h.Db.ChangeTracker.Clear();
+        Assert.False((await h.Db.Issues.SingleAsync(i => i.Id == story.Id)).OnePullRequest);
+    }
+
+    [Fact]
+    public async Task ChangingTheDefault_LeavesAStoryWithNothingStartedToFollowIt()
+    {
+        var h = await NewAsync();
+        var (todo, doing) = await BoardAsync(h);
+        var story = await IssueAsync(h, "story", doing.Id);
+        await IssueAsync(h, "task", todo.Id, story.Id);
+        var childless = await IssueAsync(h, "story", todo.Id);
+
+        await SetDefaultAsync(h, true);
+
+        h.Db.ChangeTracker.Clear();
+        Assert.Null((await h.Db.Issues.SingleAsync(i => i.Id == story.Id)).OnePullRequest);
+        Assert.Null((await h.Db.Issues.SingleAsync(i => i.Id == childless.Id)).OnePullRequest);
+    }
+
+    [Fact]
+    public async Task ChangingTheDefault_LeavesAStoryWithASettingOfItsOwn_AsItWas()
+    {
+        var h = await NewAsync();
+        var (_, doing) = await BoardAsync(h);
+        var story = await IssueAsync(h, "story", doing.Id, onePr: false);
+        await IssueAsync(h, "task", doing.Id, story.Id);
+
+        await SetDefaultAsync(h, true);
+
+        h.Db.ChangeTracker.Clear();
+        var row = await h.Db.Issues.Include(i => i.Events).SingleAsync(i => i.Id == story.Id);
+        Assert.False(row.OnePullRequest);
+        Assert.Empty(row.Events);
+    }
+
+    [Fact]
+    public async Task ChangingTheDefault_ReachesATaskStartedBelowABug()
+    {
+        var h = await NewAsync();
+        var (todo, doing) = await BoardAsync(h);
+        var story = await IssueAsync(h, "story", todo.Id);
+        var bug = await IssueAsync(h, "bug", todo.Id, story.Id);
+        await IssueAsync(h, "task", doing.Id, bug.Id);
+
+        await SetDefaultAsync(h, true);
+
+        h.Db.ChangeTracker.Clear();
+        Assert.False((await h.Db.Issues.SingleAsync(i => i.Id == story.Id)).OnePullRequest);
+    }
+
+    [Fact]
+    public async Task ChangingTheDefault_LeavesAnotherProjectsStoriesAlone()
+    {
+        var h = await NewAsync();
+        var (_, doing) = await BoardAsync(h);
+        var other = new EfHatchProject { Key = "OTH", Name = "Other", CreatedAt = Now };
+        h.Db.Add(other);
+        await h.Db.SaveChangesAsync();
+        var story = await IssueAsync(h, "story", doing.Id, projectId: other.Id);
+        await IssueAsync(h, "task", doing.Id, story.Id, projectId: other.Id);
+
+        await SetDefaultAsync(h, true);
+
+        h.Db.ChangeTracker.Clear();
+        Assert.Null((await h.Db.Issues.SingleAsync(i => i.Id == story.Id)).OnePullRequest);
+    }
+
+    [Fact]
+    public async Task ResendingTheDefaultItAlreadyHolds_FixesNothing()
+    {
+        var h = await NewAsync();
+        var (_, doing) = await BoardAsync(h);
+        var story = await IssueAsync(h, "story", doing.Id);
+        await IssueAsync(h, "task", doing.Id, story.Id);
+
+        await SetDefaultAsync(h, false);
+
+        h.Db.ChangeTracker.Clear();
+        Assert.Null((await h.Db.Issues.SingleAsync(i => i.Id == story.Id)).OnePullRequest);
+    }
+
+    [Fact]
+    public async Task ChangingLanding_NotTheDefault_FixesNothing()
+    {
+        var h = await NewAsync();
+        var (_, doing) = await BoardAsync(h);
+        var story = await IssueAsync(h, "story", doing.Id);
+        await IssueAsync(h, "task", doing.Id, story.Id);
+
+        Value(await h.Projects.PutLanding(h.ProjectId, new ProjectLandingWriteRequest(Landings.Trunk, null), default));
+
+        h.Db.ChangeTracker.Clear();
+        Assert.Null((await h.Db.Issues.SingleAsync(i => i.Id == story.Id)).OnePullRequest);
+    }
+
     // ---- Harness ----
 
     private static readonly byte[] Png = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x01];

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Services.Auth;
@@ -494,6 +495,33 @@ public class ProjectsController(
 
         if (!unchanged)
         {
+            // Before the default moves: a story that has started work and reads
+            // it would change under its tasks - work begun on one branch cannot
+            // be moved onto the other - so it is given, as its own setting, the
+            // value it was reading. A story with nothing started still follows.
+            if (request.OnePullRequest is { } next && next != project.OnePullRequest)
+            {
+                var actor = await caller.ActorNameAsync(ct);
+                var now = time.GetUtcNow();
+                foreach (var story in await OnePrLock.StartedInheritingAsync(db, id, ct))
+                {
+                    story.Events.Add(new EfHatchIssueEvent
+                    {
+                        Actor = actor,
+                        Kind = EfHatchIssueEvent.OnePrChanged,
+                        Payload = JsonSerializer.Serialize(new
+                        {
+                            from = "inherit",
+                            to = project.OnePullRequest ? "on" : "off",
+                            fixedBecause = "the project's default changed with work under this story already started",
+                        }),
+                        At = now,
+                    });
+                    story.OnePullRequest = project.OnePullRequest;
+                    story.UpdatedAt = now;
+                }
+            }
+
             if (landing is not null) project.Landing = landing;
             if (request.ChecksRequired is { } checksRequired) project.ChecksRequired = checksRequired;
             if (request.OnePullRequest is { } onePullRequest) project.OnePullRequest = onePullRequest;

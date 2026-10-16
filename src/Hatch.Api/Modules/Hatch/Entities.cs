@@ -122,7 +122,10 @@ public class EfHatchProject
     /// <see cref="EfHatchIssue.OnePullRequest"/> overrides. Off unless a
     /// person turns it on: it changes how every story under the project is
     /// worked, so it is an owner's call, written by
-    /// <see cref="ProjectsController.PutLanding"/> and nowhere else.
+    /// <see cref="ProjectsController.PutLanding"/> and nowhere else. Changing it
+    /// first fixes every story that has started work and reads it
+    /// (<see cref="OnePrLock.StartedInheritingAsync"/>), so it never moves under
+    /// tasks already begun.
     /// </summary>
     public bool OnePullRequest { get; set; }
 }
