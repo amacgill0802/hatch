@@ -220,6 +220,10 @@ public sealed class WorkCommandTests
         Assert.True(released > claimed, "the claim was let go of after it was taken");
         Assert.Single(h.Sessions.Spawned);
         Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+
+        // The matched playbook is read before the claim is taken (see
+        // WorkCommand.cs), so the take names it - HA-553.
+        Assert.Equal(1, h.Wire.To("POST", "/api/hatch/issues/AER-1/claim")[0].Read<ClaimRequest>().PlaybookId);
     }
 
     /// <summary>The playbook's limit reaches the spawned session, the same as any other dispatch - HA-453.</summary>
