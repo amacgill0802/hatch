@@ -238,6 +238,18 @@ describe('queueWords', () => {
     expect(queueWords(row)).toBe('-> In Progress  (under HA-86, no session)');
   });
 
+  it('says approved in advance for an approve hop', () => {
+    const row = entry({ hop: true, hopKind: 'approve' });
+
+    expect(queueWords(row)).toBe('-> In Progress  (approved in advance, no session)');
+  });
+
+  it('says closed in advance for a close hop', () => {
+    const row = entry({ hop: true, hopKind: 'close' });
+
+    expect(queueWords(row)).toBe('-> In Progress  (closed in advance, no session)');
+  });
+
   it('says a plain arrow for an ordinary advance', () => {
     const row = entry();
 

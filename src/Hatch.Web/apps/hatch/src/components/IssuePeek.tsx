@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button, Modal, ProjectMark } from '@hatch/ui';
-import { getIssue, patchIssue, setPriority, setExpress } from '../api/client';
+import { getIssue, patchIssue, setPriority, setPreApproval } from '../api/client';
 import { DescriptionEditor } from './DescriptionEditor';
 import { PriorityControl } from './PriorityControl';
-import { ExpressControl } from './ExpressControl';
+import { PreApprovalControl } from './PreApprovalControl';
 import { MomentChip } from './MomentChip';
 import { PullRequestLink } from './PullRequestLink';
 import { StatusPicker } from './StatusPicker';
@@ -42,10 +42,12 @@ interface Asked {
   /** A delete is out for this card: its button is busy until it answers. */
   deleting?: boolean;
   deleteError?: string;
-  /** The same, for express. */
-  express?: boolean;
-  expressError?: string;
-  expressing?: boolean;
+  /** The same, for pre-approval. */
+  preApproval?: 'none' | 'express' | 'preapproved';
+  preApprovalOwn?: 'none' | 'express' | 'preapproved';
+  preApprovalFrom?: string | null;
+  preApprovalError?: string;
+  preApprovalBusy?: boolean;
 }
 
 /**
@@ -245,19 +247,23 @@ export function IssuePeek({
     else if (done.outcome === 'refused') apply(key, { deleting: false, deleteError: done.error });
   }, [key, apply, onDelete]);
 
-  /* Carried past a column marked Express skips, with no session, or no
-     longer. Its own endpoint - the write is closed to an API key - and
-     otherwise exactly `expedite`. */
-  const express = useCallback(
-    async (next: boolean) => {
+  /* The approve press given in advance, or no longer. Its own endpoint - the
+     write is closed to an API key - and otherwise exactly `changePriority`. */
+  const changePreApproval = useCallback(
+    async (next: 'none' | 'express' | 'preapproved') => {
       if (!key) return;
-      apply(key, { expressing: true, expressError: undefined });
+      apply(key, { preApprovalBusy: true, preApprovalError: undefined });
       try {
-        const issue = await setExpress(key, next);
-        apply(key, { express: issue.express, expressing: false });
+        const issue = await setPreApproval(key, next);
+        apply(key, {
+          preApproval: issue.preApproval,
+          preApprovalOwn: issue.preApprovalOwn,
+          preApprovalFrom: issue.preApprovalFrom,
+          preApprovalBusy: false,
+        });
         onExpedited();
       } catch (err) {
-        apply(key, { expressing: false, expressError: message(err) });
+        apply(key, { preApprovalBusy: false, preApprovalError: message(err) });
       }
     },
     [key, apply, onExpedited],
@@ -365,13 +371,17 @@ export function IssuePeek({
             onChange={(next) => void changePriority(next)}
           />
           {asked.priorityError && <span className="text-danger">{asked.priorityError}</span>}
-          <ExpressControl
-            express={asked.express ?? card.express}
+          <PreApprovalControl
+            issueKey={card.key}
+            preApproval={asked.preApproval ?? card.preApproval}
+            preApprovalOwn={asked.preApprovalOwn ?? card.preApprovalOwn}
+            preApprovalFrom={asked.preApprovalFrom !== undefined ? asked.preApprovalFrom : card.preApprovalFrom}
+            canApprove={moveProject?.canApprove ?? false}
             directory={directory}
-            busy={asked.expressing ?? false}
-            onChange={(next) => void express(next)}
+            busy={asked.preApprovalBusy ?? false}
+            onChange={(next) => void changePreApproval(next)}
           />
-          {asked.expressError && <span className="text-danger">{asked.expressError}</span>}
+          {asked.preApprovalError && <span className="text-danger">{asked.preApprovalError}</span>}
         </div>
 
         {(card.readyAt || card.dueAt) && (

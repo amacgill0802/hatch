@@ -20,13 +20,13 @@ import {
   removeDependency,
   setAssignee,
   setPriority,
-  setExpress,
+  setPreApproval,
   setHold,
   setWipLimit,
 } from '../api/client';
 import { AssigneeField } from '../components/AssigneeField';
 import { PriorityControl } from '../components/PriorityControl';
-import { ExpressControl } from '../components/ExpressControl';
+import { PreApprovalControl } from '../components/PreApprovalControl';
 import { ClaimPanel } from '../components/ClaimPanel';
 import { StallPanel } from '../components/StallPanel';
 import { ClearClaimDialog } from '../components/ClearClaimDialog';
@@ -120,6 +120,9 @@ export function IssuePage() {
      answering, `aria-busy`, until the server replies - `PriorityControl`'s own
      flag, the way `StatusPicker`'s pill carries one. */
   const [priorityBusy, setPriorityBusy] = useState(false);
+  /* A pre-approval press is already out - PreApprovalControl's own flag, the
+     same shape priorityBusy is. */
+  const [preApprovalBusy, setPreApprovalBusy] = useState(false);
   /* A hold or a resume is already out - StallPanel's own busy flag, the same
      single-flag shape ExpressControl uses rather than ClaimPanel's per-field one. */
   const [stallBusy, setStallBusy] = useState(false);
@@ -352,23 +355,26 @@ export function IssuePage() {
     [key, load],
   );
 
-  /* Carried past a column marked Express skips, with no session. Its own call
-     for the reason `savePriority` is - its own endpoint, closed to an API
-     key - and otherwise exactly it. */
-  const saveExpress = useCallback(
-    async (express: boolean) => {
+  /* The approve press given in advance. Its own call for the reason
+     `savePriority` is - its own endpoint, closed to an API key - and
+     otherwise exactly it. */
+  const savePreApproval = useCallback(
+    async (level: 'none' | 'express' | 'preapproved') => {
+      setPreApprovalBusy(true);
       try {
-        await setExpress(key, express);
+        await setPreApproval(key, level);
         await load();
       } catch (err) {
         setError(message(err));
+      } finally {
+        setPreApprovalBusy(false);
       }
     },
     [key, load],
   );
 
   /* Resume now or Hold for me - StallPanel's two buttons, both PutHold under
-     the one busy flag, the same shape saveExpress uses. */
+     the one busy flag, the same shape savePreApproval uses. */
   const saveHold = useCallback(
     async (held: boolean) => {
       setStallBusy(true);
@@ -660,14 +666,19 @@ export function IssuePage() {
 
           {/* `as="div"` for the reason the fields above it are. */}
           <Field
-            label="Express"
+            label="Pre-approval"
             as="div"
-            hint="Carried past a column marked Express skips, with no session, whenever it holds no open question."
+            hint="None, Express or Pre-approved: express is carried past a column marked Express skips with no session; pre-approved also skips the approve press, carrying a clean review into the merge column or closing a finished parent. A level set on an ancestor reaches here too, until this issue sets its own."
           >
-            <ExpressControl
-              express={issue.express}
+            <PreApprovalControl
+              issueKey={key}
+              preApproval={issue.preApproval}
+              preApprovalOwn={issue.preApprovalOwn}
+              preApprovalFrom={issue.preApprovalFrom}
+              canApprove={project?.canApprove ?? false}
               directory={directory}
-              onChange={(express) => void saveExpress(express)}
+              busy={preApprovalBusy}
+              onChange={(level) => void savePreApproval(level)}
             />
           </Field>
 
