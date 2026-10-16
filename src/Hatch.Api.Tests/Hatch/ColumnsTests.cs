@@ -168,4 +168,51 @@ public class ColumnsTests
         Assert.Equal(beta.Id, Columns.Implementation(board)?.Id);
         Assert.Equal(alpha.Id, Columns.SendBack(board)?.Id);
     }
+
+    [Fact]
+    public void PlainBoard_ClosesIsDone()
+    {
+        var todo = S(1, "To Do", 10);
+        var doing = S(2, "Doing", 20);
+        var review = S(3, "Review", 30);
+        var done = S(4, "Done", 40, terminal: true);
+        var board = new List<EfHatchStatus> { todo, doing, review, done };
+
+        Assert.Equal(done.Id, Columns.Closes(board, review)?.Id);
+    }
+
+    [Fact]
+    public void OneProtectedColumnBeforeDone_ClosesStepsPastIt()
+    {
+        var todo = S(1, "To Do", 10);
+        var doing = S(2, "Doing", 20);
+        var review = S(3, "Review", 30);
+        var approved = S(4, "Approved", 40, isProtected: true);
+        var done = S(5, "Done", 50, terminal: true);
+        var board = new List<EfHatchStatus> { todo, doing, review, approved, done };
+
+        Assert.Equal(done.Id, Columns.Closes(board, review)?.Id);
+    }
+
+    [Fact]
+    public void NoTerminalColumnAnywhere_ClosesIsNull()
+    {
+        var todo = S(1, "To Do", 10);
+        var doing = S(2, "Doing", 20);
+        var review = S(3, "Review", 30);
+        var board = new List<EfHatchStatus> { todo, doing, review };
+
+        Assert.Null(Columns.Closes(board, review));
+    }
+
+    [Fact]
+    public void FromTheRightmostColumn_ClosesIsNull()
+    {
+        var todo = S(1, "To Do", 10);
+        var doing = S(2, "Doing", 20);
+        var done = S(3, "Done", 30, terminal: true);
+        var board = new List<EfHatchStatus> { todo, doing, done };
+
+        Assert.Null(Columns.Closes(board, done));
+    }
 }
