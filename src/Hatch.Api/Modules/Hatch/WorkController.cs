@@ -442,7 +442,9 @@ public class WorkController(
         var (preApprovalLevel, preApprovalFromKey) = gate.EffectivePreApproval(issue.Id);
         var hopKind = to is null ? null : Dispatch.HopKind(issue, from, to, family, statuses, wip, parent, playbook, sendBackStreak, claims.StallResumeLimit, preApprovalLevel, merged, built, now);
         var hop = hopKind is not null;
-        var rowTo = hopKind == HopKinds.Approve ? Columns.Advance(statuses, from) : to;
+        var rowTo = hopKind == HopKinds.Approve ? Columns.Advance(statuses, from)
+            : hopKind == HopKinds.Close ? Columns.Closes(statuses, from)
+            : to;
         var letGo = await LetGo.ForIssueAsync(db, issue.Id, ct);
         var blocked = Dispatch.Blocked(
             issue, from, rowTo, playbook, waiting, letGo, sendBackStreak,
@@ -549,9 +551,7 @@ public class WorkController(
         if (!string.Equals(url, recorded, StringComparison.Ordinal))
             return Conflict($"\"{url}\" is not the pull request recorded on this issue");
 
-        var board = Columns.Board(statuses);
-        var at = board.FindIndex(s => s.Id == from.Id);
-        var to = at >= 0 ? board.Skip(at + 1).FirstOrDefault(s => s.IsTerminal) : null;
+        var to = Columns.Closes(statuses, from);
         if (to is null)
             return Conflict($"there is no column after \"{from.Name}\", so there is nowhere for this to go");
 
@@ -847,7 +847,9 @@ public class WorkController(
             : 0;
         var hopKind = to is null ? null : Dispatch.HopKind(issue, from, to, family, statuses, wip, hopParent, playbook, sendBackStreak, claims.StallResumeLimit, gate.EffectivePreApproval(issue.Id).Level, merged, built, claimed.Now);
         var hop = hopKind is not null;
-        var rowTo = hopKind == HopKinds.Approve ? Columns.Advance(statuses, from) : to;
+        var rowTo = hopKind == HopKinds.Approve ? Columns.Advance(statuses, from)
+            : hopKind == HopKinds.Close ? Columns.Closes(statuses, from)
+            : to;
         var letGo = await LetGo.ForIssueAsync(db, issue.Id, ct);
         var sentBack = await SentBack.ForIssueAsync(db, issue.Id, ct);
         var blocked = Dispatch.Blocked(

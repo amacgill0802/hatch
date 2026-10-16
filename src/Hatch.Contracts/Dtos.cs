@@ -1616,7 +1616,7 @@ public static class WorkKinds
     public const string Pending = "pending";
 }
 
-/// <summary>Which of the six reasons carried a hop - see WorkDto.HopKind.</summary>
+/// <summary>Which of the seven reasons carried a hop - see WorkDto.HopKind.</summary>
 public static class HopKinds
 {
     /// <summary>An express issue, in a column marked <see cref="StatusDto.ExpressSkips"/>.</summary>
@@ -1648,6 +1648,12 @@ public static class HopKinds
     /// merge or bring current - see HA-560.
     /// </summary>
     public const string Approve = "approve";
+
+    /// <summary>
+    /// A pre-approved issue in review with no pull request, whose children are
+    /// all done - see HA-472.
+    /// </summary>
+    public const string Close = "close";
 }
 
 /// <summary>
