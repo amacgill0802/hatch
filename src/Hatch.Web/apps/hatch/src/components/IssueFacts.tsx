@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { Field, ProjectMark } from '@hatch/ui';
-import { assigneeFact, effortFact, expressFact, modelFact, priorityFact, wipLimitFact } from '../lib/issueFacts';
+import { assigneeFact, effortFact, modelFact, preApprovalFact, priorityFact, wipLimitFact } from '../lib/issueFacts';
 import { projectLogoUrl } from '../lib/projectLogo';
 import { MomentChip } from './MomentChip';
 import { PullRequestLink } from './PullRequestLink';
@@ -51,8 +51,8 @@ export function IssueFacts({ issue, project, stopped }: { issue: Issue; project:
         {priorityFact(issue.priority, issue.priorityFrom)}
       </Field>
 
-      <Field label="Express" as="div">
-        {expressFact(issue.express)}
+      <Field label="Pre-approval" as="div">
+        {preApprovalFact(issue.preApproval, issue.preApprovalFrom)}
       </Field>
 
       {/* Not `expandable`: that draws the chip as a <button>, which is a
