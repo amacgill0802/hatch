@@ -4686,6 +4686,19 @@ touches nothing, leaving the sentence standing. A correction says itself once,
 the same "out of Claude usage until ..." line the sentence itself prints, and
 not again merely because a later probe lands on the same corrected reading.
 
+**The wait cannot outlast the window.** The reset instant above is only
+ever a guess, and the "next occurrence of that clock time" rule it is
+built on can roll a single second of clock drift all the way to tomorrow -
+an hour's wait read as a day's. So the wait also carries the instant the
+limit was hit and which of the two windows Hatch knows the length of - a
+session's five hours or a weekly one's seven days - it belongs to. Once
+that much time has passed, the wait ends exactly as if the account had
+reset on its own, whatever the sentence's own instant still says and
+whether or not a probe has said anything to the contrary. A ticket a
+still-spent account refuses costs one session, not the rest of the window;
+the three-in-a-row stall machinery is what catches a spawn that keeps
+being refused.
+
 **Neither is a preemption.** The board can order the runner holding the
 lowest-priority ticket to stand down for an emergency one — see
 [what a runner does, in order](#what-a-runner-does-in-order), where the `200`
