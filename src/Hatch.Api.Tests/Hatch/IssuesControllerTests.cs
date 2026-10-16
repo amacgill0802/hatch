@@ -1564,6 +1564,93 @@ public class IssuesControllerTests
         Assert.Equal("only an owner or approver of OPS may move work into \"approved\"", failure.Reason);
     }
 
+    // ---- Check claims ----
+
+    [Fact]
+    public async Task AKey_Is409WhenTheLiveClaimsPlaybookIsCheck()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("task", "the thing");
+        var playbookId = await h.AddPlaybookAsync(isCheck: true);
+        await h.ClaimAsync("AER-1", playbookId: playbookId);
+        h.Caller.Key = AProgram();
+
+        var result = await h.Issues.MoveIssue("AER-1", new IssueMoveRequest(h.Done, null, null), default);
+
+        Assert.Contains("a session judges here, it does not move the ticket", Reason(result.Result));
+    }
+
+    [Fact]
+    public async Task APerson_IsNotRefused_UnderTheSameCheckClaim()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("task", "the thing");
+        var playbookId = await h.AddPlaybookAsync(isCheck: true);
+        await h.ClaimAsync("AER-1", playbookId: playbookId);
+
+        var result = await h.Issues.MoveIssue("AER-1", new IssueMoveRequest(h.Done, null, null), default);
+
+        Assert.Equal(h.Done, Value(result).StatusId);
+    }
+
+    [Fact]
+    public async Task AKey_SucceedsUnaffected_WithNoClaim()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("task", "the thing");
+        h.Caller.Key = AProgram();
+
+        var result = await h.Issues.MoveIssue("AER-1", new IssueMoveRequest(h.Done, null, null), default);
+
+        Assert.Equal(h.Done, Value(result).StatusId);
+    }
+
+    [Fact]
+    public async Task AKey_SucceedsUnaffected_UnderANonCheckPlaybook()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("task", "the thing");
+        var playbookId = await h.AddPlaybookAsync(isCheck: false);
+        await h.ClaimAsync("AER-1", playbookId: playbookId);
+        h.Caller.Key = AProgram();
+
+        var result = await h.Issues.MoveIssue("AER-1", new IssueMoveRequest(h.Done, null, null), default);
+
+        Assert.Equal(h.Done, Value(result).StatusId);
+    }
+
+    [Fact]
+    public async Task AKey_SucceedsUnaffected_UnderAClaimWithNoPlaybook()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("task", "the thing");
+        await h.ClaimAsync("AER-1");
+        h.Caller.Key = AProgram();
+
+        var result = await h.Issues.MoveIssue("AER-1", new IssueMoveRequest(h.Done, null, null), default);
+
+        Assert.Equal(h.Done, Value(result).StatusId);
+    }
+
+    [Fact]
+    public async Task AKeysSameColumnReorder_Is409WhenTheLiveClaimsPlaybookIsCheck()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("task", "top");
+        await h.CreateAsync("task", "middle");
+        await h.CreateAsync("task", "bottom");
+        await h.SeedStatusAsync("AER-1", h.Todo);
+        await h.SeedStatusAsync("AER-2", h.Todo);
+        await h.SeedStatusAsync("AER-3", h.Todo);
+        var playbookId = await h.AddPlaybookAsync(isCheck: true);
+        await h.ClaimAsync("AER-2", playbookId: playbookId);
+        h.Caller.Key = AProgram();
+
+        var result = await h.Issues.MoveIssue("AER-2", new IssueMoveRequest(h.Todo, "AER-1", "AER-3"), default);
+
+        Assert.Contains("a session judges here, it does not move the ticket", Reason(result.Result));
+    }
+
     // ---- Deleting ----
 
     /// <summary>
@@ -3656,7 +3743,7 @@ public class IssuesControllerTests
         /// </summary>
         public async Task<Guid> ClaimAsync(
             string key, string by = "hatch", string runner = "somewhere:/checkouts/one",
-            string? chatter = null)
+            string? chatter = null, int? playbookId = null)
         {
             var token = Guid.NewGuid();
             var now = Time.GetUtcNow();
@@ -3670,9 +3757,31 @@ public class IssuesControllerTests
             issue.ClaimHeartbeatAt = now;
             issue.ClaimChatter = chatter;
             issue.ClaimChatterAt = chatter is null ? null : now;
+            issue.ClaimPlaybookId = playbookId;
             await Db.SaveChangesAsync();
 
             return token;
+        }
+
+        /// <summary>A playbook row, shaped like <c>VerdictsControllerTests.Harness.AddPlaybookAsync</c> - this <c>Harness</c> had no way to make one before this.</summary>
+        public async Task<int> AddPlaybookAsync(bool isCheck)
+        {
+            var playbook = new EfHatchPlaybook
+            {
+                FromStatusId = Todo,
+                ToStatusId = Done,
+                Types = isCheck ? "check" : "not-check",
+                Shape = EfHatchPlaybook.AnyShape,
+                Prompt = "look at it",
+                Model = "sonnet",
+                Effort = "medium",
+                IsCheck = isCheck,
+                CreatedAt = Now,
+                UpdatedAt = Now,
+            };
+            Db.Playbooks.Add(playbook);
+            await Db.SaveChangesAsync();
+            return playbook.Id;
         }
 
         public async Task<IssueDto> CreateAsync(

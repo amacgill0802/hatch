@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { ProjectMark } from '@hatch/ui';
 import { BuildCheckChips } from './BuildCheckChips';
 import { Command } from './Command';
+import { LandingChips } from './LandingChips';
 import { MergeConflictChips } from './MergeConflictChips';
 import { MergeHoldChip } from './MergeHoldChip';
 import { MomentChip } from './MomentChip';
@@ -54,6 +55,7 @@ export function IssueSubheader({
         <MomentChip kind="ready" value={issue.readyAt} expandable />
         <MomentChip kind="due" value={issue.dueAt} muted={stopped} expandable />
         <PullRequestLink url={issue.pullRequestUrl} />
+        <LandingChips landings={issue.landings} />
         <MergeConflictChips checks={issue.mergeChecks} />
         <BuildCheckChips checks={issue.buildChecks} />
         <MergeHoldChip mergeWork={issue.mergeWork} />

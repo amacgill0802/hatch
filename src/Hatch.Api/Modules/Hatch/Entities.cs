@@ -985,6 +985,7 @@ public class EfHatchIssue
     public ICollection<EfHatchIssueEvent> Events { get; set; } = [];
     public ICollection<EfHatchMergeCheck> MergeChecks { get; set; } = [];
     public ICollection<EfHatchBuildCheck> BuildChecks { get; set; } = [];
+    public ICollection<EfHatchLanding> Landings { get; set; } = [];
     public ICollection<EfHatchVerdict> Verdicts { get; set; } = [];
     public ICollection<EfHatchWorkLogEntry> WorkLog { get; set; } = [];
 
@@ -1214,6 +1215,38 @@ public class EfHatchMergeCheck
 
     public static IReadOnlyList<string> SplitFiles(string? files) =>
         files?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? [];
+}
+
+[Table("Landings")]
+[Index(nameof(IssueId), nameof(Canonical), IsUnique = true)]
+public class EfHatchLanding
+{
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public long Id { get; set; }
+
+    public long IssueId { get; set; }
+    public EfHatchIssue? Issue { get; set; }
+
+    [MaxLength(EfHatchMergeCheck.MaxRemoteLength)]
+    public required string Remote { get; set; }
+
+    [MaxLength(EfHatchMergeCheck.MaxRemoteLength)]
+    public required string Canonical { get; set; }
+
+    [MaxLength(EfHatchMergeCheck.MaxRefLength)]
+    public required string Trunk { get; set; }
+
+    [MaxLength(EfHatchMergeCheck.MaxShaLength)]
+    public required string Sha { get; set; }
+
+    [MaxLength(EfHatchMergeCheck.MaxShaLength)]
+    public string? ContainedBy { get; set; }
+
+    public required DateTimeOffset RecordedAt { get; set; }
+    public DateTimeOffset? CheckedAt { get; set; }
+
+    [MaxLength(Common.PersonName.MaxChars)]
+    public required string RecordedBy { get; set; }
 }
 
 /// <summary>
@@ -1629,6 +1662,17 @@ public class EfHatchIssueEvent
     /// stopped conflicting, not for how often somebody looked.
     /// </summary>
     public const string MergeCheckChanged = "merge_check_changed";
+
+    /// <summary>
+    /// What a repository holds for this issue's branch changed - see
+    /// <see cref="EfHatchLanding"/>. The payload carries the canonical remote,
+    /// because an issue may hold one landing per repository, and <c>from</c>
+    /// and <c>to</c> as <c>{ sha, containedBy }</c> (<c>from</c> is null for the
+    /// first landing on that repository). A write that repeats what is stored
+    /// writes none: the trail is for when a sha landed or was confirmed
+    /// contained, not for how often somebody looked.
+    /// </summary>
+    public const string LandingChanged = "landing_changed";
 
     /// <summary>
     /// A runner's verdict on the build on the tip of the issue's branch changed -

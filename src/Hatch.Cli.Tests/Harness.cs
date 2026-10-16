@@ -180,6 +180,9 @@ public sealed class FakeWorkspace
     /// <summary>What <c>DiffStat</c> answers, per checkout - null unless a test says.</summary>
     public Dictionary<string, string?> DiffStatFor { get; } = [];
 
+    /// <summary>What <c>TreeUnchanged</c> answers, for every checkout - clean unless a test says otherwise.</summary>
+    public bool TreeUnchangedAnswer { get; set; } = true;
+
     /// <summary>What <c>Presence</c> answers for one issue in one checkout. Absent is no branch on origin at all.</summary>
     public Dictionary<(string Path, string Key), BranchPresence> PresenceFor { get; } = [];
 
@@ -268,6 +271,12 @@ public sealed class FakeWorkspace
         {
             owner.Calls.Add($"diff {path}");
             return owner.DiffStatFor.GetValueOrDefault(path);
+        }
+
+        public bool TreeUnchanged(string head)
+        {
+            owner.Calls.Add($"tree-unchanged {path}");
+            return owner.TreeUnchangedAnswer;
         }
 
         private BranchEntry Answer(string key, string title) =>

@@ -79,6 +79,15 @@ public interface IWorkspace
     Verdict? Check(string key);
 
     /// <summary>
+    /// Whether the tree is exactly as a check session was given it: nothing
+    /// uncommitted, and <c>HEAD</c> still at <paramref name="head"/> - which is
+    /// <see cref="BranchEntry.Head"/>, what <see cref="Enter"/> left it at, not
+    /// <see cref="BranchEntry.Sha"/>, which is where the branch stood before
+    /// the trunk was merged forward into it.
+    /// </summary>
+    bool TreeUnchanged(string head);
+
+    /// <summary>
     /// The trunk into the issue's branch on origin, when it is not there
     /// already - fetching first, so the answer is about origin's branch as it
     /// is now.
@@ -201,12 +210,18 @@ public sealed partial class Workspace(
         var remote = Git("ls-remote", "--symref", "origin", "HEAD");
         if (!remote.Ok) return null;
 
+        // Each symref line is "ref: <target>\tHEAD" - the target and the
+        // "ref:" marker share the column before the tab, not either side of it.
         foreach (var line in remote.Out.Split('\n'))
         {
             var parts = line.Split('\t', StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length < 2 || parts[0].Trim() != "ref:") continue;
+            if (parts.Length < 2) continue;
 
-            var name = parts[1].Trim();
+            const string marker = "ref: ";
+            var left = parts[0].Trim();
+            if (!left.StartsWith(marker, StringComparison.Ordinal)) continue;
+
+            var name = left[marker.Length..].Trim();
             const string heads = "refs/heads/";
             if (name.StartsWith(heads, StringComparison.Ordinal)) return name[heads.Length..];
         }

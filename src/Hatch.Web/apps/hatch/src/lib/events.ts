@@ -17,14 +17,16 @@ export function describe(event: IssueEvent): string {
   if (event.kind === 'message_delivered') return to === undefined ? '' : `to ${short(to)}`;
 
   /* The hop: a move the loop made itself, with nobody reading the ticket
-     first - see docs/hatch.md, "The hop". Five kinds now carry it: express,
+     first - see docs/hatch.md, "The hop". Six kinds now carry it: express,
      a child its parent pulled (HA-149's `pulled`, never rendered before this -
      a pre-existing gap this closes rather than opens), an epic entering the
-     WIP section, a story or bug carried under a running epic, and a childless
-     issue whose brief is over its playbook's BriefLimit, sent back a column
+     WIP section, a story or bug carried under a running epic, a childless
+     issue whose brief is over its playbook's BriefLimit sent back a column
      (HA-394's `sendback`, carrying the brief's length and the limit it
-     crossed). Rendered before the ordinary from/to line, which it is a
-     variant of. */
+     crossed), and an approve or close hop carried by a pre-approval
+     (WorkController's `HopKinds.Approve`/`.Close`, both writing the same
+     `preapproved` flag). Rendered before the ordinary from/to line, which it
+     is a variant of. */
   if (event.kind === 'status_changed' && event.payload?.express === true) {
     return `${short(from)} → ${short(to)}, express`;
   }
@@ -42,6 +44,21 @@ export function describe(event: IssueEvent): string {
     return typeof length === 'number' && typeof limit === 'number'
       ? `${short(from)} → ${short(to)}, sent back - brief is ${length} characters, limit ${limit}`
       : `${short(from)} → ${short(to)}, sent back`;
+  }
+  if (event.kind === 'status_changed' && event.payload?.preapproved === true) {
+    return `${short(from)} → ${short(to)}, pre-approved`;
+  }
+
+  /* express_changed is retired - HA-538 renamed its controller - but old rows
+     still carry the boolean pair it used to write. expressFact's own words. */
+  if (event.kind === 'express_changed') {
+    return `${from ? 'Express' : 'Not express'} → ${to ? 'Express' : 'Not express'}`;
+  }
+
+  /* A created row from before HA-469 named an express parent by key rather
+     than carrying from/to at all. */
+  if (event.kind === 'created' && typeof event.payload?.expressFrom === 'string') {
+    return `express, inherited from ${short(event.payload.expressFrom)}`;
   }
 
   /* An override carries { limit, load, to } - no `from` - so it falls through

@@ -1149,11 +1149,11 @@ public sealed class GoToWorkCommand(Runtime runtime)
         Asked,
 
         /// <summary>
-        /// An express issue was carried across the column it stood in - see
-        /// docs/hatch.md, "The hop". No claim, no reset, no session, and no
-        /// tally: <c>--max-runs</c> and <c>--once</c> count sessions, and a hop
-        /// is not one - so the next pass is asked for at once, the same as
-        /// <see cref="Cleared"/>.
+        /// An issue was carried across the column it stood in by a hop - see
+        /// <c>HoppedIssue</c> for which kind and why, and docs/hatch.md, "The
+        /// hop". No claim, no reset, no session, and no tally: <c>--max-runs</c>
+        /// and <c>--once</c> count sessions, and a hop is not one - so the next
+        /// pass is asked for at once, the same as <see cref="Cleared"/>.
         /// </summary>
         Hopped,
     }
@@ -1548,6 +1548,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                     quiet, claim, skip.Token, ct, chosen.AddDirs, chosen.Repositories, entering.Entries,
                     found is null ? null : new ConflictRun(found, judge => lifecycle.JudgeAsync(work, chosen, judge)),
                     built is null ? null : new BuildRun(built, judge => lifecycle.JudgeBuildAsync(work.Issue.Key, built, chosen, judge)),
+                    work.Playbook?.IsCheck == true ? ct2 => lifecycle.TreeUnchangedAsync(chosen, entering.Entries, ct2) : (Func<CancellationToken, Task<bool>>?)null,
                     runnerName: runtime.RunnerName, incrementNumber: tally.Runs + 1);
             }
             finally

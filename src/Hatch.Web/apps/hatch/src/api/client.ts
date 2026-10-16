@@ -294,21 +294,21 @@ export const setOnePr = (key: string, value: 'on' | 'off' | 'inherit') =>
     ...asJson({ value }),
   });
 
-/** Carried past a column marked *Express skips* with no session. Its own
-    route rather than a field on the patch, and for the same reason expedite
-    has one: writing it is closed to an API key, because express decides
-    which gates the loop may pass unattended - see IssueExpressController.
+/** The approve press given in advance. Its own route rather than a field on
+    the patch, and for the same reason priority has one: writing it is closed
+    to an API key, because pre-approval decides which gates the loop may pass
+    unattended - see IssuePreApprovalController.
 
-    The state is sent rather than a toggle, for the same reason `setPriority`
-    sends one. */
-export const setExpress = (key: string, express: boolean) =>
-  fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/express`, {
+    The level is sent by name rather than as a step, for the same reason
+    `setPriority` sends one. */
+export const setPreApproval = (key: string, level: 'none' | 'express' | 'preapproved') =>
+  fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/pre-approval`, {
     method: 'PUT',
-    ...asJson({ express }),
+    ...asJson({ level }),
   });
 
 /** Mark a ticket stalled, with why - and, through the same panel, read back
-    off. On `setExpress`'s shape: the state is sent, not toggled, and the
+    off. On `setPriority`'s shape: the state is sent, not toggled, and the
     route is its own rather than a field on the patch. Today only the runner
     and the board write this; nothing in the browser calls it yet. */
 export const setStall = (key: string, why: string) =>
@@ -318,7 +318,7 @@ export const setStall = (key: string, why: string) =>
   });
 
 /** Hold a ticket for a person, or let it go - StallPanel's two buttons. On
-    `setExpress`'s shape, matching HoldRequest(bool Held). */
+    `setPriority`'s shape, matching HoldRequest(bool Held). */
 export const setHold = (key: string, held: boolean) =>
   fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/hold`, {
     method: 'PUT',

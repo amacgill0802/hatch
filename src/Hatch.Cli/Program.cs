@@ -230,6 +230,7 @@ try
         "move" => await new IssueCommands(cli).MoveAsync(rest, cancelling.Token),
         "comment" => await new IssueCommands(cli).CommentAsync(rest, cancelling.Token),
         "pr" => await new IssueCommands(cli).PrAsync(rest, cancelling.Token),
+        "landed" => await new IssueCommands(cli).LandedAsync(rest, cancelling.Token),
         "depends" => await new DependsCommand(cli).RunAsync(rest, cancelling.Token),
         "one-pr" => await new OnePrCommand(cli).RunAsync(rest, cancelling.Token),
         "ask" => await new QuestionCommands(cli).AskAsync(rest, cancelling.Token),
@@ -349,7 +350,7 @@ internal partial class Program
     /// </summary>
     public static readonly string[] Commands =
     [
-        "config", "board", "next", "queue", "show", "comments", "start", "move", "comment", "pr",
+        "config", "board", "next", "queue", "show", "comments", "start", "move", "comment", "pr", "landed",
         "depends", "one-pr", "ask", "questions", "answer", "api", "work", "go-to-work", "do-my-work",
         .. Internal,
     ];

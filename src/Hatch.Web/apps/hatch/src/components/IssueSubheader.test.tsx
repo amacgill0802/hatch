@@ -131,4 +131,33 @@ describe('IssueSubheader', () => {
     expect(html).toContain('Copy link');
     expect(html).toContain('<button');
   });
+
+  it('draws an unlinked chip per repository with a recorded landing', () => {
+    const html = render({
+      landings: [
+        {
+          remote: 'git@example.test:hatch/hatch.git',
+          canonical: 'example.test/hatch/hatch',
+          trunk: 'main',
+          sha: 'abc1234def5678',
+          containedBy: null,
+          recordedAt: '2026-01-01T00:00:00Z',
+          checkedAt: null,
+        },
+        {
+          remote: 'git@example.test:hatch/web.git',
+          canonical: 'example.test/hatch/web',
+          trunk: 'trunk',
+          sha: '9876543fedcba0',
+          containedBy: null,
+          recordedAt: '2026-01-01T00:00:00Z',
+          checkedAt: null,
+        },
+      ],
+    });
+
+    expect(html).toContain('Landed on main at abc1234');
+    expect(html).toContain('Landed on trunk at 9876543');
+    expect(html).not.toContain('<a href');
+  });
 });

@@ -66,6 +66,21 @@ public sealed partial class Workspace
 
     private bool Exists(string reference) => Git("rev-parse", "--verify", "--quiet", reference).Ok;
 
+    /// <summary>
+    /// Resolves an arbitrary sha and says whether it is on the trunk: a sha
+    /// that does not even resolve is <c>(null, false)</c>, one that resolves
+    /// but is not an ancestor of the trunk is <c>(sha, false)</c>, and one
+    /// that is on the trunk is <c>(sha, true)</c>.
+    /// </summary>
+    public (string? Full, bool OnTrunk) ResolveOnTrunk(string sha, string trunk)
+    {
+        var resolved = Git("rev-parse", "--verify", "--quiet", sha);
+        if (!resolved.Ok) return (null, false);
+
+        var full = resolved.Out.Trim();
+        return (full, Git("merge-base", "--is-ancestor", full, $"refs/remotes/origin/{trunk}").Ok);
+    }
+
     private string Short(string reference) => Git("rev-parse", "--short=9", reference).Out.Trim();
 
     private int Count(string range)

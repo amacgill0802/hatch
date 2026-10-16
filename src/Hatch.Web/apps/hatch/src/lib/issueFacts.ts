@@ -3,10 +3,11 @@
    exist apart from their pages. Pure functions over the issue, no DOM, so
    §6.8 and §6.9's wording is a thing a test can pin.
 
-   priorityFact and expressFact echo PriorityControl's and ExpressControl's
-   own non-person fallback text on purpose - see IssueFacts.tsx - rather than
-   being imported from there, because one is `directory`-gated inside a live
-   control and the other never sees a directory at all. */
+   priorityFact and preApprovalFact echo PriorityControl's and
+   PreApprovalControl's own non-person fallback text on purpose - see
+   IssueFacts.tsx - rather than being imported from there, because one is
+   `directory`-gated inside a live control and the other never sees a
+   directory at all. */
 
 import type { Assignee } from '../types';
 import type { Priority } from '../components/PriorityControl';
@@ -26,8 +27,18 @@ export function priorityFact(priority: Priority, priorityFrom: string | null): s
   return priorityFrom ? `${word} · inherited from ${priorityFrom}` : word;
 }
 
-export function expressFact(express: boolean): string {
-  return express ? 'Express' : 'Not express';
+const PRE_APPROVAL_WORDS: Record<'none' | 'express' | 'preapproved', string> = {
+  none: 'None',
+  express: 'Express',
+  preapproved: 'Pre-approved',
+};
+
+export function preApprovalFact(
+  preApproval: 'none' | 'express' | 'preapproved',
+  preApprovalFrom: string | null,
+): string {
+  const word = PRE_APPROVAL_WORDS[preApproval];
+  return preApprovalFrom ? `${word} · inherited from ${preApprovalFrom}` : word;
 }
 
 export function modelFact(modelOverride: string | null): string {

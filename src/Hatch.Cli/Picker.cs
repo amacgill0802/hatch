@@ -25,9 +25,9 @@ public enum Pick
     Busy,
 
     /// <summary>
-    /// An express issue was carried across the column it stood in - see
-    /// <see cref="HoppedIssue"/>. No claim was taken and no session runs, so
-    /// there is nothing for the caller to let go of.
+    /// An issue was carried across the column it stood in by a hop - see
+    /// <see cref="HoppedIssue"/> for which kind and why. No claim was taken
+    /// and no session runs, so there is nothing for the caller to let go of.
     /// </summary>
     Hopped,
 }
@@ -110,14 +110,17 @@ public sealed class Picker(
 
     private readonly bool _clones = workspace is not null;
 
-    /// <summary>The word a hop row prints, naming which of the five reasons carried it.</summary>
+    /// <summary>The word a hop row prints, naming which of the seven reasons carried it.</summary>
     public static string HopWord(string? hopKind, string? hopUnder) => hopKind switch
     {
+        HopKinds.Express => "express",
         HopKinds.Parent => "parent pulled",
         HopKinds.Epic => "epic",
         HopKinds.Under => $"under {hopUnder}",
         HopKinds.SendBack => "sent back",
-        _ => "express",
+        HopKinds.Approve => "pre-approved",
+        HopKinds.Close => "pre-approved",
+        _ => hopKind ?? "express",
     };
 
     /// <summary>The label a hop row prints - <see cref="HopWord"/>, plus the reason nothing was spawned.</summary>

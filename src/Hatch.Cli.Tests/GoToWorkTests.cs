@@ -1323,6 +1323,26 @@ public sealed class GoToWorkTests
     }
 
     [Fact]
+    public async Task A_pre_approved_hop_spawns_nothing_and_the_loop_reads_the_board_again()
+    {
+        using var h = new Harness();
+        h.Wire.Once(
+            "GET", Queue, HttpStatusCode.OK,
+            System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Row("AER-1", hop: true, hopKind: HopKinds.Approve) }, Fixtures.Json));
+        h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
+        h.Wire.Json("POST", "/api/hatch/work/AER-1/hop", Fixtures.Issue("AER-1"));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        Assert.Empty(h.Sessions.Spawned);
+        Assert.Empty(h.Workspace.Calls);
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/work-log"));
+        Assert.Equal(2, h.Wire.Count("GET", Queue));
+        Assert.Single(h.Wire.To("POST", "/api/hatch/work/AER-1/hop"));
+        Assert.Contains(h.Say.Said, l => l.Contains("AER-1", StringComparison.Ordinal) && l.Contains("pre-approved, no session", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task A_hop_under_a_running_epic_names_it()
     {
         using var h = new Harness();

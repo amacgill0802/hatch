@@ -74,6 +74,14 @@ public sealed class Board(HatchClient client)
         Client.WriteAsync<BuildCheckDto>(HttpMethod.Put, $"/api/hatch/issues/{key}/build-check", request, ct);
 
     /// <summary>
+    /// What one repository now holds for an issue's branch - see
+    /// <see cref="LandingWriteRequest"/>. The remote is spelled the way this
+    /// runner has it; the board canonicalises it.
+    /// </summary>
+    public Task<LandingDto?> LandedAsync(string key, LandingWriteRequest request, CancellationToken ct) =>
+        Client.WriteAsync<LandingDto>(HttpMethod.Put, $"/api/hatch/issues/{key}/landing", request, ct);
+
+    /// <summary>
     /// Every trunk verdict the board holds, read once per poll and matched
     /// locally against each checkout - a trunk is nobody's issue, so there is
     /// no issue to ride the verdict in on the way the branch checks do.
@@ -127,6 +135,25 @@ public sealed class Board(HatchClient client)
         if (answer.Body.Trim().Length == 0) return (null, null);
 
         return (System.Text.Json.JsonSerializer.Deserialize(answer.Body, HatchJson.Default.IssueDto), null);
+    }
+
+    /// <summary>
+    /// Applies the verdict a check session recorded under <paramref name="heldToken"/> -
+    /// see <c>VerdictWork</c> on the server for what each of pass, first fail and held
+    /// second fail does to the issue. Null on a <c>404</c>: no unapplied verdict was
+    /// found under this token, which is what a dirty tree or a tree moved off the
+    /// session's branch is reported as by the caller, never as a thrown exception.
+    /// </summary>
+    public async Task<IssueDto?> VerdictAsync(
+        IReadOnlyList<CheckoutEntry> checkouts, string key, Guid heldToken, CancellationToken ct, bool clones = false)
+    {
+        var parts = DeclareParts(checkouts, clones);
+        parts.Add($"heldToken={heldToken}");
+        var answer = await Client.Send(HttpMethod.Post, $"/api/hatch/work/{key}/verdict?{string.Join('&', parts)}", null, ct);
+        if (answer.Status == System.Net.HttpStatusCode.NotFound) return null;
+        if (!answer.Ok) throw new HatchException(Client.Refusal(answer, $"/api/hatch/work/{key}/verdict"));
+        if (answer.Body.Trim().Length == 0) return null;
+        return System.Text.Json.JsonSerializer.Deserialize(answer.Body, HatchJson.Default.IssueDto);
     }
 
     /// <summary>

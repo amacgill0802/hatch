@@ -27,7 +27,8 @@ public sealed class IssueCommandsTests
         IReadOnlyList<string>? dependents = null,
         string? readyAt = null,
         string? dueAt = null,
-        string? pr = null) =>
+        string? pr = null,
+        IReadOnlyList<LandingDto>? landings = null) =>
         Fixtures.Issue(key) with
         {
             ParentKey = parent,
@@ -37,6 +38,7 @@ public sealed class IssueCommandsTests
             ReadyAt = readyAt,
             DueAt = dueAt,
             PullRequestUrl = pr,
+            Landings = landings ?? [],
         };
 
     // ---- show ----
@@ -88,6 +90,33 @@ public sealed class IssueCommandsTests
 
             """.ReplaceLineEndings("\n"),
             h.Said);
+    }
+
+    [Fact]
+    public async Task Show_prints_a_landing_without_a_confirmed_trunk_tip()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue(landings: [Fixtures.Landing()]));
+        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+
+        await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default);
+
+        Assert.Contains("landed:   main at aaaaaaa (example.com/o/r)", h.Said, StringComparison.Ordinal);
+        Assert.DoesNotContain(", seen on", h.Said);
+    }
+
+    [Fact]
+    public async Task Show_prints_a_landing_confirmed_on_the_trunk_tip()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue(landings: [Fixtures.Landing(containedBy: new string('b', 40))]));
+        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+
+        await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default);
+
+        Assert.Contains("landed:   main at aaaaaaa (example.com/o/r), seen on main at bbbbbbb", h.Said, StringComparison.Ordinal);
     }
 
     /// <summary>An edge an issue does not have is not a line saying it has none.</summary>

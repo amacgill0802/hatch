@@ -350,6 +350,11 @@ public class AdminSurfaceTests
         // wrong one costs a stall, which is a question. See MergeCheckController.
         "MergeCheckController.PutMergeCheck",
 
+        // What a repository holds for an issue's branch, cut the same way as
+        // the verdict above: a fact about a sha any caller computes the same
+        // way, not a statement about an agent's budget. See LandingController.
+        "LandingController.PutLanding",
+
         // The same for the build on the branch's tip: a fact about a sha that
         // every runner reads the same way, and a wrong one costs a stall,
         // which is a question. See BuildCheckController.

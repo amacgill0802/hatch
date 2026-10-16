@@ -375,6 +375,60 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.ToTable("IssueEvents", "hatch");
                 });
 
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchLanding", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Canonical")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTimeOffset?>("CheckedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ContainedBy")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<long>("IssueId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset>("RecordedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RecordedBy")
+                        .IsRequired()
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<string>("Remote")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("Sha")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Trunk")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IssueId", "Canonical")
+                        .IsUnique();
+
+                    b.ToTable("Landings", "hatch");
+                });
+
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchMergeCheck", b =>
                 {
                     b.Property<long>("Id")
@@ -1133,6 +1187,17 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Navigation("Issue");
                 });
 
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchLanding", b =>
+                {
+                    b.HasOne("Hatch.Api.Modules.Hatch.EfHatchIssue", "Issue")
+                        .WithMany("Landings")
+                        .HasForeignKey("IssueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Issue");
+                });
+
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchMergeCheck", b =>
                 {
                     b.HasOne("Hatch.Api.Modules.Hatch.EfHatchIssue", "Issue")
@@ -1265,6 +1330,8 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Navigation("Comments");
 
                     b.Navigation("Events");
+
+                    b.Navigation("Landings");
 
                     b.Navigation("MergeChecks");
 
