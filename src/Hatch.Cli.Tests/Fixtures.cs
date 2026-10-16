@@ -39,7 +39,8 @@ public static class Fixtures
         string? modelOverride = null, string? effortOverride = null, string? parentKey = null,
         bool expedited = false, string? pullRequestUrl = null, bool express = false, string? priority = null,
         int? wipLimit = null, string? stalledWhy = null, int statusId = 3,
-        string? preApproval = null, string? preApprovalFrom = null) =>
+        string? preApproval = null, string? preApprovalFrom = null,
+        IReadOnlyList<LandingDto>? landings = null) =>
         new(
             Key: key, ProjectId: 1, ProjectKey: "AER", Type: type, Title: title, Description: description,
             StatusId: statusId, Rank: 1000, ParentKey: parentKey, ChildKeys: [], DependsOnKeys: [], DependentKeys: [],
@@ -50,7 +51,7 @@ public static class Fixtures
             Priority: priority ?? (expedited ? PriorityLevels.ExpeditedName : PriorityLevels.NormalName),
             PreApproval: preApproval ?? (express ? PreApprovalLevels.ExpressName : PreApprovalLevels.NoneName),
             PreApprovalFrom: preApprovalFrom,
-            WipLimit: wipLimit, StalledWhy: stalledWhy);
+            WipLimit: wipLimit, StalledWhy: stalledWhy, Landings: landings);
 
     public static IssueCardDto Card(string key, string type = "task", string title = "A child", int statusId = 3) =>
         new(key, "AER", type, title, statusId, 1000, null, null, null);
@@ -83,7 +84,8 @@ public static class Fixtures
         IReadOnlyList<StatusDto>? statuses = null,
         bool isCheck = false,
         string? lastCheckFindings = null,
-        string? failStatusName = null) =>
+        string? failStatusName = null,
+        string? landing = null) =>
         new(
             Issue: issue ?? Issue(key),
             FromStatus: Status(3, from),
@@ -104,7 +106,8 @@ public static class Fixtures
             SentBack: sentBack,
             Statuses: statuses ?? [Status(2, "To Do"), Status(3, "In Progress"), Status(4, "In Review")],
             LastCheckFindings: lastCheckFindings,
-            FailStatusName: failStatusName);
+            FailStatusName: failStatusName,
+            Landing: landing);
 
     /// <summary>The dispatch of an issue in review whose branch conflicts: review to itself, with the board's verdict on it.</summary>
     public static WorkDto ConflictWork(
