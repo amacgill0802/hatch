@@ -361,7 +361,8 @@ public sealed class WorkCommand(Runtime runtime)
                 // The race between that read and this take, which the server
                 // decides and this only reports.
                 var (taken, refused) = await Claim.TakeAsync(
-                    runtime.Board.Client, key, runtime.RunnerName, ct, runtime.Heartbeat);
+                    runtime.Board.Client, key, runtime.RunnerName, ct, runtime.Heartbeat,
+                    playbookId: named.Playbook?.Id);
                 if (taken is null)
                 {
                     runtime.Say.Complain($"hatch: {key} - {refused?.Sentence ?? "the claim was refused"}");

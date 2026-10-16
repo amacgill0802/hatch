@@ -71,13 +71,20 @@ public static partial class UsageLimit
     }
 
     /// <summary>
-    /// 7:40pm, lowercase, the way a terminal or a ticket says a reset time - in
-    /// the zone the session itself reported, carried on <paramref name="at"/>'s
-    /// own offset rather than whatever zone the runner's machine happens to sit
-    /// in, so the same sentence comes back regardless of where this runs.
+    /// 7:40pm, lowercase, the way a terminal or a ticket says a reset time.
+    /// When the sentence itself named a zone (<paramref name="known"/>), that
+    /// is read off <paramref name="at"/>'s own carried offset, so the same
+    /// sentence comes back regardless of where this runs. Otherwise
+    /// <paramref name="at"/> is the one-hour backstop - built from
+    /// <see cref="DateTimeOffset.UtcNow"/> and so carrying a <c>+00:00</c> that
+    /// means nothing - and is converted to <paramref name="clock"/>'s own local
+    /// zone first, the house way of reading a local now.
     /// </summary>
-    public static string Clock(DateTimeOffset at) =>
-        at.ToString("h:mmtt", CultureInfo.InvariantCulture).ToLowerInvariant();
+    public static string Clock(DateTimeOffset at, bool known, TimeProvider? clock = null)
+    {
+        var shown = known ? at : TimeZoneInfo.ConvertTime(at, (clock ?? TimeProvider.System).LocalTimeZone);
+        return shown.ToString("h:mmtt", CultureInfo.InvariantCulture).ToLowerInvariant();
+    }
 
     private static bool TryHour(Match match, out int hour24, out int minute)
     {

@@ -5309,7 +5309,11 @@ source has ever answered does the readout and the closing banner alike simply
 draw no usage line rather than complain.
 
 **The bottom row, when it is drawn, is a legend of the keys that do
-something** — see HA-129 for the operator's brief. `s` stops the runner after
+something** — see HA-129 for the operator's brief. `n` ends the idle nap between
+passes early and asks the board again at once, rather than waiting out the rest
+of the interval; it does nothing during an increment, a pass, a pause or an
+out-of-usage wait, is never queued for later, and writes one line to the log
+when it acts. `s` stops the runner after
 the increment in flight finishes, pushes and is written up — press again to
 undo it, which the legend says while it is armed; `c` asks for confirmation
 (`y` to confirm, any other key to take it back) and then ends the run exactly

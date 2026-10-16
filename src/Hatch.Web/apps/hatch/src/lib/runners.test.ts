@@ -98,6 +98,24 @@ describe('runnerActivity', () => {
   it('names the reset time in the words on the row', () => {
     expect(activityWords(runner({ exhaustedUntil: '2026-09-08T23:40:00Z' }), NOW)).toMatch(/^Out of usage until /);
   });
+
+  it('is not exhausted once the reset has passed, because a reset that has passed is not a fact about the account any more', () => {
+    const passed = { exhaustedUntil: at(-3_600_000) };
+
+    expect(runnerActivity(runner(passed), NOW)).toBe('idle');
+    expect(runnerActivity(runner({ ...passed, claimKey: 'AER-12' }), NOW)).toBe('working');
+    expect(runnerActivity(runner({ ...passed, state: 'paused' }), NOW)).toBe('paused');
+  });
+
+  it('names just the clock for a reset later today', () => {
+    const words = activityWords(runner({ exhaustedUntil: at(3_600_000) }), NOW);
+    expect(words).toMatch(/^Out of usage until \d{1,2}:\d{2}(am|pm)$/);
+  });
+
+  it('names the weekday for a reset tomorrow', () => {
+    const words = activityWords(runner({ exhaustedUntil: at(26 * 3_600_000) }), NOW);
+    expect(words).toMatch(/^Out of usage until [A-Za-z]+ at \d{1,2}:\d{2}(am|pm)$/);
+  });
 });
 
 describe('isControllable', () => {
