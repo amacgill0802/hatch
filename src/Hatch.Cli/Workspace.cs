@@ -36,10 +36,11 @@ public interface IWorkspace
     /// the tree already on the trunk.
     /// </summary>
     /// <param name="answer">A person's answer to which of several branches to use, if one has been given.</param>
-    BranchEntry Enter(string key, string title, string? answer);
+    /// <param name="trunkLanding">This project lands work on the trunk rather than a branch per issue.</param>
+    BranchEntry Enter(string key, string title, string? answer, bool trunkLanding = false);
 
     /// <summary>What <see cref="Enter"/> would do, read from the refs as they stand. Changes nothing, and fetches nothing.</summary>
-    BranchEntry Plan(string key, string title, string? answer);
+    BranchEntry Plan(string key, string title, string? answer, bool trunkLanding = false);
 
     /// <summary>
     /// What origin has for a key, from the refs as they stand: an unmerged branch,
