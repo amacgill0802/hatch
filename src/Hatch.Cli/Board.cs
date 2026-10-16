@@ -298,6 +298,10 @@ public sealed class Board(HatchClient client)
             new CommentCreateRequest(body, Kind: "question", Options: options.Count > 0 ? options : null),
             ct);
 
+    /// <summary>A check session's own verdict on the issue it was looking at - see <see cref="VerdictCreateRequest"/>. The endpoint answers 204, so there is nothing to read back.</summary>
+    public Task RecordVerdictAsync(string key, string verdict, string? findings, CancellationToken ct) =>
+        Client.PostAsync<object>($"/api/hatch/issues/{key}/verdicts", new VerdictCreateRequest(verdict, findings), ct);
+
     /// <summary>
     /// Marks the issue stalled - an increment saying it left the ticket where it
     /// found it, and why. See <see cref="StallRequest"/>; <see cref="IssueStallController.PutStall"/>

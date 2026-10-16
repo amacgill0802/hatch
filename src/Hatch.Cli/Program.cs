@@ -231,6 +231,7 @@ try
         "comment" => await new IssueCommands(cli).CommentAsync(rest, cancelling.Token),
         "pr" => await new IssueCommands(cli).PrAsync(rest, cancelling.Token),
         "landed" => await new IssueCommands(cli).LandedAsync(rest, cancelling.Token),
+        "verdict" => await new IssueCommands(cli).VerdictAsync(rest, cancelling.Token),
         "depends" => await new DependsCommand(cli).RunAsync(rest, cancelling.Token),
         "one-pr" => await new OnePrCommand(cli).RunAsync(rest, cancelling.Token),
         "ask" => await new QuestionCommands(cli).AskAsync(rest, cancelling.Token),
@@ -351,7 +352,7 @@ internal partial class Program
     public static readonly string[] Commands =
     [
         "config", "board", "next", "queue", "show", "comments", "start", "move", "comment", "pr", "landed",
-        "depends", "one-pr", "ask", "questions", "answer", "api", "work", "go-to-work", "do-my-work",
+        "verdict", "depends", "one-pr", "ask", "questions", "answer", "api", "work", "go-to-work", "do-my-work",
         .. Internal,
     ];
 
@@ -375,6 +376,7 @@ internal partial class Program
         "  hatch pr AER-12              where it is being reviewed",
         "  hatch pr AER-12 https://...  ...or say where, having opened one",
         "  hatch pr AER-12 --clear      ...or take it off the one it has",
+        "  hatch verdict AER-12 pass|fail [\"findings\"]  a check session's own verdict",
         "  hatch depends AER-12         what it waits on, and what waits on it",
         "  hatch depends AER-12 AER-11  AER-12 waits on AER-11",
         "  hatch depends AER-12 --remove AER-11        ...no longer",
