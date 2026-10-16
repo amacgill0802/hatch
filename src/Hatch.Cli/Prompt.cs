@@ -189,10 +189,13 @@ public static class Prompt
             lines.Add("");
         }
 
+        var trunkLanding = work.Landing == Landings.Trunk;
+
         lines.AddRange(Tail(
             key, to, work.IssueUrl, repositories, issue.PreApproval, sharedStory,
             sharesPullRequest: issue.Type == "story" && issue.OnePr,
-            isCheck: work.Playbook?.IsCheck == true, failStatus: work.FailStatusName));
+            isCheck: work.Playbook?.IsCheck == true, failStatus: work.FailStatusName,
+            trunkLanding: trunkLanding));
         return string.Join('\n', lines);
     }
 
@@ -485,7 +488,7 @@ public static class Prompt
     internal static IEnumerable<string> Tail(
         string key, string to, string? issueUrl, IReadOnlyList<Checkouts.RepositoryLine>? repositories,
         string preApproval, string? sharedStory = null, bool sharesPullRequest = false,
-        bool isCheck = false, string? failStatus = null) =>
+        bool isCheck = false, string? failStatus = null, bool trunkLanding = false) =>
     [
         "## Reaching Hatch",
         "",
@@ -510,7 +513,9 @@ public static class Prompt
         "docs/hatch-planning.md has the shapes. Read it only if this increment",
         "files or reshapes work.",
         "",
-        ..(sharedStory is null ? PullRequest(key, issueUrl, sharesPullRequest) : SharedPullRequest(key, sharedStory, to)),
+        ..(trunkLanding ? Landing(key)
+            : sharedStory is null ? PullRequest(key, issueUrl, sharesPullRequest)
+            : SharedPullRequest(key, sharedStory, to)),
         "## When you cannot decide",
         "",
         "Some things are not yours to choose: a product call, a name that will be",
@@ -667,6 +672,42 @@ public static class Prompt
         $"this ticket's - is opened for it once its tasks are all pushed. Push your commits to the",
         $"branch above, then move {key} to \"{to}\": it waits there, with nothing of its own to",
         "merge, until the story's pull request does.",
+        "",
+    ];
+
+    /// <summary>
+    /// What a session is told in place of the pull request section, on a
+    /// project that lands work straight on the trunk: never to open one, and
+    /// how the work gets there instead.
+    /// </summary>
+    private static string[] Landing(string key) =>
+    [
+        "## Landing on the trunk",
+        "",
+        $"This project lands on the trunk, so there is no pull request to open for {key}.",
+        "When the work is green:",
+        "",
+        "```",
+        "git pull --no-rebase origin <trunk>",
+        "```",
+        "",
+        "A merge, explicitly never a rebase. Run the build and tests again if that merge",
+        "brought anything in, then:",
+        "",
+        "```",
+        "git push origin <trunk>",
+        "```",
+        "",
+        "If the push is refused because somebody else landed first, pull and push again -",
+        "never force it. Once the work is on origin's trunk, for each repository:",
+        "",
+        "```",
+        $"hatch landed {key} <sha>",
+        "```",
+        "",
+        "and write the comment with the sha, the way every landed ticket does. The",
+        "increment is not finished until the landing is recorded - \"## Where this",
+        $"increment ends\" below still names review as where {key} stops.",
         "",
     ];
 
