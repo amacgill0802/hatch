@@ -1036,14 +1036,15 @@ public class WorkController(
             .ToList();
 
         var hopParent = family.ParentOf(issue.Id);
-        var sendBackStreak = Columns.Implementation(statuses) is { } implementation
+        var implementationStatus = Columns.Implementation(statuses);
+        var sendBackStreak = implementationStatus is { } implementation
             ? await SendBackStreak.ForIssueAsync(db, issue.Id, implementation.Name, ct)
             : 0;
         var lastEvent = await db.IssueEvents.AsNoTracking()
             .Where(e => e.IssueId == issue.Id)
             .OrderByDescending(e => e.At).ThenByDescending(e => e.Id)
             .FirstOrDefaultAsync(ct);
-        var lastCheckFindings = issue.StatusId == Columns.Implementation(statuses)?.Id
+        var lastCheckFindings = issue.StatusId == implementationStatus?.Id
             && IssueEventPayload.Parse(lastEvent?.Payload)?.TryGetProperty("verdict", out var lastVerdict) == true
             && lastVerdict.GetString() == CheckVerdicts.Fail
                 ? await MostRecentVerdictFindingsAsync(issue.Id, ct)
@@ -1057,7 +1058,7 @@ public class WorkController(
         var letGo = await LetGo.ForIssueAsync(db, issue.Id, ct);
         var sentBack = await SentBack.ForIssueAsync(db, issue.Id, ct);
         var blocked = Dispatch.Blocked(
-            issue, from, rowTo, playbook, waiting, letGo, sendBackStreak, loop, pace, gate, family, claimed, Columns.Implementation(statuses),
+            issue, from, rowTo, playbook, waiting, letGo, sendBackStreak, loop, pace, gate, family, claimed, implementationStatus,
             await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct),
             repos, merged, built, hopKind, statuses, wip, epics);
         var hopped = hop && blocked is null;
@@ -1105,7 +1106,8 @@ public class WorkController(
             issue.Project!.ChecksRequired,
             branchKey,
             branchTitle,
-            lastCheckFindings);
+            lastCheckFindings,
+            implementationStatus?.Name);
     }
 
     /// <summary>

@@ -7338,6 +7338,32 @@ public class WorkControllerTests
         Assert.Null(Value(await h.Work.GetWork(Key(issue), null, default)).LastCheckFindings);
     }
 
+    [Fact]
+    public async Task FailStatusName_IsImplementationsNameOnEveryDispatch_CheckOrNot()
+    {
+        var h = await NewAsync();
+        var playbookId = await h.CheckingAsync();
+        var issue = await h.FileAsync("task", "being checked", h.Checking);
+        var token = await h.ClaimAsync(issue, playbookId: playbookId);
+        await h.RecordVerdictAsync(issue, playbookId, token, CheckVerdicts.Fail, findings: "the build broke");
+        await h.Work.VerdictWork(Key(issue), token, ct: default);
+        issue.ClaimToken = null;
+        await h.Db.SaveChangesAsync();
+
+        Assert.Equal("in progress", Value(await h.Work.GetWork(Key(issue), null, default)).FailStatusName);
+        Assert.Equal("in progress", Value(await h.Work.GetNextWork(0, null, null, default)).FailStatusName);
+    }
+
+    [Fact]
+    public async Task FailStatusName_IsSetRegardlessOfWhetherTheLastVerdictWasAFail()
+    {
+        var h = await NewAsync();
+        await h.CheckingAsync();
+        var issue = await h.FileAsync("task", "advanced normally", h.InProgress);
+
+        Assert.Equal("in progress", Value(await h.Work.GetWork(Key(issue), null, default)).FailStatusName);
+    }
+
     // ---- The review playbook ----
 
     [Fact]

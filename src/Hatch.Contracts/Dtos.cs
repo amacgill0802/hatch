@@ -1614,6 +1614,13 @@ public record IssueDependencyRequest(string DependsOnKey);
 /// fail - the one case HA-557's CLI prompt reads this for. Null otherwise,
 /// and for every client too old to read it.
 /// </param>
+/// <param name="FailStatusName">
+/// <c>Columns.Implementation(statuses)</c>'s name - the column a failed
+/// check sends this issue back to - carried because the CLI has no access
+/// to <c>Columns.cs</c> to compute it itself. Set on every dispatch, whether
+/// or not a check's verdict actually failed: it names a column that exists
+/// regardless of playbook or history. Null on a client too old to read it.
+/// </param>
 public record WorkDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -1638,7 +1645,8 @@ public record WorkDto(
     bool ChecksRequired = true,
     string? BranchKey = null,
     string? BranchTitle = null,
-    string? LastCheckFindings = null);
+    string? LastCheckFindings = null,
+    string? FailStatusName = null);
 
 /// <summary>
 /// The two numbers a send-back for an over-long brief carried, and whether
