@@ -645,7 +645,9 @@ of one checkout take one lock.
 9. `--once` ends the run after the pass.
 10. An increment that ran is followed immediately by the next iteration.
     Anything else naps for the interval, in five-second slices, re-checking
-    the stop conditions after each.
+    the stop conditions after each. An `n` from the keyboard ends that nap at
+    once and the next iteration starts; pressed anywhere else - during an
+    increment, a pass, a pause or an out-of-usage wait - it does nothing.
 
 While idle the reasons the board is folded are printed once, grouped by
 reason and counted, then again only when the digest changes; otherwise
