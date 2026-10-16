@@ -426,7 +426,9 @@ public sealed class GoToWorkCommand(Runtime runtime)
         "                     HATCH_REPOS is not consulted when this is given",
         "  --workspace <dir>  clone every repository the board binds that this runner",
         "                     has no checkout of, into <dir> - HATCH_WORKSPACE is not",
-        "                     consulted when this is given",
+        "                     consulted when this is given. With none set, <dir> is a",
+        "                     per-user default; `--workspace off` serves only the",
+        "                     checkouts it has and never clones",
         "",
         "  None of the bounds are set by default - an unattended run that stopped for",
         "  a reason nobody asked for is a run somebody has to go and check on. Each is",
@@ -579,14 +581,17 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // and HATCH_WORKSPACE is not folded in beside it.
             var standing = runtime.Checkouts.FirstOrDefault(c => c.Standing)?.Path;
             var effectiveRepos = repoFlags.Count > 0 ? repoFlags : runtime.Settings.Repos;
-            var effectiveWorkspace = workspaceFlag ?? runtime.Settings.Workspace;
+            var (effectiveWorkspace, defaulted) = runtime.Settings.WorkspaceFor(workspaceFlag);
 
-            if (!Checkouts.TryDiscover(
-                    standing, effectiveRepos, effectiveWorkspace, out var repoCheckouts, out var strays, out var badRepo))
+            if (!Checkouts.TryDiscoverServing(
+                    standing, effectiveRepos, effectiveWorkspace, defaulted,
+                    out var repoCheckouts, out var strays, out var badRepo, out var servedWorkspace, out var workspaceNote))
             {
                 runtime.Say.Complain(badRepo);
                 return 1;
             }
+
+            if (workspaceNote is not null) runtime.Say.Complain(workspaceNote);
 
             foreach (var stray in strays)
                 runtime.Say.Line($"hatch: {stray} - not a checkout, and nothing under it is one either; left alone");
@@ -600,7 +605,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
             {
                 Checkouts = repoCheckouts,
                 Root = root,
-                Settings = runtime.Settings with { Workspace = effectiveWorkspace },
+                Settings = runtime.Settings.WithWorkspace(servedWorkspace, defaulted),
             };
         }
 
@@ -646,13 +651,31 @@ public sealed class GoToWorkCommand(Runtime runtime)
         if (runtime.Settings.Workspace is { } lockedWorkspace)
         {
             var held = LoopLock.Take(lockedWorkspace, runtime.TempDirectory, out var refusal);
-            if (held is null)
+            if (held is not null)
+            {
+                locks.Add(held);
+            }
+            else if (runtime.Settings.WorkspaceDefaulted)
+            {
+                // Two loops that never named a workspace share the default one,
+                // and refusing the second would turn away a loop that only wants
+                // to serve its own checkout. It serves what it has and does not
+                // clone - the first loop owns the directory clones land in, and
+                // what is already cloned there is that loop's to serve and lock.
+                runtime.Say.Line(
+                    "hatch: another go-to-work holds the default workspace, so this one serves its own checkouts and will not clone");
+                runtime = runtime with
+                {
+                    Checkouts = runtime.Checkouts
+                        .Where(c => c.Standing || !Checkouts.IsUnder(lockedWorkspace, c.Path)).ToList(),
+                    Settings = runtime.Settings.WithWorkspace(null, defaulted: true),
+                };
+            }
+            else
             {
                 runtime.Say.Complain(refusal);
                 return 1;
             }
-
-            locks.Add(held);
         }
 
         foreach (var checkout in runtime.Checkouts)

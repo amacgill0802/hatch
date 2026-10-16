@@ -162,13 +162,70 @@ public sealed class SettingsTests : IDisposable
     // ---- HATCH_WORKSPACE ----
 
     [Fact]
-    public void HATCH_WORKSPACE_unset_is_null()
+    public void HATCH_WORKSPACE_unset_falls_back_to_the_per_user_default()
     {
         Assert.True(Settings.TryLoad(
             null, Env(("HATCH_BASE", "https://somewhere")), out var settings, out _,
             Path.Combine(_temp, "does-not-exist")));
 
+        Assert.Equal(Settings.DefaultWorkspacePath(), settings.Workspace);
+        Assert.True(settings.WorkspaceDefaulted);
+        Assert.Equal(Settings.Layer.Unset, settings.SourceOf("HATCH_WORKSPACE"));
+    }
+
+    [Fact]
+    public void The_default_workspace_sits_beside_the_per_user_config_and_names_no_one()
+    {
+        Assert.Equal(
+            Path.Combine(Path.GetDirectoryName(Settings.UserConfigPath())!, "workspace"),
+            Settings.DefaultWorkspacePath());
+    }
+
+    [Theory]
+    [InlineData("off")]
+    [InlineData("OFF")]
+    [InlineData(" Off ")]
+    public void HATCH_WORKSPACE_off_turns_the_default_off_and_is_not_itself_a_directory(string word)
+    {
+        Assert.True(Settings.TryLoad(
+            null, Env(("HATCH_BASE", "https://somewhere"), ("HATCH_WORKSPACE", word)), out var settings, out _,
+            Path.Combine(_temp, "does-not-exist")));
+
         Assert.Null(settings.Workspace);
+        Assert.False(settings.WorkspaceDefaulted);
+        Assert.Equal(Settings.Layer.Environment, settings.SourceOf("HATCH_WORKSPACE"));
+    }
+
+    [Fact]
+    public void A_workspace_flag_is_the_whole_answer_for_a_run_and_off_means_none()
+    {
+        var settings = new Settings { Base = "https://x", Key = "", Workspace = "/set", WorkspaceDefaulted = true };
+
+        Assert.Equal(("/set", true), settings.WorkspaceFor(null));
+        Assert.Equal(("/flag", false), settings.WorkspaceFor("/flag"));
+        Assert.Equal((null, false), settings.WorkspaceFor("off"));
+    }
+
+    [Fact]
+    public void WithWorkspace_null_is_never_defaulted()
+    {
+        var settings = new Settings { Base = "https://x", Key = "", Workspace = "/set", WorkspaceDefaulted = true };
+
+        var gaveWay = settings.WithWorkspace(null, defaulted: true);
+
+        Assert.Null(gaveWay.Workspace);
+        Assert.False(gaveWay.WorkspaceDefaulted);
+    }
+
+    [Fact]
+    public void A_workspace_that_is_set_is_not_defaulted()
+    {
+        Assert.True(Settings.TryLoad(
+            null, Env(("HATCH_BASE", "https://somewhere"), ("HATCH_WORKSPACE", "/mine")), out var settings, out _,
+            Path.Combine(_temp, "does-not-exist")));
+
+        Assert.Equal("/mine", settings.Workspace);
+        Assert.False(settings.WorkspaceDefaulted);
     }
 
     [Fact]

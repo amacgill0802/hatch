@@ -41,7 +41,8 @@ public sealed class WorkCommand(Runtime runtime)
         "                     is not consulted when this is given",
         "  --workspace <dir>  clone every repository the board binds that this runner has",
         "                     no checkout of, into <dir> - HATCH_WORKSPACE is not consulted",
-        "                     when this is given",
+        "                     when this is given. With none set, <dir> is a per-user",
+        "                     default; `--workspace off` never clones",
         "",
         "  Exits 0 when an increment ran, whatever the session itself exited with;",
         "  1 on a refusal; 2 when there is nothing to do - the board is idle, the",
@@ -96,14 +97,17 @@ public sealed class WorkCommand(Runtime runtime)
             // and HATCH_WORKSPACE is not folded in beside it.
             var standing = runtime.Checkouts.FirstOrDefault(c => c.Standing)?.Path;
             var effectiveRepos = repoFlags.Count > 0 ? repoFlags : runtime.Settings.Repos;
-            var effectiveWorkspace = workspaceFlag ?? runtime.Settings.Workspace;
+            var (effectiveWorkspace, defaulted) = runtime.Settings.WorkspaceFor(workspaceFlag);
 
-            if (!Checkouts.TryDiscover(
-                    standing, effectiveRepos, effectiveWorkspace, out var repoCheckouts, out var strays, out var badRepo))
+            if (!Checkouts.TryDiscoverServing(
+                    standing, effectiveRepos, effectiveWorkspace, defaulted,
+                    out var repoCheckouts, out var strays, out var badRepo, out var servedWorkspace, out var workspaceNote))
             {
                 runtime.Say.Complain(badRepo);
                 return 1;
             }
+
+            if (workspaceNote is not null) runtime.Say.Complain(workspaceNote);
 
             foreach (var stray in strays)
                 runtime.Say.Line($"hatch: {stray} - not a checkout, and nothing under it is one either; left alone");
@@ -120,7 +124,7 @@ public sealed class WorkCommand(Runtime runtime)
                 RunnerName = runnerName,
                 Where = Checkout.Where(Checkout.Host(), root),
                 Board = runtime.NewBoard(runnerName),
-                Settings = runtime.Settings with { Workspace = effectiveWorkspace },
+                Settings = runtime.Settings.WithWorkspace(servedWorkspace, defaulted),
             };
         }
 
