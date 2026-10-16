@@ -1608,6 +1608,12 @@ public record IssueDependencyRequest(string DependsOnKey);
 /// the client reads the issue's own key.
 /// </param>
 /// <param name="BranchTitle">The title the branch's slug is cut from: the story's, where <paramref name="BranchKey"/> is the story's.</param>
+/// <param name="LastCheckFindings">
+/// The most recent check's findings, when the issue stands in
+/// <c>Columns.Implementation</c> because that check's verdict was a
+/// fail - the one case HA-557's CLI prompt reads this for. Null otherwise,
+/// and for every client too old to read it.
+/// </param>
 public record WorkDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -1631,7 +1637,8 @@ public record WorkDto(
     string? Landing = null,
     bool ChecksRequired = true,
     string? BranchKey = null,
-    string? BranchTitle = null);
+    string? BranchTitle = null,
+    string? LastCheckFindings = null);
 
 /// <summary>
 /// The two numbers a send-back for an over-long brief carried, and whether

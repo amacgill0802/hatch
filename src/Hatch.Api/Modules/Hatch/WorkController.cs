@@ -612,11 +612,7 @@ public class WorkController(
         }
         else
         {
-            var previousFindings = await db.Comments.AsNoTracking()
-                .Where(c => c.IssueId == issue.Id && c.Kind == EfHatchComment.Verdict)
-                .OrderByDescending(c => c.CreatedAt).ThenByDescending(c => c.Id)
-                .Select(c => c.Body)
-                .FirstOrDefaultAsync(ct);
+            var previousFindings = await MostRecentVerdictFindingsAsync(issue.Id, ct);
 
             issue.Events.Add(new EfHatchIssueEvent
             {
@@ -1043,6 +1039,15 @@ public class WorkController(
         var sendBackStreak = Columns.Implementation(statuses) is { } implementation
             ? await SendBackStreak.ForIssueAsync(db, issue.Id, implementation.Name, ct)
             : 0;
+        var lastEvent = await db.IssueEvents.AsNoTracking()
+            .Where(e => e.IssueId == issue.Id)
+            .OrderByDescending(e => e.At).ThenByDescending(e => e.Id)
+            .FirstOrDefaultAsync(ct);
+        var lastCheckFindings = issue.StatusId == Columns.Implementation(statuses)?.Id
+            && IssueEventPayload.Parse(lastEvent?.Payload)?.TryGetProperty("verdict", out var lastVerdict) == true
+            && lastVerdict.GetString() == CheckVerdicts.Fail
+                ? await MostRecentVerdictFindingsAsync(issue.Id, ct)
+                : null;
         var (branchKey, branchTitle) = await BranchOfAsync(issue, gate, ct);
         var hopKind = to is null ? null : Dispatch.HopKind(issue, from, to, family, statuses, wip, hopParent, playbook, sendBackStreak, claims.StallResumeLimit, gate.EffectivePreApproval(issue.Id).Level, merged, built, claimed.Now);
         var hop = hopKind is not null;
@@ -1099,7 +1104,8 @@ public class WorkController(
             issue.Project!.Landing,
             issue.Project!.ChecksRequired,
             branchKey,
-            branchTitle);
+            branchTitle,
+            lastCheckFindings);
     }
 
     /// <summary>
@@ -1120,6 +1126,20 @@ public class WorkController(
 
         return (IssueKey.Format(issue.Project!.Key, issue.Number), issue.Title);
     }
+
+    /// <summary>
+    /// The body of the most recent <see cref="EfHatchComment.Verdict"/> comment
+    /// on <paramref name="issueId"/>, or null where it has never had one - the
+    /// one read both <see cref="VerdictWork"/> (a second fail, reading the
+    /// first's findings) and <see cref="ResolveAsync"/> (a dispatch, reading
+    /// the last check's) share.
+    /// </summary>
+    private Task<string?> MostRecentVerdictFindingsAsync(long issueId, CancellationToken ct) =>
+        db.Comments.AsNoTracking()
+            .Where(c => c.IssueId == issueId && c.Kind == EfHatchComment.Verdict)
+            .OrderByDescending(c => c.CreatedAt).ThenByDescending(c => c.Id)
+            .Select(c => c.Body)
+            .FirstOrDefaultAsync(ct);
 
     /// <summary>
     /// The issue's page as a browser would open it, or null when the install
