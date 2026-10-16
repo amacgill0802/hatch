@@ -327,7 +327,7 @@ public sealed class PromptTests
     [Fact]
     public void An_express_ticket_gets_its_own_section_before_where_it_ends()
     {
-        var work = Fixtures.Work("AER-12", issue: Fixtures.Issue("AER-12", express: true));
+        var work = Fixtures.Work("AER-12", issue: Fixtures.Issue("AER-12", preApproval: PreApprovalLevels.ExpressName));
         var prompt = Prompt.Compose(work);
 
         Assert.Contains("## This ticket is express", prompt, StringComparison.Ordinal);
@@ -344,6 +344,19 @@ public sealed class PromptTests
     public void An_ordinary_ticket_gets_no_express_section()
     {
         Assert.DoesNotContain("## This ticket is express", Prompt.Compose(Fixtures.Work("AER-12")), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_preapproved_ticket_gets_its_own_section_saying_its_pull_request_merges_unattended()
+    {
+        var work = Fixtures.Work("AER-12", issue: Fixtures.Issue("AER-12", preApproval: PreApprovalLevels.PreApprovedName));
+        var prompt = Prompt.Compose(work);
+
+        Assert.Contains("## This ticket is pre-approved", prompt, StringComparison.Ordinal);
+        Assert.Contains("nobody reading the diff first", prompt, StringComparison.Ordinal);
+        Assert.True(
+            prompt.IndexOf("## This ticket is pre-approved", StringComparison.Ordinal)
+            < prompt.IndexOf("## Where this increment ends", StringComparison.Ordinal));
     }
 
     // ---- HA-118: the ending says a stall is recorded as having done nothing ----
@@ -399,7 +412,7 @@ public sealed class PromptTests
     public void The_fixed_part_of_the_prompt_stays_under_four_thousand_characters()
     {
         var fixedPart = string.Join('\n', Prompt.Tail(
-            "AER-12", "In Review", "https://hatch.example.test/apps/hatch/issues/AER-12", null, express: false));
+            "AER-12", "In Review", "https://hatch.example.test/apps/hatch/issues/AER-12", null, preApproval: PreApprovalLevels.NoneName));
 
         Assert.True(fixedPart.Length < 4000,
             $"The prompt's fixed part is {fixedPart.Length} characters - trim it back under 4,000.");

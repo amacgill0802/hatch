@@ -187,7 +187,7 @@ public static class Prompt
             lines.Add("");
         }
 
-        lines.AddRange(Tail(key, to, work.IssueUrl, repositories, issue.Express));
+        lines.AddRange(Tail(key, to, work.IssueUrl, repositories, issue.PreApproval));
         return string.Join('\n', lines);
     }
 
@@ -435,7 +435,7 @@ public static class Prompt
     /// </summary>
     internal static IEnumerable<string> Tail(
         string key, string to, string? issueUrl, IReadOnlyList<Checkouts.RepositoryLine>? repositories,
-        bool express) =>
+        string preApproval) =>
     [
         "## Reaching Hatch",
         "",
@@ -487,7 +487,7 @@ public static class Prompt
         "What the repository can answer, answer by reading the repository. A question",
         "the code already settles is a round trip through a person for nothing.",
         "",
-        ..Express(express),
+        ..PreApproval(preApproval),
         "## Where this increment ends",
         "",
         $"{key} should be in \"{to}\" when you stop, and no further.",
@@ -513,13 +513,14 @@ public static class Prompt
     ];
 
     /// <summary>
-    /// The section told to a session on an express ticket, or nothing at all -
-    /// every ticket on a stock board. Two things, and no more: that it is
-    /// express, and what that means for whether a person reads it before it
-    /// moves on.
+    /// The section told to a session on an express or pre-approved ticket, or
+    /// nothing at all - every ticket on a stock board. Express names the one
+    /// thing that follows from it; pre-approved names the one thing that
+    /// follows from that, past what express already says.
     /// </summary>
-    private static IEnumerable<string> Express(bool express) => express
-        ?
+    private static IEnumerable<string> PreApproval(string level) => level switch
+    {
+        PreApprovalLevels.ExpressName =>
         [
             "## This ticket is express",
             "",
@@ -529,8 +530,20 @@ public static class Prompt
             "question is what stops that: anything that needs a person's eye is asked,",
             "not assumed, the same as it would be on any other ticket.",
             "",
-        ]
-        : [];
+        ],
+        PreApprovalLevels.PreApprovedName =>
+        [
+            "## This ticket is pre-approved",
+            "",
+            "One thing follows, past what express already does: once this ticket is in",
+            "review with a pull request recorded, and that pull request is green and",
+            "current, the loop merges it itself, with nobody reading the diff first.",
+            "Read your own diff before you open the pull request, the way the reviewer",
+            "would have - that is the only reading it gets.",
+            "",
+        ],
+        _ => [],
+    };
 
     /// <summary>
     /// Which checkout "the repository root" means, said only once there is more
