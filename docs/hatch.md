@@ -381,7 +381,7 @@ knows exactly two slices, `story,bug` and `epic`, in that fixed order — the
 section is one set of columns and any number of slices, each with its own
 limit, its own load and its own claimed-inbound count.
 
-`ExpressSkips` marks the columns an [express](#express) issue is carried past
+`ExpressSkips` marks the columns an [express](#pre-approval) issue is carried past
 with no session, and — once something under a running epic stands there too —
 a story or bug carried under it the same way — see [the hop](#the-hop). It is
 **not** a "whose column is this" flag: who works a column is still derived
@@ -776,55 +776,58 @@ read the same after a person row is deleted, and an API key's name goes in this
 column beside a human one — neither of which a `People` FK from a module schema
 could express.
 
-#### Express
+#### Pre-approval
 
-**One flag meaning *carry this past a column marked for it, with nobody reading
-it first*.** `Express` is a boolean on the issue, set by a person, and read by
-the dispatcher alone — see [the hop](#the-hop). Take an express issue standing
-in a column marked [`ExpressSkips`](#status), with no unanswered question, and
-the loop moves it one column right itself: no session, no model, nothing spent.
+**Three levels, not a flag — `none`, `express` and `preapproved`
+(`PreApprovalLevels`), carried on an issue's own row
+(`EfHatchIssue.PreApproval`, `Dtos.cs:663-682`) and read live as the nearest
+level other than `none` found on the issue itself or on an ancestor, nearest
+first.** `none` is not a stop on the way up, the way `normal` is not for
+priority: a story under a preapproved epic reads preapproved unless it sets
+a level of its own, and a task under that story set to `express` keeps its
+own regardless of what the epic says above it. At `express` or above, an
+issue standing in a column marked [`ExpressSkips`](#status) with no
+unanswered question is carried one column right with no session — see [the
+hop](#the-hop) — exactly as the Express flag it replaces did.
 
-**It is a gate-passer, not a sort key — the opposite shape from
-[expedite](#expedite).** Every fold an issue already meets still folds it: a
-live claim, a ready date in the future, a person's name on the ticket, an
-unanswered question, a missing repository or an unmet dependency all hold an
-express issue exactly as they hold any other. Express answers one question
-only — does this column still need a session — and changes nothing about
-order, on the board or in `hatch queue`.
+**It is derived at read, never stored or copied — the same reversal HA-178
+made to priority's own copy-at-filing rule, and for the same reason.**
+Express used to be taken from the parent once, at filing, and never again;
+a copied flag is an override the parent can never take back, and a
+pre-approval is of a subtree, including the stories a breakdown session
+files under an epic overnight, long after the epic was marked and before
+those stories existed to copy anything onto. Reading the level from the
+tree on every request instead lets reparenting change the effective level
+at once, both ways, and lets a person raise or lower an epic's level and
+have every descendant that hasn't set its own answer differently from the
+next read.
 
-**It is in no tier either.** Preemption nominates and spares by effective
-level alone (see [Preemption](#preemption)) — an express row below
-emergency is neither protected from being preempted nor made eligible to
-preempt anything, exactly as a non-express row at the same level would be. The
-one place an express-carried hop meets the pace scale — an economy hop
-skipping the pace gate, above — is a rule about having hopped at all, not
-about Express: the exemption is keyed on `hop`, and three of the four
-`HopKinds` have nothing to do with the flag.
+**Setting it asks one of two questions, depending which way the level
+moves.** Setting `express` — or clearing it back to `none` — asks the same
+question an ordinary move into `Columns.SendBack` would: whether the
+caller may move an issue of this project into the column that feeds
+implementation, through `IProjectAccess.CanMoveIntoAsync`, the seam
+`IssuesController.ProtectedMoveRefusalAsync` (`:1127`) already asks of a
+real move — nobody is refused where the board has no such column. Setting
+`preapproved`, or lowering away from it, needs `IProjectAccess.CanApproveAsync`
+instead, on either side of the change: setting it is the approve press
+given in advance, and lowering from it undoes that act, so both need the
+same owner-or-approver permission.
 
-**It is taken from the parent at filing, and at no other time.** An issue
-created under an express parent is born express, whoever files it — a person
-or a key — and however: the New issue dialog, the child composer, or the API
-directly. Its `created` event names the parent it took the flag from. Filed
-under a parent that is not express, or under no parent, it is not express.
-**Reparenting never touches it**: moving an issue under an express parent does
-not mark it, and moving it away does not unmark it — the flag is a fact about
-how an issue came to exist, not one that follows a parent around. This is also
-why unmarking a parent leaves every child exactly as it was: the flag was
-copied once, at filing, and the two are unlinked from that moment on.
+**`PUT .../express` stays, as the two-level alias it always was.** `{
+express: true }` sets `express`, `{ express: false }` clears it to `none`,
+through the same two guards above — nothing written against the old flag
+breaks.
 
-Filed issues land in the leftmost column, Draft, which does not ship marked
-`ExpressSkips` — so an express epic's freshly filed stories wait there until
-the operator ticks Draft or moves them on by hand. That is deliberate: Draft is
-where ideas are written, and leaving it unticked is the safe default. Ticking
-it now serves two things at once, not express alone: an express issue standing
-there, and — once [the epic pull](#the-hop) (HA-113) is in play — a story or
-bug under a running epic too, since both read the same `ExpressSkips` flag.
-
-Setting it is closed to an API key, the same cut as expedite; see [The one edge
-that is deliberately cut](#the-one-edge-that-is-deliberately-cut). It follows
-that there is no `hatch express` verb — the CLI authenticates with a key, so
-the terminal shows the flag (`board`, `queue`, `show`, `next`) and sets it
-nowhere.
+**Setting either level is closed to a key, and to the runner header where
+the wall is off — the same cut as [expedite](#expedite) and [stories at
+once](#stories-at-once), and for the same reason: a key that could set
+either could carry its own ticket through the night unattended, or approve
+it in advance.** `IssuePreApprovalController` carries no class-level scope,
+so both routes refuse a program outright before the issue is even looked
+up. It follows that there is no `hatch` verb that sets it — the CLI
+authenticates with a key, so the terminal shows the level (`show`, `board`,
+`next`, `queue`) and sets it nowhere.
 
 #### Stories at once
 
@@ -853,7 +856,7 @@ string — `""` clears it back to the default, a whole number of one or more
 sets it, anything else is refused with a sentence, and anything but an epic
 is refused with a sentence saying only an epic takes one — by a person and
 never a key, the same cut as [expedite](#expedite) and
-[express](#express): see [The one edge that is deliberately
+[express](#pre-approval): see [The one edge that is deliberately
 cut](#the-one-edge-that-is-deliberately-cut). Each change writes
 `wip_limit_changed` with `{ from, to }`. Reading is open, like everything else
 a dispatch needs: an agent is entitled to know how many of its siblings it is
@@ -1222,7 +1225,7 @@ It is answered at two levels. The **project** holds a default
 false is off). Only a story carries an override; any other type is refused.
 
 The effective value is **derived at read and never copied**, the same way
-[pre-approval](#express) is. `PriorityTree.EffectiveOnePr` walks to the nearest
+[pre-approval](#pre-approval) is. `PriorityTree.EffectiveOnePr` walks to the nearest
 story at or above an issue and answers with that story's override, else its
 project's default; an issue with no story above it - an epic, or a task filed
 straight under one - reads off, because there is no story whose pull request it
@@ -2390,7 +2393,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/projects/{id}/logo` | DELETE | **Person only** — plain `[RequireRole(User)]`. 404 with none uploaded |
 | `/statuses` | GET, POST | |
 | `/statuses/{id}` | PATCH, DELETE | DELETE 409s while any issue holds it |
-| `/statuses/{id}/express-skips` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ expressSkips }` — which columns an [express](#express) issue is carried past with no session. Neither `POST /statuses` nor `PATCH /statuses/{id}` can set it |
+| `/statuses/{id}/express-skips` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ expressSkips }` — which columns an [express](#pre-approval) issue is carried past with no session. Neither `POST /statuses` nor `PATCH /statuses/{id}` can set it |
 | `/statuses/{id}/parent-pulls` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ parentPulls }` — the column a child is carried on out of while its parent stands in the implementation column. Neither `POST /statuses` nor `PATCH /statuses/{id}` can set it |
 | `/statuses/{id}/implementation` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ isImplementation }` — the column where code gets written. Ticking one clears the rest; ticking a deferred or terminal column is refused with a 400, and unticking is always accepted. Neither `POST /statuses` nor `PATCH /statuses/{id}` can set it |
 | `/statuses/{id}/agent-files` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ agentFiles }` — the column a program's issue is born in. Neither `POST /statuses` nor `PATCH /statuses/{id}` can set it |
@@ -2411,9 +2414,9 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/issues/{key}/assignee` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ kind, id }`, or both null to unassign — see [Assignee](#assignee) |
 | `/issues/{key}/priority` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ priority }` — `"paused"`, `"economy"`, `"low"`, `"normal"`, `"expedited"` or `"emergency"`. Every level but paused floats on the board and is taken first by the dispatcher, most severe first; paused sinks to the bottom and is folded by every dispatch with its own sentence. Setting what it already holds writes nothing; an unknown name is `400` |
 | `/issues/{key}/expedite` | PUT | **Person only** — plain `[RequireRole(User)]`. Legacy two-level alias for `/priority` above. `{ expedited }` — `true` sets expedited, `false` sets normal. Setting what it already holds writes nothing |
-| `/issues/{key}/pre-approval` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action so it holds with the wall off. `{ level }` — `"none"`, `"express"` or `"preapproved"` — see [Express](#express). Express needs the same permission a move into the column that feeds implementation needs; preapproved needs an approver. Setting what it already holds writes nothing; an unknown name is `400` |
+| `/issues/{key}/pre-approval` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action so it holds with the wall off. `{ level }` — `"none"`, `"express"` or `"preapproved"` — see [Express](#pre-approval). Express needs the same permission a move into the column that feeds implementation needs; preapproved needs an approver. Setting what it already holds writes nothing; an unknown name is `400` |
 | `/issues/{key}/one-pr` | PUT | **Open to a key** — `[RequireRole(User, AcceptScope = hatch)]`. `{ value }` — `"on"`, `"off"` or `"inherit"` (the project's default) — see [One pull request](#one-pull-request). A story only: anything else is `400` naming its type; an unknown value is `400`. `409` once work under the story has started. Setting what it already holds writes nothing |
-| `/issues/{key}/express` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ express }` — see [Express](#express). Setting what it already holds writes nothing. Now an alias for `/pre-approval` above, sharing its guards |
+| `/issues/{key}/express` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ express }` — see [Express](#pre-approval). Setting what it already holds writes nothing. Now an alias for `/pre-approval` above, sharing its guards |
 | `/issues/{key}/stall` | PUT | Carries no `[RequireRole]` at all — a dispatcher is exactly who leaves this mark. `{ why }` — the sentence an increment leaves behind it saying why it left the ticket where it found it; sets `StalledAt` to now and `StalledWhy` to it, normalised and capped the way claim chatter is. Always writes, so a second mark replaces the first on the row but still leaves its own `stalled` event behind it |
 | `/issues/{key}/hold` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action: an agent that could hold its own ticket could park it off the board for the night. `{ held }` — holds it or resumes it. Resuming clears `StalledAt` and `StalledWhy` together, so *Resume now* leaves nothing behind for the dispatcher to fold on, even where nothing had set `held` true. Setting what it already holds writes nothing and does not move `UpdatedAt` — except that `held: false` still clears a stall mark where one is there to clear |
 | `/issues/{key}/claim` | POST | Takes the [lease](#claim). `{ runner }`; answers with the token, the holder, when it was taken and the TTL, and `stallLapseSeconds` — the same window a claim goes quiet by, in seconds, or `0` when lapsing is off. `409` naming the holder where something live already has it — including the same runner asking twice |
