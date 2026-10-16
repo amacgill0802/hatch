@@ -39,6 +39,19 @@ public class WorkControllerTests
         Assert.Equal(expected, Value(await h.Work.GetWork(Key(issue), null, default)).IssueUrl);
     }
 
+    [Fact]
+    public async Task Work_CarriesTheIssuesOwnProjectsLandingAndChecksRequired()
+    {
+        var h = await NewAsync();
+        await h.SetLandingAsync(landing: "direct", checksRequired: false);
+        var issue = await h.FileAsync("story", "a story", h.InProgress);
+
+        var work = Value(await h.Work.GetWork(Key(issue), null, default));
+
+        Assert.Equal("direct", work.Landing);
+        Assert.False(work.ChecksRequired);
+    }
+
     // ---- Picking ----
 
     [Fact]
@@ -5751,6 +5764,18 @@ public class WorkControllerTests
         Assert.Null(row.PullRequestUrl);
     }
 
+    [Fact]
+    public async Task Build_TheReviewReadCarriesTheProjectsLanding()
+    {
+        var h = await NewAsync();
+        await h.SetLandingAsync(landing: "direct");
+        var issue = await h.FileAsync("story", "red", h.Review);
+
+        var row = Assert.Single(Value(await h.Work.GetReview(null, true, default)));
+
+        Assert.Equal("direct", row.Landing);
+    }
+
     // ---- An issue in the merges column ----
 
     [Fact]
@@ -7880,6 +7905,20 @@ public class WorkControllerTests
             Db.Add(project);
             await Db.SaveChangesAsync();
             return project.Id;
+        }
+
+        /// <summary>
+        /// A project's landing policy and check requirement, written straight
+        /// onto the row - what the write route accepts and refuses is a
+        /// separate task's business; these tests are about what the
+        /// dispatcher carries once it is set.
+        /// </summary>
+        public async Task SetLandingAsync(string? landing = null, bool? checksRequired = null)
+        {
+            var project = await Db.Projects.SingleAsync(p => p.Id == ProjectId);
+            if (landing is not null) project.Landing = landing;
+            if (checksRequired is not null) project.ChecksRequired = checksRequired.Value;
+            await Db.SaveChangesAsync();
         }
 
         /// <summary>
