@@ -27,28 +27,45 @@ public static partial class UsageLimit
     /// <summary>What a session that hit its limit said, read out of its own words.</summary>
     /// <param name="ResetAt">When the account resets - parsed from the sentence, or the one-hour backstop.</param>
     /// <param name="ResetKnown">Whether <see cref="ResetAt"/> came from the sentence, or is the backstop.</param>
-    public readonly record struct Recognised(DateTimeOffset ResetAt, bool ResetKnown);
+    /// <param name="Window">"session" or "weekly", read off the sentence itself.</param>
+    public readonly record struct Recognised(DateTimeOffset ResetAt, bool ResetKnown, string Window);
 
     /// <summary>The backstop for a limit whose reset time could not be read.</summary>
     public static readonly TimeSpan UnknownWindow = TimeSpan.FromHours(1);
+
+    /// <summary>
+    /// How long a limit's own window runs - the CLI's own copy, since it does
+    /// not reference <c>Hatch.Api</c>'s <c>Utilization.WindowLengths</c>. Keys
+    /// match the literal strings already used elsewhere: <see cref="Recognised.Window"/>,
+    /// and <c>UsageReport.Limit</c>'s own "session"/"weekly_all"/"weekly_scoped" mapping.
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, TimeSpan> WindowLengths = new Dictionary<string, TimeSpan>
+    {
+        ["session"] = TimeSpan.FromHours(5),
+        ["weekly"] = TimeSpan.FromDays(7),
+    };
 
     /// <summary>
     /// Whether <paramref name="said"/> - the CLI's own result text, or failing
     /// that the last thing the assistant said - reports a usage limit. Null for
     /// anything else, including an ordinary error.
     /// </summary>
-    public static Recognised? Recognise(string? said, DateTimeOffset endedAt)
+    public static Recognised? Recognise(string? said, DateTimeOffset endedAt, TimeZoneInfo? runnerZone = null)
     {
         if (string.IsNullOrWhiteSpace(said)) return null;
         if (!Mention().IsMatch(said)) return null;
 
-        var match = ClockPattern().Match(said);
-        if (!match.Success) return new Recognised(endedAt + UnknownWindow, ResetKnown: false);
+        var window = said.Contains("weekly", StringComparison.OrdinalIgnoreCase) ? "weekly" : "session";
 
-        var zone = ResolveZone(match.Groups["zone"].Value.Trim());
+        var match = ClockPattern().Match(said);
+        if (!match.Success) return new Recognised(endedAt + UnknownWindow, ResetKnown: false, window);
+
+        var zone = match.Groups["zone"].Success
+            ? ResolveZone(match.Groups["zone"].Value.Trim())
+            : runnerZone ?? TimeZoneInfo.Local;
 
         if (!TryHour(match, out var hour24, out var minute))
-            return new Recognised(endedAt + UnknownWindow, ResetKnown: false);
+            return new Recognised(endedAt + UnknownWindow, ResetKnown: false, window);
 
         var local = TimeZoneInfo.ConvertTime(endedAt, zone);
 
@@ -67,7 +84,7 @@ public static partial class UsageLimit
         var wall = new DateTime(date.Year, date.Month, date.Day, hour24, minute, 0, DateTimeKind.Unspecified);
         var utc = TimeZoneInfo.ConvertTimeToUtc(wall, zone);
         var offset = zone.GetUtcOffset(utc);
-        return new Recognised(new DateTimeOffset(utc, TimeSpan.Zero).ToOffset(offset), ResetKnown: true);
+        return new Recognised(new DateTimeOffset(utc, TimeSpan.Zero).ToOffset(offset), ResetKnown: true, window);
     }
 
     /// <summary>
@@ -169,12 +186,14 @@ public static partial class UsageLimit
         }
     }
 
-    [GeneratedRegex(@"hit your\b.*\blimit\b", RegexOptions.IgnoreCase | RegexOptions.Singleline)]
+    [GeneratedRegex(@"hit your\b.*\blimit\b|out of usage credits\b",
+        RegexOptions.IgnoreCase | RegexOptions.Singleline)]
     private static partial Regex Mention();
 
     [GeneratedRegex(
-        @"resets\s+(?:(?<month>[A-Za-z]{3,9})\.?\s+(?<day>\d{1,2})(?:,?\s*(?<year>\d{4}))?\s*(?:at\s+)?)?" +
-        @"(?<hour>\d{1,2})(?::(?<minute>\d{2}))?\s*(?<meridiem>am|pm)\s*\(\s*(?<zone>[^)]+?)\s*\)",
+        @"resets\s+(?:(?<month>[A-Za-z]{3,9})\.?\s+(?<day>\d{1,2})(?:,\s*(?<year>\d{4}))?" +
+        @"\s*(?:,|at)?\s*)?(?<hour>\d{1,2})(?::(?<minute>\d{2}))?\s*(?<meridiem>am|pm)" +
+        @"(?:\s*\(\s*(?<zone>[^)]+?)\s*\))?",
         RegexOptions.IgnoreCase)]
     private static partial Regex ClockPattern();
 }

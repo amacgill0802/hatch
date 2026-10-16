@@ -92,6 +92,9 @@ public sealed class IncrementReport
     /// <summary>Whether <see cref="UsageLimitResetAt"/> came from what the session said, or is the one-hour backstop.</summary>
     public bool UsageLimitResetKnown { get; set; } = true;
 
+    /// <summary>"session" or "weekly" - which window the limit named in <see cref="UsageLimitResetAt"/> belongs to.</summary>
+    public string? UsageLimitWindow { get; set; }
+
     /// <summary>Whether this increment ended on a usage limit rather than an ordinary result.</summary>
     public bool UsageLimited => UsageLimitResetAt is not null;
 
@@ -389,6 +392,7 @@ public sealed class Increment(
             {
                 report.UsageLimitResetAt = hit.ResetAt;
                 report.UsageLimitResetKnown = hit.ResetKnown;
+                report.UsageLimitWindow = hit.Window;
 
                 say.Line("");
                 say.Line(hit.ResetKnown

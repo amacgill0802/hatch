@@ -46,6 +46,8 @@ public sealed class Tally
         Restarts = carried?.Restarts ?? 0;
         ExhaustedUntil = carried?.ExhaustedUntil;
         ExhaustedKnown = carried?.ExhaustedKnown ?? true;
+        ExhaustedAt = carried?.ExhaustedAt ?? (carried?.ExhaustedUntil is not null ? clock.GetUtcNow() : null);
+        ExhaustedWindow = carried?.ExhaustedWindow;
     }
 
     public int Runs { get; private set; }
@@ -70,6 +72,12 @@ public sealed class Tally
     /// <summary>Whether <see cref="ExhaustedUntil"/> came from the session, or is the one-hour backstop.</summary>
     public bool ExhaustedKnown { get; private set; } = true;
 
+    /// <summary>The instant the limit behind <see cref="ExhaustedUntil"/> was first hit - what <see cref="ClampExhausted"/> measures against.</summary>
+    public DateTimeOffset? ExhaustedAt { get; private set; }
+
+    /// <summary>"session" or "weekly" - which window the limit behind <see cref="ExhaustedUntil"/> belongs to.</summary>
+    public string? ExhaustedWindow { get; private set; }
+
     /// <summary>
     /// The reset instant has passed - told rather than let expire on its own,
     /// so the very next heartbeat says this runner is not out any more instead
@@ -79,6 +87,8 @@ public sealed class Tally
     {
         ExhaustedUntil = null;
         ExhaustedKnown = true;
+        ExhaustedAt = null;
+        ExhaustedWindow = null;
     }
 
     /// <summary>
@@ -99,6 +109,25 @@ public sealed class Tally
             ExhaustedUntil = resetsAt;
             ExhaustedKnown = true;
         }
+    }
+
+    /// <summary>
+    /// The wait's own backstop, independent of <see cref="ExhaustedUntil"/> and
+    /// of whatever the probe does or does not confirm meanwhile: once the limit
+    /// has sat for its own window's length, it no longer stands, no matter how
+    /// far out a drifted reset time read. Separate from <see cref="CorrectExhausted"/>
+    /// on purpose - if the probe this precedes turns out not to answer while an
+    /// account is spent, this still gets the runner back to work.
+    /// </summary>
+    public void ClampExhausted(DateTimeOffset now)
+    {
+        if (ExhaustedUntil is null || ExhaustedAt is not { } at) return;
+
+        var length = ExhaustedWindow is { } window && UsageLimit.WindowLengths.TryGetValue(window, out var known)
+            ? known
+            : UsageLimit.WindowLengths["session"];
+
+        if (now - at >= length) ClearExhausted();
     }
 
     /// <summary>The sentence naming what ended the run.</summary>
@@ -191,6 +220,8 @@ public sealed class Tally
         // way this clears, since a fresh incarnation carries nothing forward.
         ExhaustedUntil = report.UsageLimitResetAt;
         ExhaustedKnown = report.UsageLimitResetKnown;
+        ExhaustedAt = report.UsageLimited ? _clock.GetUtcNow() : null;
+        ExhaustedWindow = report.UsageLimited ? report.UsageLimitWindow : null;
 
         // A third list, because a usage limit is neither: nothing was moved,
         // and nothing is waiting on a person either - the next runner with
@@ -287,6 +318,8 @@ public sealed class Tally
         Preempted = _preempted,
         ExhaustedUntil = ExhaustedUntil,
         ExhaustedKnown = ExhaustedKnown,
+        ExhaustedAt = ExhaustedAt,
+        ExhaustedWindow = ExhaustedWindow,
     };
 
     /// <summary>What the night has come to so far, in one line, on the way to a restart.</summary>
@@ -997,6 +1030,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
             }
 
             paused.Clear();
+
+            tally.ClampExhausted(now);
 
             if (tally.ExhaustedUntil is { } until && now < until)
             {
