@@ -116,9 +116,10 @@ public sealed class Lifecycle(Runtime runtime)
         var branchKey = Branches.KeyOf(work);
         var branchTitle = Branches.TitleOf(work);
         var answer = Answer(work);
+        var trunkLanding = work.Landing == Landings.Trunk;
 
         var entries = chosen.Resets
-            .Select(r => runtime.Workspace(r.Path, r.BaseBranch).Enter(branchKey, branchTitle, answer))
+            .Select(r => runtime.Workspace(r.Path, r.BaseBranch).Enter(branchKey, branchTitle, answer, trunkLanding))
             .ToList();
 
         // Two or more branches and nobody has said which: the runner does not
@@ -161,8 +162,9 @@ public sealed class Lifecycle(Runtime runtime)
     public IReadOnlyList<BranchEntry> Plan(WorkDto work, Checkouts.Choice chosen)
     {
         var answer = Answer(work);
+        var trunkLanding = work.Landing == Landings.Trunk;
         return chosen.Resets
-            .Select(r => runtime.Workspace(r.Path, r.BaseBranch).Plan(Branches.KeyOf(work), Branches.TitleOf(work), answer))
+            .Select(r => runtime.Workspace(r.Path, r.BaseBranch).Plan(Branches.KeyOf(work), Branches.TitleOf(work), answer, trunkLanding))
             .ToList();
     }
 
