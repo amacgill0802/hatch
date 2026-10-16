@@ -33,12 +33,14 @@ export function queueWords(entry: QueueEntry): string {
   return `-> ${entry.toStatus?.name ?? '?'}`;
 }
 
-/** The word a hop row prints, naming which of the four reasons carried it -
+/** The word a hop row prints, naming which of the six reasons carried it -
     mirrors the CLI's `Picker.HopWord` exactly. */
 export function hopWord(hopKind: QueueEntry['hopKind'], hopUnder: string | null): string {
   if (hopKind === 'parent') return 'parent pulled';
   if (hopKind === 'epic') return 'epic';
   if (hopKind === 'under') return `under ${hopUnder}`;
+  if (hopKind === 'approve') return 'approved in advance';
+  if (hopKind === 'close') return 'closed in advance';
   return 'express';
 }
 

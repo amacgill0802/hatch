@@ -971,8 +971,8 @@ export interface QueueEntry {
       parent pulled, an epic entering the WIP section, or a story or bug
       carried under a running epic. As on `Work`. */
   hop: boolean;
-  /** Which of the four reasons carried `hop`. Null when `hop` is false. */
-  hopKind: 'express' | 'parent' | 'epic' | 'under' | null;
+  /** Which of the six reasons carried `hop`. Null when `hop` is false. */
+  hopKind: 'express' | 'parent' | 'epic' | 'under' | 'approve' | 'close' | null;
   /** The epic's key that carried this hop, when `hopKind` is `'under'` - null otherwise. */
   hopUnder: string | null;
   /** Why a row that carries no `blocked` is clear at all, where that is not
