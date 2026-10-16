@@ -427,9 +427,16 @@ public static class Prompt
                     if (entry.KeptAs.Length > 0)
                         yield return $"  This machine's copy had diverged from origin's. Its commits are kept on `{entry.KeptAs}`; the branch is origin's.";
                     yield return "  Continue on it: do not cut a new branch, and push to it, so the pull request follows.";
+                    if (entry.TrunkLanding)
+                        yield return $"  This project lands on the trunk: finish on this branch, then merge it into `{entry.Trunk}`, push `{entry.Trunk}`, delete the branch on origin, and record the landing.";
                     break;
 
                 case BranchKind.None:
+                    if (entry.TrunkLanding)
+                    {
+                        yield return $"- {where}this project lands its work on the trunk. origin has no branch for this issue, and none is wanted: the tree is on `{entry.Trunk}` at origin's tip - commit here, and cut nothing.";
+                        break;
+                    }
                     yield return $"- {where}origin has no branch for this issue. The tree is on the trunk at origin's tip; cut `{entry.Cut}` from it.";
                     yield return sharedStory is null
                         ? "  Push to it as the work goes, and open a pull request on it before this increment ends, so there is something for a person to review."
