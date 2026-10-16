@@ -27,10 +27,23 @@ public static partial class UsageLimit
     /// <summary>What a session that hit its limit said, read out of its own words.</summary>
     /// <param name="ResetAt">When the account resets - parsed from the sentence, or the one-hour backstop.</param>
     /// <param name="ResetKnown">Whether <see cref="ResetAt"/> came from the sentence, or is the backstop.</param>
-    public readonly record struct Recognised(DateTimeOffset ResetAt, bool ResetKnown);
+    /// <param name="Window">"session" or "weekly", read off the sentence itself.</param>
+    public readonly record struct Recognised(DateTimeOffset ResetAt, bool ResetKnown, string Window);
 
     /// <summary>The backstop for a limit whose reset time could not be read.</summary>
     public static readonly TimeSpan UnknownWindow = TimeSpan.FromHours(1);
+
+    /// <summary>
+    /// How long a limit's own window runs - the CLI's own copy, since it does
+    /// not reference <c>Hatch.Api</c>'s <c>Utilization.WindowLengths</c>. Keys
+    /// match the literal strings already used elsewhere: <see cref="Recognised.Window"/>,
+    /// and <c>UsageReport.Limit</c>'s own "session"/"weekly_all"/"weekly_scoped" mapping.
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, TimeSpan> WindowLengths = new Dictionary<string, TimeSpan>
+    {
+        ["session"] = TimeSpan.FromHours(5),
+        ["weekly"] = TimeSpan.FromDays(7),
+    };
 
     /// <summary>
     /// Whether <paramref name="said"/> - the CLI's own result text, or failing
@@ -42,13 +55,15 @@ public static partial class UsageLimit
         if (string.IsNullOrWhiteSpace(said)) return null;
         if (!Mention().IsMatch(said)) return null;
 
+        var window = said.Contains("weekly", StringComparison.OrdinalIgnoreCase) ? "weekly" : "session";
+
         var match = ClockPattern().Match(said);
-        if (!match.Success) return new Recognised(endedAt + UnknownWindow, ResetKnown: false);
+        if (!match.Success) return new Recognised(endedAt + UnknownWindow, ResetKnown: false, window);
 
         var zone = ResolveZone(match.Groups["zone"].Value.Trim());
 
         if (!TryHour(match, out var hour24, out var minute))
-            return new Recognised(endedAt + UnknownWindow, ResetKnown: false);
+            return new Recognised(endedAt + UnknownWindow, ResetKnown: false, window);
 
         var local = TimeZoneInfo.ConvertTime(endedAt, zone);
 
@@ -67,7 +82,7 @@ public static partial class UsageLimit
         var wall = new DateTime(date.Year, date.Month, date.Day, hour24, minute, 0, DateTimeKind.Unspecified);
         var utc = TimeZoneInfo.ConvertTimeToUtc(wall, zone);
         var offset = zone.GetUtcOffset(utc);
-        return new Recognised(new DateTimeOffset(utc, TimeSpan.Zero).ToOffset(offset), ResetKnown: true);
+        return new Recognised(new DateTimeOffset(utc, TimeSpan.Zero).ToOffset(offset), ResetKnown: true, window);
     }
 
     /// <summary>
