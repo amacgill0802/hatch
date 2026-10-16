@@ -46,6 +46,47 @@ public class IssueClaimTests
         Assert.Equal(TestClaims.Ttl, taken.TtlSeconds);
     }
 
+    /// <summary>HA-553: which playbook a claim was taken under rides with it, informationally.</summary>
+    [SkippableFact]
+    public async Task ATakeNamingAPlaybook_StoresAndReadsItBack()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        Value(await h.Claims.TakeClaim(
+            issue, new ClaimRequest("somewhere:/checkouts/one", h.PlaybookId), default));
+
+        Assert.Equal(h.PlaybookId, (await h.RowAsync(issue)).ClaimPlaybookId);
+    }
+
+    /// <summary>A take naming no playbook at all is exactly as it was before this ticket - the column stays blank.</summary>
+    [SkippableFact]
+    public async Task ATakeNamingNoPlaybook_LeavesTheColumnBlank()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        await h.TakeAsync(issue);
+
+        Assert.Null((await h.RowAsync(issue)).ClaimPlaybookId);
+    }
+
+    /// <summary>A playbook id naming no row is refused rather than silently stored.</summary>
+    [SkippableFact]
+    public async Task ATakeNamingAPlaybookThatDoesNotExist_IsRefused()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var noSuchPlaybook = h.PlaybookId + 1000;
+
+        Assert.Equal(
+            $"there is no playbook {noSuchPlaybook}",
+            BadRequest(await h.Claims.TakeClaim(
+                issue, new ClaimRequest("somewhere:/checkouts/one", noSuchPlaybook), default)));
+
+        Assert.Null((await h.RowAsync(issue)).ClaimToken);
+    }
+
     [SkippableFact]
     public async Task AClaimedIssue_RefusesASecondClaimAndSaysWhoHasIt()
     {
@@ -78,14 +119,18 @@ public class IssueClaimTests
     {
         await using var h = await NewAsync();
         var issue = await h.FileAsync();
-        var first = await h.TakeAsync(issue, "somewhere:/checkouts/one");
+        var first = await h.TakeAsync(issue, "somewhere:/checkouts/one", playbookId: h.PlaybookId);
 
         // No job ran and nobody cleared anything. The clock moved.
         h.Time.Advance(TimeSpan.FromSeconds(TestClaims.Ttl + 1));
 
+        // A takeover naming no playbook overwrites the lapsed lease's own -
+        // the column reflects this take, not the one it replaced (HA-553).
         var second = Value(await h.Claims.TakeClaim(issue, new ClaimRequest("elsewhere:/checkouts/two"), default));
         Assert.NotEqual(first, second.Token);
-        Assert.Equal("elsewhere:/checkouts/two", (await h.RowAsync(issue)).ClaimRunner);
+        var row = await h.RowAsync(issue);
+        Assert.Equal("elsewhere:/checkouts/two", row.ClaimRunner);
+        Assert.Null(row.ClaimPlaybookId);
     }
 
     [SkippableFact]
@@ -151,8 +196,8 @@ public class IssueClaimTests
         Assert.False(claims.IsLive(ClaimSnapshot.Of(await two.Issues.FirstAsync(i => i.Id == id)), Now));
 
         var mine = Guid.NewGuid();
-        Assert.True(await claims.TryTakeAsync(one, id, mine, "Nathan", "somewhere:/checkouts/one", Now, default));
-        Assert.False(await claims.TryTakeAsync(two, id, Guid.NewGuid(), "Nathan", "elsewhere:/checkouts/two", Now, default));
+        Assert.True(await claims.TryTakeAsync(one, id, mine, "Nathan", "somewhere:/checkouts/one", null, Now, default));
+        Assert.False(await claims.TryTakeAsync(two, id, Guid.NewGuid(), "Nathan", "elsewhere:/checkouts/two", null, Now, default));
 
         // Exactly one claim, and it is the first one's - the loser wrote
         // nothing at all rather than overwriting a lease it lost.
@@ -243,8 +288,8 @@ public class IssueClaimTests
 
         var mine = Guid.NewGuid();
         var theirs = Guid.NewGuid();
-        Assert.True(await claims.TryTakeAsync(one, parentId, mine, "Nathan", "somewhere:/checkouts/one", Now, default));
-        Assert.True(await claims.TryTakeAsync(two, childId, theirs, "Nathan", "elsewhere:/checkouts/two", Now, default));
+        Assert.True(await claims.TryTakeAsync(one, parentId, mine, "Nathan", "somewhere:/checkouts/one", null, Now, default));
+        Assert.True(await claims.TryTakeAsync(two, childId, theirs, "Nathan", "elsewhere:/checkouts/two", null, Now, default));
 
         // One thread cannot make both look before either lets go, so this
         // ordering ends with exactly one claim: the first check sees the
@@ -434,7 +479,7 @@ public class IssueClaimTests
     {
         await using var h = await NewAsync();
         var issue = await h.FileAsync();
-        var token = await h.TakeAsync(issue);
+        var token = await h.TakeAsync(issue, playbookId: h.PlaybookId);
 
         Assert.IsType<NoContentResult>(await h.Claims.ReleaseClaim(issue, token, default));
 
@@ -443,6 +488,7 @@ public class IssueClaimTests
         Assert.Null(row.ClaimedBy);
         Assert.Null(row.ClaimRunner);
         Assert.Null(row.ClaimHeartbeatAt);
+        Assert.Null(row.ClaimPlaybookId);
     }
 
     [SkippableFact]
@@ -496,7 +542,7 @@ public class IssueClaimTests
     {
         await using var h = await NewAsync();
         var issue = await h.FileAsync();
-        await h.TakeAsync(issue);
+        await h.TakeAsync(issue, playbookId: h.PlaybookId);
 
         // An agent that could clear another runner's claim could take a ticket
         // off it mid-increment, which is the exact failure the claim exists to
@@ -507,10 +553,13 @@ public class IssueClaimTests
         Assert.Equal(StatusCodes.Status403Forbidden, refused.StatusCode);
         Assert.Equal("clearing another runner's claim is the operator's, not an agent's", refused.Value);
 
-        // And the person may.
+        // And the person may. The operator's clobber clears the playbook id
+        // the same as every other claim column - HA-553.
         h.Caller.Key = null;
         Assert.IsType<NoContentResult>(await h.Claims.ReleaseClaim(issue, null, default));
-        Assert.Null((await h.RowAsync(issue)).ClaimToken);
+        var row = await h.RowAsync(issue);
+        Assert.Null(row.ClaimToken);
+        Assert.Null(row.ClaimPlaybookId);
     }
 
     [SkippableFact]
@@ -1133,6 +1182,7 @@ public class IssueClaimTests
         public required int ProjectId { get; init; }
         public required int StatusId { get; init; }
         public required int DoingStatusId { get; init; }
+        public required int PlaybookId { get; init; }
 
         private readonly List<HatchContext> open = [];
         private int next = 1;
@@ -1263,8 +1313,8 @@ public class IssueClaimTests
             await db.SaveChangesAsync();
         }
 
-        public async Task<Guid> TakeAsync(string key, string runner = "somewhere:/checkouts/one") =>
-            Value(await Claims.TakeClaim(key, new ClaimRequest(runner), default)).Token;
+        public async Task<Guid> TakeAsync(string key, string runner = "somewhere:/checkouts/one", int? playbookId = null) =>
+            Value(await Claims.TakeClaim(key, new ClaimRequest(runner, playbookId), default)).Token;
 
         /// <summary>
         /// Paused, written straight to the row - a person setting a ticket
@@ -1358,7 +1408,7 @@ public class IssueClaimTests
         // an issue filed straight into "todo" as actionable rather than
         // folding it with "no playbook covers this" - Preemption's own rule 1
         // and rule 3 both walk a scan, not a bare row.
-        db.Playbooks.Add(new EfHatchPlaybook
+        var playbook = new EfHatchPlaybook
         {
             FromStatusId = status.Id,
             ToStatusId = doing.Id,
@@ -1369,7 +1419,8 @@ public class IssueClaimTests
             Effort = "medium",
             CreatedAt = Now,
             UpdatedAt = Now,
-        });
+        };
+        db.Playbooks.Add(playbook);
         await db.SaveChangesAsync();
 
         return new Harness
@@ -1383,6 +1434,7 @@ public class IssueClaimTests
             ProjectId = project.Id,
             StatusId = status.Id,
             DoingStatusId = doing.Id,
+            PlaybookId = playbook.Id,
         };
     }
 
