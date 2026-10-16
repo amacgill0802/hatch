@@ -37,7 +37,7 @@ public static partial class UsageLimit
     /// that the last thing the assistant said - reports a usage limit. Null for
     /// anything else, including an ordinary error.
     /// </summary>
-    public static Recognised? Recognise(string? said, DateTimeOffset endedAt)
+    public static Recognised? Recognise(string? said, DateTimeOffset endedAt, TimeZoneInfo? runnerZone = null)
     {
         if (string.IsNullOrWhiteSpace(said)) return null;
         if (!Mention().IsMatch(said)) return null;
@@ -45,7 +45,9 @@ public static partial class UsageLimit
         var match = ClockPattern().Match(said);
         if (!match.Success) return new Recognised(endedAt + UnknownWindow, ResetKnown: false);
 
-        var zone = ResolveZone(match.Groups["zone"].Value.Trim());
+        var zone = match.Groups["zone"].Success
+            ? ResolveZone(match.Groups["zone"].Value.Trim())
+            : runnerZone ?? TimeZoneInfo.Local;
 
         if (!TryHour(match, out var hour24, out var minute))
             return new Recognised(endedAt + UnknownWindow, ResetKnown: false);
@@ -169,12 +171,14 @@ public static partial class UsageLimit
         }
     }
 
-    [GeneratedRegex(@"hit your\b.*\blimit\b", RegexOptions.IgnoreCase | RegexOptions.Singleline)]
+    [GeneratedRegex(@"hit your\b.*\blimit\b|out of usage credits\b",
+        RegexOptions.IgnoreCase | RegexOptions.Singleline)]
     private static partial Regex Mention();
 
     [GeneratedRegex(
-        @"resets\s+(?:(?<month>[A-Za-z]{3,9})\.?\s+(?<day>\d{1,2})(?:,?\s*(?<year>\d{4}))?\s*(?:at\s+)?)?" +
-        @"(?<hour>\d{1,2})(?::(?<minute>\d{2}))?\s*(?<meridiem>am|pm)\s*\(\s*(?<zone>[^)]+?)\s*\)",
+        @"resets\s+(?:(?<month>[A-Za-z]{3,9})\.?\s+(?<day>\d{1,2})(?:,\s*(?<year>\d{4}))?" +
+        @"\s*(?:,|at)?\s*)?(?<hour>\d{1,2})(?::(?<minute>\d{2}))?\s*(?<meridiem>am|pm)" +
+        @"(?:\s*\(\s*(?<zone>[^)]+?)\s*\))?",
         RegexOptions.IgnoreCase)]
     private static partial Regex ClockPattern();
 }
