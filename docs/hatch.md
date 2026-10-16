@@ -57,9 +57,14 @@ absence starts to hurt:
   approver of the issue's project — checked by `IProjectAccess.CanApproveAsync`
   in `IssuesController.cs`'s `MoveIssue`/`StageEditAsync` (shared by
   `PatchIssue`/`BulkEdit`), folded a second time in `Dispatch.Blocked`
-  (`Dispatch.cs:646-647`) beside the terminal fold so no dispatch or hop ever
-  lands one there, and refused a third time, client-side, in `hatch move`'s
-  speed bump (`IssueCommands.cs:222`). Moving *out* of a protected column, and
+  (`Dispatch.cs:803`) beside the terminal fold — with one hop excepted from
+  it by name, the **approve** hop (`hopKind != HopKinds.Approve`), the one
+  case a dispatch *does* land an issue in a protected column, because a
+  pre-approval is that owner's or approver's permission already given in
+  advance rather than a program's own judgement call (see [the hop](#the-hop)
+  and [the three paths past the terminal guard](#the-three-paths-past-the-terminal-guard))
+  — and refused a third time, client-side, in `hatch move`'s speed bump
+  (`IssueCommands.cs:256`). Moving *out* of a protected column, and
   reordering within one, need no membership — the check only fires when the
   target column changes and is itself protected. A program (an API key, or the
   runner header — `ICallerIdentity.IsProgramAsync`) is refused regardless of
@@ -2324,24 +2329,33 @@ the route by the same means, and checked a second time in the action for
 wall is off, and a keyless runner there is a program too. Reading is open, like
 the rest: an agent stalled behind a full section is entitled to know why.
 
-**And so is express, both the issue's flag and the column's.** Express decides
-which gates the loop may pass *unattended* — a key that could set either could
-carry its own ticket through the night with nobody reading it first, the same
-kind of widening a playbook or an assignee would be. `PUT
-/api/hatch/issues/{key}/express` lives on its own controller
-(`IssueExpressController`) carrying no class-level scope, cut by the same
-means as priority and expedite. The column half cannot ride `PATCH /api/hatch/statuses/{id}`
-— that route accepts the `hatch` scope on every action, so one more field on
-the ordinary status patch would have been a key ticking its own gate — so it
-gets its own action, `PUT /api/hatch/statuses/{id}/express-skips`, carrying a
-plain `[RequireRole(PersonRole.User)]` the way `ProjectsController.PutRepositories`
+**And so is pre-approval, both the issue's own level and the column's flag
+it rides on the way through.** Pre-approval decides which gates the loop
+may pass *unattended* — a key that could raise it to `express` or
+`preapproved` could carry its own ticket through the night with nobody
+reading it first, or approve it in advance, the same kind of widening a
+playbook or an assignee would be. `PUT /api/hatch/issues/{key}/pre-approval`,
+and its legacy two-level alias `PUT .../express`, both live on
+`IssuePreApprovalController`, carrying no class-level scope, cut by the
+same means as priority and expedite — and gated by what the change touches
+rather than by one blanket check: moving onto or off `express` asks the
+same question an ordinary move into `Columns.SendBack` would, through
+`IProjectAccess.CanMoveIntoAsync`; moving onto or off `preapproved`, on
+either side of the change, asks `IProjectAccess.CanApproveAsync` instead,
+since setting it is the approve press given in advance and lowering from
+it undoes that act. The column half cannot ride `PATCH
+/api/hatch/statuses/{id}` — that route accepts the `hatch` scope on every
+action, so one more field on the ordinary status patch would have been a
+key ticking its own gate — so it gets its own action, `PUT
+/api/hatch/statuses/{id}/express-skips`, carrying a plain
+`[RequireRole(PersonRole.User)]` the way `ProjectsController.PutRepositories`
 does; the rest of `StatusesController`'s actions each carry the class-level
 attribute explicitly instead, because `RequireRoleAttribute` is
 `AllowMultiple = false` and a method-level attribute silently *replaces* a
-class-level one rather than tightening it. Reading both is open like the rest:
-`express` rides `IssueDto` and `IssueCardDto`, and `expressSkips` rides
-`StatusDto`. It follows that there is no `hatch express` verb, the same as
-expedite.
+class-level one rather than tightening it. Reading both is open like the
+rest: `preApproval` rides `IssueDto` and `IssueCardDto`, and `expressSkips`
+rides `StatusDto`. It follows that there is no `hatch` verb that sets any
+of it, the same as expedite.
 
 **And so is an epic's own [Stories at once](#stories-at-once).** A key that
 could raise its own epic's ceiling could pull more of its own stories into
@@ -2429,8 +2443,8 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/work/next` | GET | See [the dispatcher](#the-dispatcher). `?heldToken=` names a [claim](#claim) of one's own, so it is not folded past as somebody else's. `?remote=` (repeatable), `?standing=` and `?clones=` declare what the runner has; absent is undeclared and folds nothing. `?mine=true` narrows the pass to the caller's own tickets — see [one more, on `next` alone](#one-more-on-next-alone); `400` when the calling key belongs to nobody. Carries `letGo`, the count of this issue's trailing dropped releases — `0` on a client too old to read it |
 | `/work/{key}` | GET | See [the dispatcher](#the-dispatcher). Same `?heldToken=`, `?remote=`, `?standing=` and `?clones=` as `/work/next`. `?mine=` is ignored — somebody who names a ticket has already chosen it. Carries `letGo` the same way |
 | `/work/queue` | GET | The same walk `next` takes, reported rather than acted on, and the same three repository flags — see [what a pass skipped](#what-a-pass-skipped). Same `?mine=true`, folding every ticket that is not the caller's own with a sentence naming whose it is. `?asRunner=<name>` answers off that runner's own row instead of the query string — `remote`, `standing`, `clones`, `mine` and `ancestorKey` come from it and may not be given alongside it; a name no live row answers to is a `400` naming it. `clearNote` names a row that is clear only because a stall mark's resume window passed, e.g. `"it stalled 18 minutes ago and resumes itself after 15 minutes"` — null on every ordinary clear row |
-| `/work/{key}/hop` | POST | Carries an [express](#express) issue, an epic entering the WIP section, a story or bug under a running epic, or a child its parent pulls, one column right with no session — see [the hop](#the-hop). Takes the same query parameters as `GET /work/{key}` and no `heldToken`: a hop takes no claim. `409` carrying the fold's sentence where the issue is blocked, and `409` where it is clear but not a hop |
-| `/work/{key}/merged` | POST | Advances an issue in the review column whose pull request has merged, one column right, with no claim and no session. `{ url, runner }` — `runner` rides the body unused, for shape parity with the requests that do read it. `409` for a column other than review, for no pull request recorded, for a `url` that does not match the one recorded (trimmed, ordinal), for no column after review, and for a claimed issue; `404` on an unknown key. See [the one path past the terminal guard](#the-one-path-past-the-terminal-guard) |
+| `/work/{key}/hop` | POST | Carries one of seven kinds one column right with no session — see [the hop](#the-hop): an issue [pre-approved](#pre-approval) at `express` or above standing in a column marked `ExpressSkips`; an epic entering the WIP section; a story or bug under a running epic; a child its parent pulls; a childless issue over its playbook's `BriefLimit`, sent back; a pre-approved issue in review whose branch merges cleanly or needs only bringing current; or a pre-approved parent in review with no pull request and every child done, carried past review into the first terminal column. Takes the same query parameters as `GET /work/{key}` and no `heldToken`: a hop takes no claim. `409` carrying the fold's sentence where the issue is blocked, and `409` where it is clear but not a hop |
+| `/work/{key}/merged` | POST | Advances an issue in the review column whose pull request has merged, one column right, with no claim and no session. `{ url, runner }` — `runner` rides the body unused, for shape parity with the requests that do read it. `409` for a column other than review, for no pull request recorded, for a `url` that does not match the one recorded (trimmed, ordinal), for no column after review, and for a claimed issue; `404` on an unknown key. See [the three paths past the terminal guard](#the-three-paths-past-the-terminal-guard) |
 | `/work/{key}/closed` | POST | Records that an issue's pull request was closed without merging (`PullRequestClosedAt`) — a runner's poll calls it once, on the first read, and does nothing further; `MergeWork.Judge` holds an approval on this until a person acts. `{ url, runner }`, the same shape parity as `/merged`. `409` for a column that does not merge the pull request, for no pull request recorded, and for a `url` that does not match the one recorded; `404` on an unknown key |
 | `/work/{key}/pushback` | POST | Carries an issue in the merge column back to the review column, with no claim and no session — judged by `MergeWork` itself, off the issue's own stored merge and build checks, not by the caller. `{ url, runner }` — `runner` rides the body unused, for shape parity. `409` for a column that does not merge the pull request, for no pull request recorded, for a `url` that does not match the one recorded (trimmed, ordinal), for a judged kind other than `pushback` (carrying the judge's own sentence), for no review column on the board or one that is the merge column itself, and for a claimed issue; `404` on an unknown key |
 | `/issues/{key}/build-check` | PUT | Keeps a runner's [build verdict](#build-check) for one repository. `{ remote, branch, sha, verdict, failing?, runner, pushedByIncrement? }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an unknown verdict, no branch or sha, and `failed` with no failing checks; a link that is not `http(s)` is stored as null; `404` on an unknown key. The column is not checked. A verdict that repeats the stored one writes no event, and one that moves the row into failed-and-flagged marks the issue stalled with it |
@@ -3229,7 +3243,7 @@ named a ticket is owed the sentence saying why it cannot move.
 
 ### The hop
 
-**The loop's own write, on the loop's own say-so.** Five kinds, asked in this
+**The loop's own write, on the loop's own say-so.** Seven kinds, asked in this
 order:
 
 1. **express** — an issue that is [express](#express) and stands in a column
@@ -3256,12 +3270,34 @@ order:
    (strictly, in board order) of `Columns.SendBack` — the column whose own
    `Target` is the implementation column (`Columns.Implementation`),
    measured off board shape rather than named — whose matched playbook sets
-   a `BriefLimit` the issue's own description is longer than. Asked last,
-   after the other four, so nothing already qualifying for one of them
-   changes meaning (HA-394). Where the issue already stands in that column,
-   or left of it, this is not a hop: going further would cross the Backlog
-   threshold and re-require prioritisation, and the twentieth condition
-   below folds the move instead.
+   a `BriefLimit` the issue's own description is longer than. Asked fifth,
+   after the other four and before the sixth and seventh, so nothing already
+   qualifying for one of the first four changes meaning (HA-394). Where the
+   issue already stands in that column, or left of it, this is not a hop:
+   going further would cross the Backlog threshold and re-require
+   prioritisation, and the twentieth condition below folds the move instead.
+6. **approve** — a [pre-approved](#pre-approval) issue standing in the
+   review column with a pull request recorded, whose branch
+   `MergeWork.Judge` says would merge cleanly or merely needs bringing
+   current (`Dispatch.cs:1033-1040`) — carried into the column ticked
+   [`MergesPullRequest`](#status) by `Columns.Advance`, the same column a
+   session would otherwise have been dispatched to from review. Where the
+   branch instead conflicts or its build has failed, `MergeWork.Judge`'s
+   own `Pushback`/`Hold`/`Pending` kinds hold it in review exactly as they
+   would an issue with no pre-approval at all — this kind never fires for
+   those.
+7. **close** — a [pre-approved](#pre-approval) parent standing in the
+   review column with *no* pull request recorded, every child done by its
+   own type's rule — an epic's own fold ignores a deferred child the way
+   [running an epic](#running-an-epic) describes, while a story, bug or
+   task counts one open child as enough to hold it (`Dispatch.cs:1042-1050`)
+   — carried into the first terminal column strictly right of review
+   (`Columns.Closes`, `Columns.cs:183-188`), whatever that column is named.
+   A childless issue is never carried by this kind: having something filed
+   under it is one of its own conditions.
+
+Both are asked last, after sendback, so neither changes the meaning of a
+row that already qualifies for one of the first five.
 
 Hatch clears a blocker in this order — deterministic first (the board's own
 shape answers it, and this fifth kind is that), heuristic second (a session
@@ -3272,15 +3308,20 @@ why this kind exists rather than leaving that fold as the only answer.
 
 `POST /api/hatch/work/{key}/hop` carries the issue to the column the kind
 names: the same column `Columns.Advance` would send a session to, for the
-first four kinds, or `Columns.SendBack` itself — a column strictly left of
-where the issue stands — for the fifth. No model runs, nothing is spent, and
-no work-log row is written, because a hop is not an increment. None of the
-first three kinds ever fires on a move that ends where it starts: a review
-self-move — resolving a conflict or a failing build — is never a hop,
-whatever column is ticked. The fourth and fifth kinds do not carry that
-exclusion, each for its own reason: the fourth's own gap on a `ParentPulls`
-review column, and the fifth's own measurement off `Columns.SendBack` rather
-than off `to`.
+first four kinds and the sixth, `Columns.SendBack` itself — a column
+strictly left of where the issue stands — for the fifth, or
+`Columns.Closes` — the first terminal column strictly right of review —
+for the seventh. No model runs, nothing is spent, and no work-log row is
+written, because a hop is not an increment. None of the first three kinds
+ever fires on a move that ends where it starts: a review self-move —
+resolving a conflict or a failing build — is never a hop, whatever column
+is ticked. The fourth and fifth kinds do not carry that exclusion, each for
+its own reason: the fourth's own gap on a `ParentPulls` review column, and
+the fifth's own measurement off `Columns.SendBack` rather than off `to`.
+The sixth and seventh never need the exclusion stated at all: each measures
+its own target off `Columns.Advance` or `Columns.Closes` directly rather
+than off `to`, and neither ever returns the column the issue already
+stands in — so the column named is never the column it came from.
 
 It takes the same query parameters `GET /api/hatch/work/{key}` takes, and no
 `heldToken`: **a hop takes no claim.** A claim protects a session that runs for
@@ -3301,18 +3342,35 @@ Two answers, both `409`, and each carries the sentence a reader would see on
   implementation column, or a sibling already in flight, or a childless issue
   over its playbook's `BriefLimit` with no column to send it back to. The
   sentence is exactly the one `Blocked` already gives for that fold.
-- The issue is clear, but is not a hop — none of the five kinds above applies,
+- The issue is clear, but is not a hop — none of the seven kinds above applies,
   or the move is a review self-move. A session moves this issue, and a hop
   does not.
 
 Otherwise the move is made: the issue's rank is set with
-`RankService.BottomAsync`, the same as any other move, and the history gets one
-`status_changed` event naming the caller as the actor, carrying one of four
-shapes depending on which kind carried it: `{ from, to, express: true }`,
-`{ from, to, epic: true }`, `{ from, to, under: "<epicKey>" }`, or
-`{ from, to, pulled: true }` for a parent pull — the same shape
+`RankService.BottomAsync`, the same as any other move, and the history gets
+one `status_changed` event naming the caller as the actor, carrying one of
+six shapes depending on which kind carried it: `{ from, to, express: true }`,
+`{ from, to, epic: true }`, `{ from, to, under: "<epicKey>" }`,
+`{ from, to, pulled: true }` for a parent pull, `{ from, to, sendback: true,
+length, limit }` naming the brief's own length and its playbook's own
+limit, or `{ from, to, preapproved: true }` — shared by the sixth kind and
+the seventh, the only two that share a shape — the same shape
 `IssuesController.MoveIssue` writes, with one more field, so a card that
 passed a gate with nobody present says so on its own trail.
+
+Both the sixth and seventh kinds write a second thing in the same save as
+the move: a comment, naming the ancestor the pre-approval was read from
+where it is inherited, or saying it stands on the issue's own row where it
+is not (`WorkController.cs:505-526`). The approve hop's own comment quotes
+`MergeWork.Judge`'s own sentence for the branch, the same sentence `hatch
+queue` would otherwise have printed for it: *"Approved by its pre-approval
+from AER-12: \<the merge judge's own sentence\>."* where the level is
+inherited, or *"Approved by its pre-approval on its own row: \<the merge
+judge's own sentence\>."* where it is the issue's own. The close hop's own
+comment is the fixed sentence every child being done already is: *"Closed
+by its pre-approval from AER-12: every child is done."*, or *"Closed by
+its pre-approval on its own row: every child is done."* on the issue's own
+level.
 
 **Why the server performs the hop, on its own route, rather than the CLI
 calling the ordinary move endpoint:** `IssuesController.MoveIssue` moves
@@ -3323,7 +3381,7 @@ keeps the rule that calls a row a hop and the write that performs it in one
 place; see [where the loop's rules live](#where-the-loops-rules-live).
 
 `WorkDto.Hop` and `QueueEntryDto.Hop` say which rows are hops, `HopKind` says
-which of the four carried it, and `HopUnder` carries the epic's key when
+which of the seven carried it, and `HopUnder` carries the epic's key when
 `HopKind` is `under` — null for every other kind. On `WorkDto`, `Playbook` is
 always null where `Hop` is true, even where one covers the move, so no client
 can spawn a session for a hop by accident.
@@ -3677,23 +3735,49 @@ already says the pull-request, merge and update halves "run on their own
 clock... rather than this poll's" (`:4358-4361`) without naming the clock —
 this new section is that explanation.
 
-### The one path past the terminal guard
+### The three paths past the terminal guard
 
-Nothing above ever lands an issue in a terminal column — that is what
-`Columns.Target` is for, dispatching review to itself rather than past it, and
-what `Dispatch.Blocked` refuses in every other case with *"the next column is
-\<name\>, and only the operator moves work there"*. `POST
-/work/{key}/merged` is the one exception, and it is an exception on purpose: a
-merged pull request **is** the operator's decision to ship, made on the forge
-and reported back rather than pressed on the board. So this route calls
+Nothing above ever lands an issue in a terminal column, and nothing above
+ever lands one in a protected column either — that is what `Columns.Target`
+is for, dispatching review to itself rather than past either, and what
+`Dispatch.Blocked` refuses in every other case with *"the next column is
+\<name\>, and only the operator moves work there"* or *"...and only its
+approvers move work there"*. Three routes cross one of the two guards
+anyway, each for its own reason, and none of them is a program's own
+judgement call.
+
+`POST /work/{key}/merged` is the first, and the oldest: a merged pull
+request **is** the operator's decision to ship, made on the forge and
+reported back rather than pressed on the board. So this route calls
 `Columns.Advance` — the next column, terminal or not — and carries its own
 refusals rather than `Dispatch.Blocked`'s: the issue must be standing in
 whichever column is measured as review right now, it must carry a recorded
 pull request url, the url the caller names must match it exactly (trimmed,
-ordinal), there must be a column after review to advance into, and the issue
-must not be claimed. No ready date, no assignee, no WIP section and no
-dependency gate it — those all gate an agent picking up work, and nothing here
-is an agent picking up work.
+ordinal), there must be a column after review to advance into, and the
+issue must not be claimed. No ready date, no assignee, no WIP section and
+no dependency gate it — those all gate an agent picking up work, and
+nothing here is an agent picking up work.
+
+The **approve** hop is the second, and it crosses the *protected* fold
+rather than the terminal one: `Dispatch.Blocked`'s own protected check
+reads `to.IsProtected && hopKind != HopKinds.Approve` (`Dispatch.cs:803`),
+so a pre-approved issue in review whose branch `MergeWork.Judge` would
+merge or bring current is the one case a dispatch lands work in a
+protected column at all. It is a path past the guard and not a hole in it
+for the same reason `/merged` is: the move in is a decision an owner or
+approver already made, in advance, on the ticket — pre-approval is the
+approve press given before the fact, not a program judging for itself that
+a branch is fine to ship.
+
+The **close** hop is the third, and it crosses the *terminal* fold instead,
+beside `/merged`: `Dispatch.Blocked`'s own terminal check reads
+`to.IsTerminal && hopKind != HopKinds.Close` (`Dispatch.cs:800`), so a
+pre-approved parent in review with no pull request recorded, and every
+child done, is carried straight into the first terminal column right of
+review, with nobody pressing anything on the board. The reason is the same
+as the approve hop's: the move is a decision an owner or approver already
+made in advance, carried out the moment the board can see it is true,
+rather than the operator's own press on a forge or a card.
 
 ### One more, on `next` alone
 
@@ -3995,11 +4079,19 @@ and the twentieth a fact about the walk rather than either. An issue is the
 loop's to pick up when it meets every one before it, and the sentence saying
 which one it failed is what `work/queue` reports:
 
-1. **There is somewhere for it to go, and that place is not terminal.** For
-   most columns that is the column to their right: the end of the board is not a
-   transition, and the step into a terminal column is the operator's — *only the
-   operator decides that something shipped*. The review column is dispatched to
-   itself instead (see the twelfth condition), and never into the column after it.
+1. **There is somewhere for it to go, and that place is neither terminal
+   nor protected — unless this is the close hop or the approve hop, each
+   of which is a decision a person already made.** For most columns that
+   is the column to their right: the end of the board is not a transition,
+   the step into a terminal column is the operator's, and the step into a
+   protected one is an owner's or approver's — *only the operator decides
+   that something shipped, and only an owner or approver decides what else
+   may pass*. The close hop crosses the terminal fold anyway, and the
+   approve hop the protected one, because a pre-approval already given is
+   that decision, made in advance (`Dispatch.cs:800`, `:803`) — see [the
+   three paths past the terminal guard](#the-three-paths-past-the-terminal-guard).
+   The review column is dispatched to itself instead of either (see the
+   twelfth condition), and never into the column after it.
 2. **No live [claim](#claim) is held by somebody else.** It is the only fold
    that says *this is being worked right now*; everything below it is about
    whether the issue could be worked at all, which is why nothing else is said
@@ -4100,15 +4192,22 @@ which one it failed is what `work/queue` reports:
     about the board rather than the loop's policy, so `work/{key}` is refused
     by it too. Not asked for a task, for an epic moving itself, or for an
     issue whose parent is not an epic.
-16. **In review, its branch conflicts with the trunk or its build failed.** An
-    issue in the review column is the loop's only when a [merge check](#merge-check)
-    says `conflicted`, or — on a branch that merges cleanly — when the
-    [build check](#build-check) on the branch's current tip says `failed`. Both
-    are decided by a runner and by code, never by a prompt, and conflicts come
-    first. The sentences for a passing build, a running one, one nobody has read
-    on this tip, no checks, no branch, more than one branch and an unchecked one
-    are what `hatch queue` prints. A clean branch that has merely fallen behind
-    the trunk is left alone. See [the dispatcher](#the-issue-in-review-whose-branch-conflicts-or-whose-build-failed-is-dispatched-to-review).
+16. **In review, its branch conflicts with the trunk or its build failed —
+    or it is [pre-approved](#pre-approval) and `MergeWork.Judge` would merge
+    it or bring it current.** An issue in the review column is the loop's
+    when a [merge check](#merge-check) says `conflicted`, or — on a branch
+    that merges cleanly — when the [build check](#build-check) on the
+    branch's current tip says `failed`; both are decided by a runner and by
+    code, never by a prompt, and conflicts come first. A pre-approved issue
+    needs no session either, the same way a conflict or a failed build does
+    not — it is [the approve hop](#the-hop) instead, carried into the merge
+    column with nobody reading the diff. The sentences for a passing build,
+    a running one, one nobody has read on this tip, no checks, no branch,
+    more than one branch and an unchecked one are what `hatch queue`
+    prints. A clean branch that has merely fallen behind the trunk is left
+    alone — but no longer universally: once the issue is pre-approved,
+    falling behind alone is enough for the approve hop to bring it current,
+    with no session either. See [the dispatcher](#the-issue-in-review-whose-branch-conflicts-or-whose-build-failed-is-dispatched-to-review).
 17. **A playbook covers that transition for that type — or it does not need
     one.** Without one there is nothing to say to the session — and a column no
     playbook leads out of is exactly [how a column becomes the
@@ -4159,6 +4258,24 @@ which one it failed is what `work/queue` reports:
     the first four need none. Where no such column exists, or the issue
     already stands in it or left of it, this is not a hop, and condition
     nineteen, just below, folds the move instead.
+
+    A [pre-approved](#pre-approval) issue standing in the review column, with a
+    pull request recorded, whose branch `MergeWork.Judge` says would merge
+    cleanly or needs only bringing current, is a sixth kind of hop — carried
+    into the column ticked `MergesPullRequest` with nobody reading the diff
+    first, since a pre-approval already is that reading. Where the branch
+    instead conflicts or its build has failed, this is not that hop; the
+    sixteenth condition's own fold governs it exactly as it would an issue
+    with no pre-approval at all.
+
+    A pre-approved parent standing in the review column with no pull request
+    recorded, and no child left open by its own type's rule — an epic's own
+    fold ignores a deferred child, where anything else counts one open child
+    as enough to hold it — is a seventh kind of hop, carried past the terminal
+    fold the first condition would otherwise raise, straight into the first
+    terminal column strictly right of review. A childless pre-approved issue
+    is never carried this way: nothing is filed under it for every child to be
+    done of, so it is not this kind of hop at all.
 19. **A childless issue's brief is no longer than its matched playbook's own
     `BriefLimit`, where one is set.** Not asked at all where the matched
     playbook leaves `BriefLimit` null, or where the issue already has a
@@ -4776,8 +4893,8 @@ a fresh verdict says it is clean again." - and skipped until a fresh verdict
 agrees it is still clean. Otherwise it runs `gh pr merge <url> --merge --admin
 --match-head-commit <sha>`; a refusal is reported the same way, once per sha -
 "gh would not merge its pull request - {why}". A merge that goes through calls
-`/work/{key}/merged`, the same route [the one path past the terminal
-guard](#the-one-path-past-the-terminal-guard) already documents an operator's
+`/work/{key}/merged`, the same route [the three paths past the terminal
+guard](#the-three-paths-past-the-terminal-guard) already documents an operator's
 own report of a merge taking, comments "Merged its pull request at {sha}, as
 {runner}.", and prints the same `hatch: HA-12 pull request merged -> Done`
 line the half above prints for its own advance.
@@ -5726,8 +5843,10 @@ board itself draws that column in. An emergency row is marked `!!` and an
 expedited row `! ` — both two characters, so the columns after it still line
 up — so a queue reordered by one says why. A clear row that is a
 [hop](#the-hop) reads `-> <column>  (express, no session)`,
-`(parent pulled, no session)`, `(epic, no session)` or `(under <epic>, no
-session)` in place of the bare arrow, naming which of the four carried it, so
+`(parent pulled, no session)`, `(epic, no session)`, `(under <epic>, no
+session)`, `(sent back, no session)` or `(pre-approved, no session)` —
+the last shared by the approve and close kinds — in place of the bare
+arrow, naming which of the seven carried it, so
 it reads differently from a row `go-to-work` would spawn a session for even
 though both print no reason to fold past. A row that is clear only
 because a stall mark's resume window has passed reads `clear for <column> ->
@@ -5784,15 +5903,22 @@ so the trail says who did what without anybody being asked to record it.
 - **Move work into a terminal column.** Implementation ends in *review*, with a
   comment saying what landed and what did not. Only the operator decides that
   something shipped, and the board enforces it: the dispatcher refuses a
-  transition into a terminal column outright.
+  transition into a terminal column outright, or a pre-approval already
+  given carries it through instead — the close hop, the one case a pass
+  crosses this fold on a person's standing decision rather than on a
+  person's own press.
 - **Move work into a protected column.** Only an owner or approver can, the
   same gate [the one permission](#one-permission-beyond-the-role) describes —
-  but once an issue is there with `MergesPullRequest` ticked, merging it is
+  or, the same way, a pre-approval already given carries it through with no
+  session: the approve hop, since a pre-approval is that owner's or
+  approver's own permission, given in advance of the move rather than at
+  it. Once an issue is there with `MergesPullRequest` ticked, merging it is
   [the merge train](#the-merge-train)'s, not a click the operator makes on
   the forge. The column itself is not terminal, so nothing above is broken:
-  the move in is still a person's, only the merge out is not — and the train
-  still makes that move while this runner is paused or out of usage, since it
-  spends nothing a session would (`GoToWork.cs:947-950, 995-997`, HA-463).
+  the move in is still a person's — made at the move, or standing from
+  before it — only the merge out is not — and the train still makes that
+  move while this runner is paused or out of usage, since it spends
+  nothing a session would (`GoToWork.cs:947-950, 995-997`, HA-463).
 - **Shelve work in a [deferred](#status) column.** Whether something is worth
   doing at all is the same kind of call, and it is refused the same way: `hatch
   move` will not take a ticket there, and no pass dispatches one out of there.
