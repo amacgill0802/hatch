@@ -881,6 +881,58 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.ToTable("TrunkBuilds", "hatch");
                 });
 
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchVerdict", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset?>("AppliedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Author")
+                        .IsRequired()
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<Guid>("ClaimToken")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Findings")
+                        .HasMaxLength(100000)
+                        .HasColumnType("character varying(100000)");
+
+                    b.Property<long>("IssueId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("PlaybookId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("StatusId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Verdict")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlaybookId");
+
+                    b.HasIndex("StatusId");
+
+                    b.HasIndex("IssueId", "ClaimToken")
+                        .IsUnique();
+
+                    b.ToTable("Verdicts", "hatch");
+                });
+
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchWipLimit", b =>
                 {
                     b.Property<int>("Id")
@@ -1153,6 +1205,33 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Navigation("BugIssue");
                 });
 
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchVerdict", b =>
+                {
+                    b.HasOne("Hatch.Api.Modules.Hatch.EfHatchIssue", "Issue")
+                        .WithMany("Verdicts")
+                        .HasForeignKey("IssueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Hatch.Api.Modules.Hatch.EfHatchPlaybook", "Playbook")
+                        .WithMany()
+                        .HasForeignKey("PlaybookId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Hatch.Api.Modules.Hatch.EfHatchStatus", "Status")
+                        .WithMany()
+                        .HasForeignKey("StatusId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Issue");
+
+                    b.Navigation("Playbook");
+
+                    b.Navigation("Status");
+                });
+
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchWorkLogEntry", b =>
                 {
                     b.HasOne("Hatch.Api.Modules.Hatch.EfHatchIssue", "Issue")
@@ -1180,6 +1259,8 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Navigation("Events");
 
                     b.Navigation("MergeChecks");
+
+                    b.Navigation("Verdicts");
 
                     b.Navigation("WorkLog");
                 });
