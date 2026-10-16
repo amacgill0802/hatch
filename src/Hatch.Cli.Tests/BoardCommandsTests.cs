@@ -22,11 +22,14 @@ public sealed class BoardCommandsTests
 
     private static IssueCardDto Card(
         string key, int statusId, string type = "task", string? readyAt = null, string? dueAt = null,
-        bool expedited = false, bool express = false, string? priority = null) =>
+        bool expedited = false, bool express = false, string? priority = null,
+        string? preApproval = null, string? preApprovalFrom = null) =>
         new(
             key, "AER", type, $"{key}'s title", statusId, 1000, null, readyAt, dueAt,
             Expedited: expedited, Express: express,
-            Priority: priority ?? (expedited ? PriorityLevels.ExpeditedName : PriorityLevels.NormalName));
+            Priority: priority ?? (expedited ? PriorityLevels.ExpeditedName : PriorityLevels.NormalName),
+            PreApproval: preApproval ?? (express ? PreApprovalLevels.ExpressName : PreApprovalLevels.NoneName),
+            PreApprovalFrom: preApprovalFrom);
 
     [Fact]
     public async Task The_board_is_every_column_and_what_is_on_it_with_the_terminal_one_marked()
@@ -656,14 +659,15 @@ public sealed class BoardCommandsTests
     {
         using var h = new CliHarness();
         h.Wire.Json("GET", "/api/hatch/board", ABoard(
-            Card("AER-1", 2, express: true), Card("AER-2", 2), Card("AER-3", 3)));
+            Card("AER-1", 2, express: true), Card("AER-2", 2),
+            Card("AER-4", 2, preApproval: PreApprovalLevels.PreApprovedName), Card("AER-3", 3)));
 
         Assert.Equal(0, await new BoardCommands(h.Cli).BoardAsync([], default));
 
         Assert.Equal(
             """
             Backlog: 0
-            To Do: 2  (1 express)
+            To Do: 3  (1 express)  (1 pre-approved)
             In Progress: 1
             Done (terminal): 0
             """.ReplaceLineEndings("\n"),
@@ -678,6 +682,16 @@ public sealed class BoardCommandsTests
 
         Assert.Equal(0, await new BoardCommands(h.Cli).NextAsync([], default));
         Assert.Equal("AER-1  [task]  AER-1's title  (express)", h.Said);
+    }
+
+    [Fact]
+    public async Task Next_marks_the_card_it_prints_when_it_is_preapproved()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/board", ABoard(Card("AER-1", 2, preApproval: PreApprovalLevels.PreApprovedName)));
+
+        Assert.Equal(0, await new BoardCommands(h.Cli).NextAsync([], default));
+        Assert.Equal("AER-1  [task]  AER-1's title  (pre-approved)", h.Said);
     }
 
     [Fact]
