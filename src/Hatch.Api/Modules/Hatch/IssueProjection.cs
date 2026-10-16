@@ -140,6 +140,19 @@ public static class IssueProjection
             .GroupBy(m => m.IssueId)
             .ToDictionary(g => g.Key, g => (IReadOnlyList<EfHatchMergeCheck>)g.ToList());
 
+        // What each repository holds for the batch, one query for all of it -
+        // the same reasoning the verdicts above get. Ordered by canonical
+        // remote so the list a page draws is stable between reads. No
+        // raw-entity-keyed dictionary alongside it: nothing here feeds a
+        // judge the way mergeChecksByIssue feeds MergeWork.Judge.
+        var landingRows = await db.Landings.AsNoTracking()
+            .Where(l => ids.Contains(l.IssueId))
+            .OrderBy(l => l.Canonical)
+            .ToListAsync(ct);
+        var landings = landingRows
+            .GroupBy(l => l.IssueId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<LandingDto>)g.Select(IssueLandings.Project).ToList());
+
         var buildCheckRows = await db.BuildChecks.AsNoTracking()
             .Where(b => ids.Contains(b.IssueId))
             .OrderBy(b => b.Canonical)
@@ -216,7 +229,8 @@ public static class IssueProjection
                 issue.StalledWhy,
                 issue.Held,
                 claims.StallResumeSeconds,
-                mergeWork);
+                mergeWork,
+                landings.TryGetValue(issue.Id, out var landed) ? landed : []);
         });
     }
 

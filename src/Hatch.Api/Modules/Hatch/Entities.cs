@@ -1623,6 +1623,17 @@ public class EfHatchIssueEvent
     public const string MergeCheckChanged = "merge_check_changed";
 
     /// <summary>
+    /// What a repository holds for this issue's branch changed - see
+    /// <see cref="EfHatchLanding"/>. The payload carries the canonical remote,
+    /// because an issue may hold one landing per repository, and <c>from</c>
+    /// and <c>to</c> as <c>{ sha, containedBy }</c> (<c>from</c> is null for the
+    /// first landing on that repository). A write that repeats what is stored
+    /// writes none: the trail is for when a sha landed or was confirmed
+    /// contained, not for how often somebody looked.
+    /// </summary>
+    public const string LandingChanged = "landing_changed";
+
+    /// <summary>
     /// A runner's verdict on the build on the tip of the issue's branch changed -
     /// see <see cref="EfHatchBuildCheck"/>. The payload carries the canonical
     /// remote, because an issue may hold one verdict per repository, and
