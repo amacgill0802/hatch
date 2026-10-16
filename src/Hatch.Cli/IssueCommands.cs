@@ -67,6 +67,15 @@ public sealed class IssueCommands(Cli cli)
         "  whole of \"show me the review\".",
     ];
 
+    public static readonly string[] LandedUsage =
+    [
+        "usage: hatch landed AER-12 [<sha>] [--repo <path>]",
+        "",
+        "  Records that AER-12's work reached the trunk, in this checkout's origin",
+        "  remote, at <sha> or HEAD. A sha not on the trunk here is refused before",
+        "  anything is sent.",
+    ];
+
     /// <summary>The ticket, rendered plainly rather than cleverly.</summary>
     public async Task<int> ShowAsync(string[] args, CancellationToken ct)
     {
@@ -293,6 +302,61 @@ public sealed class IssueCommands(Cli cli)
         cli.Say.Line(patched?.PullRequestUrl is { Length: > 0 } now
             ? now
             : $"{patched?.Key ?? key} points at no pull request");
+        return 0;
+    }
+
+    /// <summary>
+    /// Records that an issue's work reached the trunk, in this checkout's
+    /// origin remote, at a sha confirmed to be on it before anything is sent.
+    /// </summary>
+    public async Task<int> LandedAsync(string[] args, CancellationToken ct)
+    {
+        if (Usage.Wanted(args)) return Usage.Print(cli.Say, LandedUsage);
+
+        var positional = new List<string>();
+        string? repo = null;
+        for (var i = 0; i < args.Length; i++)
+        {
+            if (args[i] == "--repo")
+            {
+                if (i + 1 >= args.Length) return Usage.Refuse(cli.Say, "landed --repo takes a path", LandedUsage);
+                repo = args[++i];
+            }
+            else positional.Add(args[i]);
+        }
+        if (positional.Count is 0 or > 2) return Usage.Refuse(cli.Say, "landed takes one issue key and an optional sha", LandedUsage);
+
+        var key = positional[0];
+        var sha = positional.Count == 2 ? positional[1] : "HEAD";
+        var root = repo ?? Directory.GetCurrentDirectory();
+
+        var workspace = new Workspace(root, null, cli.Say.Line, cli.Say.Complain);
+        if (Checkouts.Origin(root) is not { Length: > 0 } remote)
+        {
+            cli.Say.Complain($"hatch: {root} - has no origin remote, so a project's binding could never match it");
+            return 1;
+        }
+
+        if (workspace.BaseBranch() is not { Length: > 0 } trunk)
+        {
+            cli.Say.Complain("hatch: cannot tell which branch is the trunk here - name it in HATCH_BASE_BRANCH");
+            return 1;
+        }
+
+        var (full, onTrunk) = workspace.ResolveOnTrunk(sha, trunk);
+        if (full is null)
+        {
+            cli.Say.Complain($"hatch: {sha} does not resolve to a commit here");
+            return 1;
+        }
+        if (!onTrunk)
+        {
+            cli.Say.Complain($"hatch: {sha} is not on {trunk} here - land it first");
+            return 1;
+        }
+
+        await cli.Board.LandedAsync(key, new LandingWriteRequest(remote, full, trunk, ContainedBy: null, Runner: null), ct);
+        cli.Say.Line($"{key}: landed on {trunk} at {full[..7]}");
         return 0;
     }
 }

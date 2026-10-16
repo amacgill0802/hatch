@@ -304,7 +304,7 @@ public static class Checkouts
     /// A checkout without one is still a checkout - just not one a project's
     /// binding can ever match.
     /// </summary>
-    private static string? Origin(string root)
+    internal static string? Origin(string root)
     {
         var start = new ProcessStartInfo
         {
