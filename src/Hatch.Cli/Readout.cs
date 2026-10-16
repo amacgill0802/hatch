@@ -242,7 +242,7 @@ public static class Readout
         string Row(string text) => Clip(text, width);
         string Warn(string text) => color ? Yellow + Row(text) + Reset : Row(text);
 
-        if (controls.Confirming == Confirming.Cancel) return [Warn("cancel now? y to confirm, any other key to go back")];
+        if (controls.Confirming == Confirming.Cancel) return [Warn("cancel? y to confirm, any other key to go back")];
         if (controls.Confirming == Confirming.Skip) return [Warn("skip this increment? y to confirm, any other key to go back")];
         if (controls.StopArmed) return [Warn("stopping after this increment — s to undo")];
         if (controls.Paused) return [Warn("paused from the keyboard — p to resume")];
@@ -250,14 +250,15 @@ public static class Readout
         if (controls.LongLegend)
             return
             [
+                Row("n   check now, skips the wait"),
                 Row("s   stop after this increment, undo with s"),
-                Row("c   cancel now, asks first"),
+                Row("c   cancel, asks first"),
                 Row("p   pause and resume"),
                 Row("k   skip this increment, asks first"),
                 Row("?   back to the short legend"),
             ];
 
-        return [Row("s stop after this increment   c cancel now   p pause   k skip this increment   ? more")];
+        return [Row("n check now   s stop after this increment   c cancel   p pause   k skip this increment   ? more")];
     }
 
     private static string Clip(string text, int width) => width > 0 && text.Length > width ? text[..width] : text;

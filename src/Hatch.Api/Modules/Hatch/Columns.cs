@@ -151,4 +151,19 @@ public static class Columns
         Implementation(statuses) is { } implementation
             ? statuses.FirstOrDefault(s => Target(statuses, s)?.Id == implementation.Id)
             : null;
+
+    /// <summary>
+    /// The last stop before shipped, named the way a close hop lands there: the
+    /// first terminal column strictly right of <paramref name="from"/>, or null
+    /// where there is none - a board with no terminal column anywhere, or where
+    /// <paramref name="from"/> is the rightmost column already. Measured off the
+    /// board's own shape, the way every other landmark in this file is - see
+    /// HA-472.
+    /// </summary>
+    public static EfHatchStatus? Closes(List<EfHatchStatus> statuses, EfHatchStatus from)
+    {
+        var board = Board(statuses);
+        var at = board.FindIndex(s => s.Id == from.Id);
+        return at >= 0 ? board.Skip(at + 1).FirstOrDefault(s => s.IsTerminal) : null;
+    }
 }
