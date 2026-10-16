@@ -4,7 +4,7 @@ namespace Hatch.Api.Modules.Hatch;
 
 /// <summary>
 /// Hatch's slice of the Hatch database: the <c>hatch</c> schema, its own
-/// migration history, nineteen tables.
+/// migration history, twenty tables.
 /// </summary>
 public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(options), IModuleContext
 {
@@ -26,6 +26,7 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
     public DbSet<EfHatchWorkLogEntry> WorkLog => Set<EfHatchWorkLogEntry>();
     public DbSet<EfHatchMergeCheck> MergeChecks => Set<EfHatchMergeCheck>();
     public DbSet<EfHatchBuildCheck> BuildChecks => Set<EfHatchBuildCheck>();
+    public DbSet<EfHatchLanding> Landings => Set<EfHatchLanding>();
     public DbSet<EfHatchTrunkBuild> TrunkBuilds => Set<EfHatchTrunkBuild>();
     public DbSet<EfHatchVerdict> Verdicts => Set<EfHatchVerdict>();
 
@@ -213,7 +214,7 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
         // sequential migration run would.
         modelBuilder.Entity<EfHatchProject>(e =>
         {
-            e.Property(p => p.Landing).HasDefaultValue(Landings.PullRequest);
+            e.Property(p => p.Landing).HasDefaultValue(global::Hatch.Contracts.Landings.PullRequest);
             e.Property(p => p.ChecksRequired).HasDefaultValue(true);
         });
 
@@ -269,6 +270,14 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
                 .OnDelete(DeleteBehavior.Cascade);
 
             e.Property(b => b.Failing).HasColumnType("jsonb");
+        });
+
+        modelBuilder.Entity<EfHatchLanding>(e =>
+        {
+            e.HasOne(l => l.Issue)
+                .WithMany(i => i.Landings)
+                .HasForeignKey(l => l.IssueId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         // Cascade with the issue, the same as MergeChecks/BuildChecks above.
