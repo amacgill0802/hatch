@@ -28,7 +28,7 @@ public static class Keys
         if (confirming == Confirming.Cancel)
         {
             return key is 'y' or 'Y'
-                ? (stopArmed, paused, longLegend, Confirming.None, CancelNow: true, SkipNow: false, CheckNow: false, Log: "cancel now — confirmed (c, y)")
+                ? (stopArmed, paused, longLegend, Confirming.None, CancelNow: true, SkipNow: false, CheckNow: false, Log: "cancel — confirmed (c, y)")
                 : (stopArmed, paused, longLegend, Confirming.None, CancelNow: false, SkipNow: false, CheckNow: false, Log: null);
         }
 
