@@ -1298,9 +1298,11 @@ is a fact about git that only a runner can see, so the client applies that on
 top. `ReviewCheckDto` carries the same two fields; every row in that list is its
 own branch's, since a waiting task is left out.
 
-**Known edges.** A story whose pull request merges early leaves later tasks
-seeing `AlreadyMerged` and cutting a `-2` branch: a gap task filed after the
-merge gets a new pull request, and that is accepted. Turning the setting off
+**Known edges.** A story whose pull request merges early leaves a later task —
+a gap filed after the merge — with no branch to join and no pull request coming
+to carry it. The runner sees that (every branch the story has on origin is
+already in the trunk) and hands the task back to its own key, so it is cut its
+own branch and opens its own pull request, as it would with sharing off. Turning the setting off
 while tasks wait leaves them waiting on nothing — they are no longer "waiting"
 by the definition above, so the story's merge no longer takes them — and a
 person moves them. A conflict or failing build on the shared branch holds every
@@ -4470,6 +4472,23 @@ and before the spawn:
   silently.
 - **Every checkout that has a branch for the key** is treated this way; the others
   stay on the trunk.
+
+**A task that shares its story's branch is entered on the story's.** The server
+names the branch for a dispatch (`WorkDto.BranchKey` — see
+[One pull request](#one-pull-request)); every step above — the branch of
+record, the cut name, the which-branch question, the push for a usage limit,
+the trunk merged into the branch on leaving, the verdict reported afterwards —
+then reads the story's key and title, and the verdict is filed on the story. The
+which-branch question is still asked on the task, since the task is what its
+answer unblocks. The runner takes the server's word back in two cases it alone
+can see in git (`Lifecycle.Settle`): the task already has an unmerged branch of
+its own on origin, or every branch the story has there is already in the trunk.
+In both the dispatch is the task's own, as with sharing off. The prompt's
+`## The branch` section says all of this in the first case, and a task on the
+story's branch is told in place of `## Opening a pull request` not to open one
+and not to run `hatch pr` — the story's closeout is told the one is its to open.
+The runner's own check that an increment ending in review left no branch
+without a pull request does not apply to such a task.
 
 It is a **merge and never a rebase**, and nothing here is force-pushed: a branch
 under review is somebody's to read, and that is the history this repository

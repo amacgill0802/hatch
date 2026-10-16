@@ -230,7 +230,9 @@ public sealed class WorkCommand(Runtime runtime)
 
         // What the branch step would do, read from the refs as they stand - so
         // as of the last fetch, and nothing here fetches, checks out or merges.
-        var plan = new Lifecycle(runtime).Plan(work, chosen);
+        var lifecycle = new Lifecycle(runtime);
+        work = lifecycle.Settle(work, chosen);
+        var plan = lifecycle.Plan(work, chosen);
         foreach (var entry in plan) runtime.Say.Line($"# would enter: {entry.Sentence()}");
         runtime.Say.Line("");
         runtime.Say.Lines(Prompt.Compose(work, chosen.Repositories, plan).Split('\n'));
@@ -482,6 +484,9 @@ public sealed class WorkCommand(Runtime runtime)
             }
 
             var lifecycle = new Lifecycle(runtime);
+
+            // Which branch the work goes on - see Lifecycle.Settle.
+            work = lifecycle.Settle(work, chosen);
 
             // The loop's own recheck, through the same call: the board's verdict
             // was read before the claim and the reset, and a conflict that has

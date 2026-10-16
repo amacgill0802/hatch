@@ -117,6 +117,14 @@ public sealed partial class Workspace
         }, null);
     }
 
+    public BranchPresence Presence(string key)
+    {
+        if (BaseBranch() is not { Length: > 0 } trunk) return BranchPresence.None;
+
+        var (open, merged) = Branched(key, trunk);
+        return open.Count > 0 ? BranchPresence.Open : merged.Count > 0 ? BranchPresence.MergedOnly : BranchPresence.None;
+    }
+
     public BranchEntry Enter(string key, string title, string? answer)
     {
         if (BaseBranch() is not { Length: > 0 } trunk)

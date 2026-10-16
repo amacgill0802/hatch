@@ -180,6 +180,9 @@ public sealed class FakeWorkspace
     /// <summary>What <c>DiffStat</c> answers, per checkout - null unless a test says.</summary>
     public Dictionary<string, string?> DiffStatFor { get; } = [];
 
+    /// <summary>What <c>Presence</c> answers for one issue in one checkout. Absent is no branch on origin at all.</summary>
+    public Dictionary<(string Path, string Key), BranchPresence> PresenceFor { get; } = [];
+
     public IWorkspace For(string path, string? baseBranch) => new Bound(this, path);
 
     private sealed class Bound(FakeWorkspace owner, string path) : IWorkspace
@@ -213,6 +216,12 @@ public sealed class FakeWorkspace
                     Merged = entry.Merged, Cut = entry.Cut, Planned = true,
                 }
                 : entry;
+        }
+
+        public BranchPresence Presence(string key)
+        {
+            owner.Calls.Add($"presence {path} {key}");
+            return owner.PresenceFor.GetValueOrDefault((path, key));
         }
 
         public Leaving Leave(string key, bool syncPullRequest)

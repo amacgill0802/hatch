@@ -1445,6 +1445,12 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // checked out. On the trunk, the check sees what the trunk has.
             lifecycle = new Lifecycle(runtime);
 
+            // Which branch the work goes on, now that git has been fetched: the
+            // server names the story's for a task that shares one, and a task
+            // with a branch of its own, or whose story's has merged, is handed
+            // back to its own.
+            work = lifecycle.Settle(work, chosen);
+
             // A conflict is asked about again before anything is spawned, against
             // the refs the reset just fetched: the board's verdict was read
             // before the claim, and the trunk or the branch may have moved since.
