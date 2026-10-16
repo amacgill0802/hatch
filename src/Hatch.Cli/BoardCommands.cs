@@ -48,8 +48,9 @@ public sealed class BoardCommands(Cli cli)
         "  it up until they set it back.",
         "",
         "  A row marked \"(express, no session)\", \"(parent pulled, no session)\",",
-        "  \"(epic, no session)\" or \"(under <epic>, no session)\" is a hop: the loop",
-        "  carries it on itself with no session, rather than spawning one.",
+        "  \"(epic, no session)\", \"(under <epic>, no session)\" or \"(pre-approved,",
+        "  no session)\" is a hop: the loop carries it on itself with no session,",
+        "  rather than spawning one.",
     ];
 
     /// <summary>
