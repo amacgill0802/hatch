@@ -83,6 +83,56 @@ public sealed class PromptTests
     }
 
     [Fact]
+    public void A_trunk_landing_project_with_no_branch_is_told_to_commit_on_the_trunk()
+    {
+        var branches = new[]
+        {
+            new BranchEntry { Path = "/checkouts/repo", Kind = BranchKind.None, Cut = "aer-12-x", TrunkLanding = true, Trunk = "main" },
+        };
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12"), branches: branches);
+
+        Assert.Contains(
+            "this project lands its work on the trunk. origin has no branch for this issue, and none is wanted: the tree is on `main` at origin's tip - commit here, and cut nothing.",
+            prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("open a pull request on it before this increment ends", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("Do not open a pull request.", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void An_entered_branch_on_a_trunk_landing_project_is_told_to_merge_into_the_trunk()
+    {
+        var branches = new[]
+        {
+            new BranchEntry
+            {
+                Path = "/checkouts/repo", Kind = BranchKind.Entered, Branch = "aer-12-x", Sha = "abc123def",
+                Head = "fed321cba", Ahead = 3, Merge = MergeOutcome.Clean, TrunkLanding = true, Trunk = "main",
+            },
+        };
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12"), branches: branches);
+
+        Assert.Contains(
+            "This project lands on the trunk: finish on this branch, then merge it into `main`, push `main`, delete the branch on origin, and record the landing.",
+            prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void An_entered_branch_off_a_trunk_landing_project_has_no_merge_line()
+    {
+        var branches = new[]
+        {
+            new BranchEntry
+            {
+                Path = "/checkouts/repo", Kind = BranchKind.Entered, Branch = "aer-12-x", Sha = "abc123def",
+                Head = "fed321cba", Ahead = 3, Merge = MergeOutcome.Clean,
+            },
+        };
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12"), branches: branches);
+
+        Assert.DoesNotContain("record the landing.", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void A_ticket_with_no_description_says_that_is_worth_noting()
     {
         var work = Fixtures.Work("AER-12", issue: Fixtures.Issue("AER-12", description: ""));
