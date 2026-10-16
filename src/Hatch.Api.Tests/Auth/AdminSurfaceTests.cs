@@ -349,6 +349,13 @@ public class AdminSurfaceTests
         // which is a question. See BuildCheckController.
         "BuildCheckController.PutBuildCheck",
 
+        // What a check session judged about an issue - pass or fail - and
+        // Hatch-scoped for the same reason the two verdicts above are: the
+        // caller is whatever ran the check, and a verdict only an operator
+        // could enter would be one an agent session could never record for
+        // itself. See VerdictsController.
+        "VerdictsController.PostVerdict",
+
         // A playbook's power routed through a different table, and cut the
         // same way: an issue's model and effort override every playbook that
         // could speak for it, so an agent that could set one could raise its

@@ -951,6 +951,7 @@ public class EfHatchIssue
     public ICollection<EfHatchIssueEvent> Events { get; set; } = [];
     public ICollection<EfHatchMergeCheck> MergeChecks { get; set; } = [];
     public ICollection<EfHatchBuildCheck> BuildChecks { get; set; } = [];
+    public ICollection<EfHatchVerdict> Verdicts { get; set; } = [];
     public ICollection<EfHatchWorkLogEntry> WorkLog { get; set; } = [];
 
     public static bool IsValidType(string? type) => type is not null && Types.Contains(type);
@@ -1000,7 +1001,15 @@ public class EfHatchComment
     /// </summary>
     public const string Message = "message";
 
-    public static bool IsValidKind(string kind) => kind is Note or Question or Answer or Message;
+    /// <summary>
+    /// A verdict a check session wrote - see <see cref="EfHatchVerdict"/>.
+    /// Nothing writes this kind here: HA-555's apply endpoint writes the row
+    /// directly, in-process, and this constant exists only so that row is a
+    /// legal <see cref="Kind"/> and reads back through <c>GetComments</c>.
+    /// </summary>
+    public const string Verdict = "verdict";
+
+    public static bool IsValidKind(string kind) => kind is Note or Question or Answer or Message or Verdict;
 
     [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public long Id { get; set; }
@@ -1351,6 +1360,56 @@ public class EfHatchTrunkBuild
 }
 
 /// <summary>
+/// The verdict a check session wrote about an issue - pass or fail, and
+/// whatever findings came with it. One row per claim: a second write under the
+/// same <see cref="ClaimToken"/> replaces the first, the way a merge or build
+/// check's second write for the same key does.
+/// </summary>
+/// <remarks>
+/// This row is itself the audit record, unlike the bare
+/// <see cref="EfHatchIssue.ClaimPlaybookId"/> it was written under - so
+/// <see cref="PlaybookId"/> and <see cref="StatusId"/> get real navigation
+/// properties here, to say under which playbook and in which column the
+/// verdict was given even after the issue has moved on. HA-555's apply
+/// endpoint alone reads these rows and alone sets <see cref="AppliedAt"/>;
+/// nothing here ever touches it.
+/// </remarks>
+[Table("Verdicts")]
+[Index(nameof(IssueId), nameof(ClaimToken), IsUnique = true)]
+public class EfHatchVerdict
+{
+    public const int MaxVerdictLength = 16;
+
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public long Id { get; set; }
+
+    public long IssueId { get; set; }
+    public EfHatchIssue? Issue { get; set; }
+
+    public required int PlaybookId { get; set; }
+    public EfHatchPlaybook? Playbook { get; set; }
+
+    public required int StatusId { get; set; }
+    public EfHatchStatus? Status { get; set; }
+
+    [MaxLength(MaxVerdictLength)]
+    public required string Verdict { get; set; }
+
+    [MaxLength(EfHatchComment.MaxBodyLength)]
+    public string? Findings { get; set; }
+
+    [MaxLength(Common.PersonName.MaxChars)]
+    public required string Author { get; set; }
+
+    public required Guid ClaimToken { get; set; }
+
+    public required DateTimeOffset CreatedAt { get; set; }
+
+    /// <summary>Null until HA-555's apply endpoint sets it. Never touched here, even on replace.</summary>
+    public DateTimeOffset? AppliedAt { get; set; }
+}
+
+/// <summary>
 /// One thing that happened to an issue. Append-only, written by every mutating
 /// endpoint, never edited and never deleted except with its issue.
 ///
@@ -1378,6 +1437,10 @@ public class EfHatchIssueEvent
     public const string Redescribed = "redescribed";
     public const string Retyped = "retyped";
     public const string StatusChanged = "status_changed";
+
+    /// <summary>A check session recorded a verdict - see <see cref="EfHatchVerdict"/>. Written unconditionally: this is not a poll, so there is no "only when changed" guard.</summary>
+    public const string VerdictRecorded = "verdict_recorded";
+
     public const string ParentChanged = "parent_changed";
 
     /// <summary>

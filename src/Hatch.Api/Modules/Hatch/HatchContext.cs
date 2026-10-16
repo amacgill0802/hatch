@@ -4,7 +4,7 @@ namespace Hatch.Api.Modules.Hatch;
 
 /// <summary>
 /// Hatch's slice of the Hatch database: the <c>hatch</c> schema, its own
-/// migration history, eighteen tables.
+/// migration history, nineteen tables.
 /// </summary>
 public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(options), IModuleContext
 {
@@ -27,6 +27,7 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
     public DbSet<EfHatchMergeCheck> MergeChecks => Set<EfHatchMergeCheck>();
     public DbSet<EfHatchBuildCheck> BuildChecks => Set<EfHatchBuildCheck>();
     public DbSet<EfHatchTrunkBuild> TrunkBuilds => Set<EfHatchTrunkBuild>();
+    public DbSet<EfHatchVerdict> Verdicts => Set<EfHatchVerdict>();
 
     /// <summary>
     /// The processes that have spoken to this Hatch lately, and what the board
@@ -268,6 +269,28 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
                 .OnDelete(DeleteBehavior.Cascade);
 
             e.Property(b => b.Failing).HasColumnType("jsonb");
+        });
+
+        // Cascade with the issue, the same as MergeChecks/BuildChecks above.
+        // Restrict on Playbook/Status, the same as EfHatchPlaybook's own
+        // FromStatus/ToStatus: a referenced playbook or status refuses
+        // deletion rather than take a kept verdict with it.
+        modelBuilder.Entity<EfHatchVerdict>(e =>
+        {
+            e.HasOne(v => v.Issue)
+                .WithMany(i => i.Verdicts)
+                .HasForeignKey(v => v.IssueId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(v => v.Playbook)
+                .WithMany()
+                .HasForeignKey(v => v.PlaybookId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(v => v.Status)
+                .WithMany()
+                .HasForeignKey(v => v.StatusId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         // A trunk build is nobody's issue, so it does not cascade with one -
