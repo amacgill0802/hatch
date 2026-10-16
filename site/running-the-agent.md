@@ -413,6 +413,8 @@ hatch pr AER-12 https://...       ...or say where, having opened one
 hatch pr AER-12 --clear           ...or take it off the one it has
 hatch depends AER-13 AER-12       AER-13 waits on AER-12
 hatch depends AER-13 --remove AER-12
+hatch one-pr AER-5                whether the story's tasks share its branch and one PR
+hatch one-pr AER-5 on             ...turn it on for this story (or off, or inherit)
 hatch ask AER-12 "the question" --recommend "Label: why" --option "Label: why"
 hatch answer                      answer the open questions, one at a time, here
 hatch api GET /api/hatch/issues?statusId=2

@@ -40,6 +40,14 @@ test-hatch:
 		--blame-hang-timeout 30s --blame-hang-dump-type none \
 		-- RunConfiguration.TestSessionTimeout=120000
 
+# The few tests that spawn a real `claude` session (src/Hatch.Cli.Tests/
+# DeniedToolsProofTests.cs). Opt-in: they spend the caller's own usage and answer
+# with what a live model chose to do, so `make test-hatch` skips them.
+test-hatch-live:
+	HATCH_LIVE_CLAUDE_TESTS=1 dotnet test ./src/Hatch.Cli.Tests/Hatch.Cli.Tests.csproj \
+		--filter "FullyQualifiedName~DeniedToolsProofTests" \
+		--blame-hang-timeout 300s --blame-hang-dump-type none
+
 # A built CLI for this machine, so that `hatch.sh work` starts in milliseconds
 # rather than spending a few seconds in `dotnet run` deciding whether to build
 # first. It is an optimisation and not a requirement - hatch.sh falls back to

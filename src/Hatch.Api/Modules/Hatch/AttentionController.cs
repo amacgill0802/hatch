@@ -86,6 +86,12 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
             })
             .ToListAsync(ct);
 
+        // A task waiting on its story's pull request has none of its own by
+        // design - the story opens the one - and no branch of its own to have a
+        // conflict or a build on, so it is none of this panel's rows or counts.
+        // See PriorityTree.WaitingOn.
+        inReview = inReview.Where(i => tree.WaitingOn(i.Id, statuses) is null).ToList();
+
         var reviewIds = inReview.Select(i => i.Id).ToList();
         var projectIds = inReview.Select(i => i.ProjectId).Distinct().ToList();
 

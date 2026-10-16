@@ -210,8 +210,11 @@ into a closed set the browser owns, not the server, nullable the same way),
 `Landing` (`"pull-request"` default, or `"trunk"` - how a project's finished
 work reaches the trunk, by pull request or pushed straight to it), and
 `ChecksRequired` (`bool`, default `true` - whether a trunk tip with no checks
-run on it yet counts as green). A project may also carry an uploaded logo, in
-its own table — see [Logo](#logo).
+run on it yet counts as green), and `OnePullRequest` (`bool`, default `false` -
+the project's default for whether a story's tasks share the story's branch and
+one pull request, which a story can override either way - see
+[One pull request](#one-pull-request)). A project may also carry an uploaded
+logo, in its own table — see [Logo](#logo).
 
 A project exists so an issue can be called `AER-12` rather than `#4471`, and so
 two efforts can number themselves independently. It is deliberately **not a
@@ -1172,6 +1175,17 @@ feature exists to prevent, and it is why the chain advances at a merge — the
 operator's, on the forge, or the poll's, in the merges column — rather than at
 an agent's move.
 
+**The one exception: a shared branch.** Between two tasks under the same story
+that [shares one pull request](#one-pull-request), an edge is satisfied by a
+task that is *waiting on the story's pull request* — pushed to the story's
+branch and standing in the review column or past it, with no pull request of its
+own. Building on a sibling's unmerged commits is the point of a shared branch,
+and the sibling can only reach a terminal column when the whole story does, so
+holding the edge would hold the story for ever. The exception is exactly that
+wide: an edge to a task under a different story, to a sibling still being
+written, or to anything under a story that does not share, is as strict as it
+ever was.
+
 **A dependency an ancestor holds reaches everything below it.** A task under a
 blocked story is blocked and every story under a blocked epic is blocked, which
 is what lets "phase two after phase one" be said once at the top. The fold names
@@ -1195,6 +1209,122 @@ should chain them. Both verbs — `POST` and `DELETE` on
 is no `GET`: both lists ride `IssueDto`, where the board, the page and a client
 at a terminal need them anyway. Both directions land in the issue's history, on the issue that
 waits and on it alone.
+
+### One pull request
+
+Whether a story's tasks share the story's branch and one pull request, instead
+of one branch and one pull request each, merged one after another. The goal is a
+story done with fewer obstacles: no merge needed between siblings.
+
+It is answered at two levels. The **project** holds a default
+(`EfHatchProject.OnePullRequest`, off), and a **story** may override it
+(`EfHatchIssue.OnePullRequest`, a nullable bool: null inherits, true is on,
+false is off). Only a story carries an override; any other type is refused.
+
+The effective value is **derived at read and never copied**, the same way
+[pre-approval](#express) is. `PriorityTree.EffectiveOnePr` walks to the nearest
+story at or above an issue and answers with that story's override, else its
+project's default; an issue with no story above it - an epic, or a task filed
+straight under one - reads off, because there is no story whose pull request it
+could share. Reparenting, or flipping either level, changes what everything
+beneath reads on the next request with no write to the issues beneath.
+`IssueDto` and `IssueCardDto` carry `onePr` (the effective value), `onePrOwn`
+(this story's own override, null when it inherits) and `onePrFrom` (the story a
+task read it from, null when it is its own, the project's, or absent).
+
+**Who may set what.** The project default is a person's, and an owner's: it
+changes how every story under the project is worked, and it rides the same
+route as the landing policy (`PUT /projects/{id}/landing`, `{ onePullRequest }`).
+A story's override is open to anyone or anything, an API key included - it decides
+how a story is branched, not what the loop reaches for or which gates it may
+pass unattended, so it is not the edge [priority and pre-approval](#the-one-edge-that-is-deliberately-cut)
+are. **It is locked once work under the story has started** — any descendant
+standing in the implementation column or to its right, a terminal one included
+(a shelved one has not started) — and the route answers `409` naming the first.
+Work begun on one branch cannot be moved onto the other, and a task begun on the
+story's cannot be given a pull request of its own, so a change would leave work
+that no longer agrees with its story. Setting what a story already holds is
+never refused and writes nothing; a change writes a `one_pr_changed` event
+carrying both sides as `on`, `off` or `inherit`. The project's default is not
+locked, but it cannot move a story under work already begun: a story with no
+setting of its own reads the default, so when the default changes
+(`PUT /projects/{id}/landing`) every story in the project that has started work
+and carries no setting is first given, as its own, the value it was reading —
+one `one_pr_changed` event on each, `inherit` to that value. Stories with
+nothing started keep following the default. "Started" is the same test the lock
+uses, so a story fixed this way is locked from then on like any other.
+
+**A task waiting on the story's pull request.** With the effective value on, a
+task that has pushed to the story's branch moves to the review column and
+*waits there with no pull request of its own*. Precisely: a task under a story
+that shares, standing in the review column or any non-terminal, non-deferred
+column to its right, with no pull request recorded on it
+(`PriorityTree.WaitingOn`). For the story's purposes it is finished:
+
+- **The next sibling is pulled.** `FamilyGate.SiblingInFlight` does not count it,
+  so a `ParentPulls` column carries the next child while this one waits, instead
+  of waiting for a merge that cannot come until every sibling is done.
+- **Edges between siblings clear** — the exception under
+  [Dependency](#dependency).
+- **The story reaches its closeout.** The fold that holds a story out of review
+  while its children are the work (`FamilyGate.OpenWorkChildren`) does not count
+  it, so the story's `In Progress` → `In Review` increment runs, and that
+  increment — not a task — opens the one pull request, titled with the story's
+  key. `OpenChildren` itself still counts it, because it has not merged: that is
+  what keeps the `Close` hop from closing a story over a pull request nobody
+  opened.
+
+And for the merge machinery it is invisible: `Dispatch.Blocked` folds it first,
+with *"waiting on AER-5's pull request - …"*, ahead of the merge column's judge
+and the review column's conflict and build checks, both of which read a branch
+named for the task's own key and would find none; `GET /work/review` leaves it
+out, so a runner's poll does not look for a branch that does not exist; the
+merges column's train never elects it head; and the attention panel does not
+count it as *in review without a pull request*, because having none is the
+design. The conflict or build verdict that matters is the story's own, filed on
+the story.
+
+**Done means merged.** The waiting task ends in a terminal column only when the
+story's pull request merges. On the merge train path `POST /work/{key}/merged`
+on the story moves every task waiting on it into the same terminal column with
+it — one `status_changed` event on each, carrying `merged: true` and
+`with: <story key>`, in the same save as the story. A person's manual move of
+the story into a terminal column gets the *Closing a subtree* dialog instead,
+which lists every descendant that has not stopped, the waiting tasks among them.
+Tasks that are deferred, terminal, or have a pull request of their own are left
+where they are.
+
+**One sibling at a time.** Two tasks under a story that shares push to one
+branch, so they may not be worked together. `ClaimLineage` treats them as one
+line: while either holds a live claim the other is folded — *"AER-6, sharing
+this story's branch, is held…"* — and a take that raced is let go by the same
+check as an ancestor's. A task with a pull request of its own is on its own
+branch and is not held. Tasks under different stories stay parallel.
+
+**The branch a dispatch is named for.** `WorkDto.BranchKey` and `BranchTitle`
+carry the story's key and title for a task that shares, and the issue's own
+otherwise; the server decides, because whether a story shares is a live,
+inherited fact. A task that already has an open branch of its own on `origin`
+is a fact about git that only a runner can see, so the client applies that on
+top. `ReviewCheckDto` carries the same two fields; every row in that list is its
+own branch's, since a waiting task is left out.
+
+**Known edges.** A story whose pull request merges early leaves a later task —
+a gap filed after the merge — with no branch to join and no pull request coming
+to carry it. The board sees that the story is in a terminal column and no
+longer counts the task as sharing it (no waiting, no sibling claim, its own
+branch key); the runner, which can see git, does the same where every branch the
+story has on origin is already in the trunk. The task is cut its own branch and
+opens its own pull request, as it would with sharing off. A conflict or failing build on the shared branch holds every
+sibling, which is the cost of sharing it. The setting is locked once work under the story has started, so
+flipping it can neither strand a waiting task nor make a task in review read as
+waiting; the project's default is the one door that is not locked. And the one-at-a-time claim rule is about the branch
+and not the move, so it also holds a sibling back from a session that would
+never push - the cost of not having to ask what a session will do.
+
+At a terminal, `hatch one-pr <key> [on|off|inherit]` reads and sets it, and
+`hatch show` prints the line wherever it is on or a story has been told one way
+or the other.
 
 ### WIP
 
@@ -2250,7 +2380,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/projects/{id}` | PATCH, DELETE | PATCH name and key, and carries `color`/`icon`; DELETE 409s unless the project is empty, and takes its [repositories](#repository) with it |
 | `/projects/{id}/repositories` | GET | The ordered list of remotes, in `SortOrder` — see [Repository](#repository) |
 | `/projects/{id}/repositories` | PUT | **Person only** — plain `[RequireRole(User)]`. The whole ordered list, `[{ remote, baseBranch? }]`; refused as a whole, naming the entry, on an empty, over-limit, unparseable or duplicate remote. Re-sending the same list writes nothing |
-| `/projects/{id}/landing` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ landing?, checksRequired? }` — `landing` is `"pull-request"` or `"trunk"`; `403` naming the project's key from anybody but an owner, `400` naming the bad value on an unknown `landing`, `404` on an unknown project. Re-sending what it already holds writes nothing |
+| `/projects/{id}/landing` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ landing?, checksRequired?, onePullRequest? }` — `onePullRequest` is the project's default for [one pull request](#one-pull-request); `landing` is `"pull-request"` or `"trunk"`; `403` naming the project's key from anybody but an owner, `400` naming the bad value on an unknown `landing`, `404` on an unknown project. Re-sending what it already holds writes nothing |
 | `/projects/{id}/members` | GET | Who owns or approves on this project — open to a key, reading who is on a project is not a power |
 | `/projects/{id}/members/{personId}` | PUT | **Person only** — plain `[RequireRole(User)]`, and only an owner of the project may call it. `{ role }` — `"owner"` or `"approver"`. `403` from anybody else, `400` on an unknown person or role, `409` where it would leave the project with no owner |
 | `/projects/{id}/members/{personId}` | DELETE | **Person only**, owner only, the same guard as the PUT beside it. `409` where it would leave the project with no owner |
@@ -2282,6 +2412,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/issues/{key}/priority` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ priority }` — `"paused"`, `"economy"`, `"low"`, `"normal"`, `"expedited"` or `"emergency"`. Every level but paused floats on the board and is taken first by the dispatcher, most severe first; paused sinks to the bottom and is folded by every dispatch with its own sentence. Setting what it already holds writes nothing; an unknown name is `400` |
 | `/issues/{key}/expedite` | PUT | **Person only** — plain `[RequireRole(User)]`. Legacy two-level alias for `/priority` above. `{ expedited }` — `true` sets expedited, `false` sets normal. Setting what it already holds writes nothing |
 | `/issues/{key}/pre-approval` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action so it holds with the wall off. `{ level }` — `"none"`, `"express"` or `"preapproved"` — see [Express](#express). Express needs the same permission a move into the column that feeds implementation needs; preapproved needs an approver. Setting what it already holds writes nothing; an unknown name is `400` |
+| `/issues/{key}/one-pr` | PUT | **Open to a key** — `[RequireRole(User, AcceptScope = hatch)]`. `{ value }` — `"on"`, `"off"` or `"inherit"` (the project's default) — see [One pull request](#one-pull-request). A story only: anything else is `400` naming its type; an unknown value is `400`. `409` once work under the story has started. Setting what it already holds writes nothing |
 | `/issues/{key}/express` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ express }` — see [Express](#express). Setting what it already holds writes nothing. Now an alias for `/pre-approval` above, sharing its guards |
 | `/issues/{key}/stall` | PUT | Carries no `[RequireRole]` at all — a dispatcher is exactly who leaves this mark. `{ why }` — the sentence an increment leaves behind it saying why it left the ticket where it found it; sets `StalledAt` to now and `StalledWhy` to it, normalised and capped the way claim chatter is. Always writes, so a second mark replaces the first on the row but still leaves its own `stalled` event behind it |
 | `/issues/{key}/hold` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action: an agent that could hold its own ticket could park it off the board for the night. `{ held }` — holds it or resumes it. Resuming clears `StalledAt` and `StalledWhy` together, so *Resume now* leaves nothing behind for the dispatcher to fold on, even where nothing had set `held` true. Setting what it already holds writes nothing and does not move `UpdatedAt` — except that `held: false` still clears a stall mark where one is there to clear |
@@ -4379,7 +4510,10 @@ and before the spawn:
   is used, and one that names none is passed on to the session rather than asked
   again.
 - **With no branch, the tree is on the trunk** and the prompt names the branch to
-  cut, `<key-lowercased>-<slug of the title>`.
+  cut, `<key-lowercased>-<slug of the title>` - or, where that name is taken (by
+  a branch already merged, say), the same with `-2`, then `-3`, appended. The
+  match runs from the key to the branch and never back, so `ha-3-2` is `ha-3`'s
+  and not `ha-32`'s.
 - **The copy on this machine is only a copy.** Behind `origin`, it is
   fast-forwarded. Ahead, it is used as it is. Diverged, the local tip is kept
   under `<branch>-local-<short sha>`, said on the terminal and in the prompt, and
@@ -4387,6 +4521,23 @@ and before the spawn:
   silently.
 - **Every checkout that has a branch for the key** is treated this way; the others
   stay on the trunk.
+
+**A task that shares its story's branch is entered on the story's.** The server
+names the branch for a dispatch (`WorkDto.BranchKey` — see
+[One pull request](#one-pull-request)); every step above — the branch of
+record, the cut name, the which-branch question, the push for a usage limit,
+the trunk merged into the branch on leaving, the verdict reported afterwards —
+then reads the story's key and title, and the verdict is filed on the story. The
+which-branch question is still asked on the task, since the task is what its
+answer unblocks. The runner takes the server's word back in two cases it alone
+can see in git (`Lifecycle.Settle`): the task already has an unmerged branch of
+its own on origin, or every branch the story has there is already in the trunk.
+In both the dispatch is the task's own, as with sharing off. The prompt's
+`## The branch` section says all of this in the first case, and a task on the
+story's branch is told in place of `## Opening a pull request` not to open one
+and not to run `hatch pr` — the story's closeout is told the one is its to open.
+The runner's own check that an increment ending in review left no branch
+without a pull request does not apply to such a task.
 
 It is a **merge and never a rebase**, and nothing here is force-pushed: a branch
 under review is somebody's to read, and that is the history this repository
@@ -4915,7 +5066,7 @@ itself writes, rather than a second write racing the first.
 
 The CLI is one program — [`src/Hatch.Cli`](../src/Hatch.Cli), published as a
 single binary called `hatch`. Every command is a command of it: `board`, `next`,
-`queue`, `show`, `start`, `move`, `comment`, `pr`, `depends`, `ask`,
+`queue`, `show`, `start`, `move`, `comment`, `pr`, `depends`, `one-pr`, `ask`,
 `questions`, `answer`, `api`, `config`, `work` and `go-to-work`.
 
 One command in it is not for a person: `inbox`, which the hooks a spawned session
@@ -5503,7 +5654,7 @@ the plan reads — and is read on demand.
 ### Reaching Hatch
 
 `hatch` is the calls a working session actually makes — `board`, `next`,
-`queue`, `show`, `start`, `move`, `comment`, `pr`, `depends`, `ask`,
+`queue`, `show`, `start`, `move`, `comment`, `pr`, `depends`, `one-pr`, `ask`,
 `questions`, `answer`, `config`, `work`, `go-to-work`, `do-my-work`, and `api`
 for everything else. It finds a column by name rather than by id — on the
 letters and digits alone, so `todo` at a terminal reaches the column the board

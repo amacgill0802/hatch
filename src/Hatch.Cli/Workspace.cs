@@ -42,6 +42,14 @@ public interface IWorkspace
     BranchEntry Plan(string key, string title, string? answer);
 
     /// <summary>
+    /// What origin has for a key, from the refs as they stand: an unmerged branch,
+    /// only branches already in the trunk, or nothing. Asked of a task that
+    /// shares its story's branch, to see whether its own branch or its story's
+    /// has been overtaken. Changes nothing, and fetches nothing.
+    /// </summary>
+    BranchPresence Presence(string key);
+
+    /// <summary>
     /// Leave the tree the way the next increment expects to find it: nothing
     /// half-done, nothing uncommitted, on the trunk - with what was found
     /// along the way said as lines for the ticket.

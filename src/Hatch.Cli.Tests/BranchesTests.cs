@@ -11,6 +11,11 @@ public sealed class BranchesTests
     [InlineData("ha-310-thing", "HA-31", false)]
     [InlineData("ha-31thing", "HA-31", false)]
     [InlineData("main", "HA-31", false)]
+    [InlineData("ha-31-2", "HA-31", true)]
+    [InlineData("ha-31-thing-3", "HA-31", true)]
+    [InlineData("ha-31-2", "HA-3", false)]
+    [InlineData("ha-3-2", "HA-31", false)]
+    [InlineData("ha-310-2", "HA-31", false)]
     public void A_branch_names_a_key_at_a_hyphen(string branch, string key, bool expected) =>
         Assert.Equal(expected, Branches.Names(branch, key));
 

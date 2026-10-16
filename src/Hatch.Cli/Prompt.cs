@@ -69,7 +69,8 @@ public static class Prompt
         if (isConflict) lines.AddRange(Conflict(Conflicts.Facts(work, conflict), trunk));
         if (isBuild) lines.AddRange(FailingBuilds(Builds.Facts(work, build)));
 
-        if (branches is { Count: > 0 }) lines.AddRange(Branch(branches));
+        var sharedStory = Branches.IsShared(work) ? work.BranchKey : null;
+        if (branches is { Count: > 0 }) lines.AddRange(Branch(branches, sharedStory));
 
         if (work.Children.Count > 0)
         {
@@ -187,7 +188,7 @@ public static class Prompt
             lines.Add("");
         }
 
-        lines.AddRange(Tail(key, to, work.IssueUrl, repositories, issue.Express));
+        lines.AddRange(Tail(key, to, work.IssueUrl, repositories, issue.Express, sharedStory, sharesPullRequest: issue.Type == "story" && issue.OnePr));
         return string.Join('\n', lines);
     }
 
@@ -355,13 +356,25 @@ public static class Prompt
     /// it does give - that it overrides the playbook - is there because a stock
     /// playbook still tells a session to cut a branch from the trunk.
     /// </summary>
-    private static IEnumerable<string> Branch(IReadOnlyList<BranchEntry> entries)
+    private static IEnumerable<string> Branch(IReadOnlyList<BranchEntry> entries, string? sharedStory)
     {
         yield return "## The branch";
         yield return "";
         yield return "This is the state the runner left the tree in. It overrides any instruction about";
         yield return "which branch to start from or whether to cut one in the playbook above.";
         yield return "";
+
+        // Said first, because everything below is about a branch that is not
+        // named for this ticket, and a session that read "origin has no branch
+        // for this issue" without it would take that for a problem.
+        if (sharedStory is not null)
+        {
+            yield return $"**This ticket's work goes on {sharedStory}'s branch,** the one every task of {sharedStory}";
+            yield return $"pushes to - not on a branch named for this ticket. {sharedStory} opens the one pull";
+            yield return "request for all of them once its tasks are pushed. Do not open one, and do not";
+            yield return "record one on this ticket.";
+            yield return "";
+        }
 
         foreach (var entry in entries)
         {
@@ -381,7 +394,9 @@ public static class Prompt
 
                 case BranchKind.None:
                     yield return $"- {where}origin has no branch for this issue. The tree is on the trunk at origin's tip; cut `{entry.Cut}` from it.";
-                    yield return "  Push to it as the work goes, and open a pull request on it before this increment ends, so there is something for a person to review.";
+                    yield return sharedStory is null
+                        ? "  Push to it as the work goes, and open a pull request on it before this increment ends, so there is something for a person to review."
+                        : "  Push to it as the work goes, so the next task builds on it. Do not open a pull request.";
                     break;
 
                 case BranchKind.AlreadyMerged:
@@ -435,7 +450,7 @@ public static class Prompt
     /// </summary>
     internal static IEnumerable<string> Tail(
         string key, string to, string? issueUrl, IReadOnlyList<Checkouts.RepositoryLine>? repositories,
-        bool express) =>
+        bool express, string? sharedStory = null, bool sharesPullRequest = false) =>
     [
         "## Reaching Hatch",
         "",
@@ -455,7 +470,7 @@ public static class Prompt
         "docs/hatch-planning.md has the shapes. Read it only if this increment",
         "files or reshapes work.",
         "",
-        ..PullRequest(key, issueUrl),
+        ..(sharedStory is null ? PullRequest(key, issueUrl, sharesPullRequest) : SharedPullRequest(key, sharedStory, to)),
         "## When you cannot decide",
         "",
         "Some things are not yours to choose: a product call, a name that will be",
@@ -585,11 +600,27 @@ public static class Prompt
         };
 
     /// <summary>
+    /// What a task on its story's branch is told in place of the pull request
+    /// section: not to open one, and why. The story's closeout is what opens it.
+    /// </summary>
+    private static string[] SharedPullRequest(string key, string story, string to) =>
+    [
+        "## No pull request from this ticket",
+        "",
+        $"Do not open a pull request for {key}, and do not run `hatch pr {key}`. {story}'s branch",
+        "carries every task's work, and one pull request - titled with the story's key, not",
+        $"this ticket's - is opened for it once its tasks are all pushed. Push your commits to the",
+        $"branch above, then move {key} to \"{to}\": it waits there, with nothing of its own to",
+        "merge, until the story's pull request does.",
+        "",
+    ];
+
+    /// <summary>
     /// What to write into a pull request, if this increment opens one. The link
     /// is only ever an absolute http(s) one; without it the first line is the
     /// bare key, and the session is told not to make a link up.
     /// </summary>
-    private static string[] PullRequest(string key, string? issueUrl)
+    private static string[] PullRequest(string key, string? issueUrl, bool sharesPullRequest = false)
     {
         var linked = Uri.TryCreate(issueUrl, UriKind.Absolute, out var url)
             && url.Scheme is "http" or "https";
@@ -598,6 +629,16 @@ public static class Prompt
         [
             "## Opening a pull request",
             "",
+            .. sharesPullRequest
+                ?
+                [
+                    "This story's tasks share its branch, and none of them opens a pull request of its",
+                    "own. If this increment is the story's closeout - its tasks are pushed to the branch",
+                    "above - the one pull request for all of them is yours to open, on that branch,",
+                    "unless `hatch pr` on this ticket already names one.",
+                    "",
+                ]
+                : Array.Empty<string>(),
             "Open one before this increment ends, if it pushes any commit meant for a person to",
             "review - the branch section above says which kind of increment this is. Name the",
             "ticket in two places, so the reviewer can tell where it came from and reach the",

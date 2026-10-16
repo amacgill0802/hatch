@@ -22,7 +22,7 @@ public record ProjectDto(
     int Id, string Key, string Name, int IssueCount, DateTimeOffset CreatedAt, string? Color, string? Icon,
     IReadOnlyList<ProjectRepositoryDto> Repositories, DateTimeOffset? LogoUpdatedAt,
     IReadOnlyList<ProjectMemberDto> Members, bool CanApprove, bool CanAdminister,
-    string Landing = Landings.PullRequest, bool ChecksRequired = true);
+    string Landing = Landings.PullRequest, bool ChecksRequired = true, bool OnePullRequest = false);
 
 /// <summary>A stored image, as the markdown that shows it will name it: <c>/api/hatch/images/{id}</c>.</summary>
 public record ImageDto(Guid Id);
@@ -70,7 +70,8 @@ public record ProjectMemberWriteRequest(string Role);
 
 /// <summary>A write to a project's landing settings - <c>null</c> on either field leaves it alone.</summary>
 /// <param name="Landing">One of <see cref="Landings"/>.</param>
-public record ProjectLandingWriteRequest(string? Landing, bool? ChecksRequired);
+/// <param name="OnePullRequest">The project default for whether a story's tasks share its branch and one pull request - see <see cref="EfHatchProject.OnePullRequest"/>. Null leaves it alone.</param>
+public record ProjectLandingWriteRequest(string? Landing, bool? ChecksRequired, bool? OnePullRequest = null);
 
 // ---- Statuses ----
 
@@ -295,6 +296,19 @@ public record AssigneeDto(string Kind, Guid Id, string Name);
 /// The ancestor <paramref name="PreApproval"/> was inherited from, or null
 /// when the effective level is this issue's own, or None.
 /// </param>
+/// <param name="OnePr">
+/// Whether this issue's story shares one branch and one pull request across
+/// its tasks - walked live, at read, to the nearest story at or above this
+/// issue, whose own override wins and whose project's default fills in where
+/// it has none; never stored or copied. False where no story sits above. See
+/// <see cref="EfHatchIssue.OnePullRequest"/>. Trailing and defaulted for the
+/// reason <paramref name="OpenQuestions"/> is.
+/// </param>
+/// <param name="OnePrOwn">The override this story's own row carries - true, false, or null for "inherit the project's default". Always null on anything but a story.</param>
+/// <param name="OnePrFrom">
+/// The story <paramref name="OnePr"/> was read from, or null when the value is
+/// this issue's own, comes from its project, or does not exist.
+/// </param>
 public record IssueCardDto(
     string Key,
     string ProjectKey,
@@ -319,7 +333,10 @@ public record IssueCardDto(
     DateTimeOffset? StalledAt = null,
     string? StalledWhy = null,
     bool Held = false,
-    string? PullRequestUrl = null);
+    string? PullRequestUrl = null,
+    bool OnePr = false,
+    bool? OnePrOwn = null,
+    string? OnePrFrom = null);
 
 /// <summary>
 /// The lease a running dispatcher holds on an issue, or null where nothing
@@ -452,6 +469,19 @@ public record IssueClaimDto(
 /// carries for the CLI's poll.
 /// </param>
 /// <param name="Landings">What each bound repository holds for this issue's branch - see <see cref="LandingController"/>.</param>
+/// <param name="OnePr">
+/// Whether this issue's story shares one branch and one pull request across
+/// its tasks - walked live, at read, to the nearest story at or above this
+/// issue, whose own override wins and whose project's default fills in where
+/// it has none; never stored or copied. False where no story sits above. See
+/// <see cref="EfHatchIssue.OnePullRequest"/>. Trailing and defaulted for the
+/// reason <paramref name="OpenQuestions"/> is.
+/// </param>
+/// <param name="OnePrOwn">The override this story's own row carries - true, false, or null for "inherit the project's default". Always null on anything but a story.</param>
+/// <param name="OnePrFrom">
+/// The story <paramref name="OnePr"/> was read from, or null when the value is
+/// this issue's own, comes from its project, or does not exist.
+/// </param>
 public record IssueDto(
     string Key,
     int ProjectId,
@@ -491,7 +521,10 @@ public record IssueDto(
     bool Held = false,
     int StallResumeSeconds = 0,
     MergeWorkDto? MergeWork = null,
-    IReadOnlyList<LandingDto>? Landings = null);
+    IReadOnlyList<LandingDto>? Landings = null,
+    bool OnePr = false,
+    bool? OnePrOwn = null,
+    string? OnePrFrom = null);
 
 /// <summary>Taking the lease: who is asking is the credential's to say, so the body names only where from.</summary>
 /// <param name="Runner">The checkout holding it - <c>host:/path/to/checkout</c>, as the runner names itself.</param>
@@ -1414,6 +1447,14 @@ public record PriorityRequest(string Priority);
 public record ExpressRequest(bool Express);
 
 /// <summary>
+/// A story's one-PR override: <c>"on"</c>, <c>"off"</c> or <c>"inherit"</c>
+/// (the project's default). A string rather than a nullable boolean, because
+/// a JSON null and an absent field read the same on the wire and "inherit"
+/// should be something the caller says.
+/// </summary>
+public record OnePrRequest(string Value);
+
+/// <summary>
 /// The level to set, by name - <c>"none"</c>, <c>"express"</c> or
 /// <c>"preapproved"</c> - see <see cref="PreApprovalLevels"/>. One required
 /// string rather than a boolean, for the same reason <see cref="PriorityRequest"/>
@@ -1555,6 +1596,18 @@ public record IssueDependencyRequest(string DependsOnKey);
 /// (<c>"its stall question lapsed after 5 minutes untouched"</c>). Null on
 /// every row that is clear for the ordinary reason, which is most of them.
 /// </param>
+/// <param name="BranchKey">
+/// The key the branch for this dispatch is named for. For a task under a story
+/// that shares one pull request, and with no pull request of its own, the
+/// story's key: every task of that story pushes to the story's branch, and the
+/// story's closeout opens the one pull request. Otherwise the issue's own key.
+/// Decided here and never by the client - whether a story shares is a live,
+/// inherited fact. A task that already has an open branch of its own on origin
+/// keeps it: that is a fact about git, which only a runner can see, so the
+/// client applies it on top of this. Null from a server that predates it, where
+/// the client reads the issue's own key.
+/// </param>
+/// <param name="BranchTitle">The title the branch's slug is cut from: the story's, where <paramref name="BranchKey"/> is the story's.</param>
 public record WorkDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -1576,7 +1629,9 @@ public record WorkDto(
     IReadOnlyList<StatusDto>? Statuses = null,
     string? ClearNote = null,
     string? Landing = null,
-    bool ChecksRequired = true);
+    bool ChecksRequired = true,
+    string? BranchKey = null,
+    string? BranchTitle = null);
 
 /// <summary>
 /// The two numbers a send-back for an over-long brief carried, and whether
@@ -1746,6 +1801,14 @@ public record QueueEntryDto(
 /// project keys and two projects may share a repository. Absent from a
 /// board that predates it.
 /// </param>
+/// <param name="BranchKey">
+/// The key the row's branch is named for. The row's own <paramref name="Key"/>
+/// in every row this list holds: a task waiting on its story's pull request has
+/// no branch of its own to check and is left out of the list, so the key here is
+/// always the one the poll should look for. Null from a server that predates it,
+/// where the client reads <paramref name="Key"/>.
+/// </param>
+/// <param name="BranchTitle">The title the branch's slug is cut from, or null where <paramref name="BranchKey"/> is null.</param>
 public record ReviewCheckDto(
     string Key,
     IReadOnlyList<WorkRepositoryDto> Repositories,
@@ -1754,7 +1817,9 @@ public record ReviewCheckDto(
     string? PullRequestUrl = null,
     MergeWorkDto? MergeWork = null,
     string ProjectKey = "",
-    string Landing = Landings.PullRequest);
+    string Landing = Landings.PullRequest,
+    string? BranchKey = null,
+    string? BranchTitle = null);
 
 /// <summary>The kind of work an issue in the merges column is, and why it is not work where it is not - see <see cref="Hatch.Api.Modules.Hatch.MergeWork.Judgement"/>.</summary>
 /// <param name="IsHead">

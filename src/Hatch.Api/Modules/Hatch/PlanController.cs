@@ -83,6 +83,7 @@ public class PlanController(
         foreach (var c in children)
         {
             var (effectivePreApproval, effectivePreApprovalFrom) = priorities.EffectivePreApproval(c.Id);
+            var (onePr, onePrOwn, onePrFrom) = priorities.EffectiveOnePr(c.Id);
             rows.Add(new ChildRollupDto(
                 new IssueCardDto(
                     IssueKey.Format(c.ProjectKey, c.Number),
@@ -105,7 +106,10 @@ public class PlanController(
                     StalledAt: c.StalledAt,
                     StalledWhy: c.StalledWhy,
                     Held: c.Held,
-                    PullRequestUrl: c.PullRequestUrl),
+                    PullRequestUrl: c.PullRequestUrl,
+                    OnePr: onePr,
+                    OnePrOwn: onePrOwn,
+                    OnePrFrom: onePrFrom),
                 tree.IsLeaf(c.Id),
                 tree.Of(c.Id)));
         }
@@ -224,6 +228,7 @@ public class PlanController(
 
                 var row = byId[id];
                 var (effectivePreApproval, effectivePreApprovalFrom) = priorities.EffectivePreApproval(id);
+                var (onePr, onePrOwn, onePrFrom) = priorities.EffectiveOnePr(id);
 
                 entries.Add(new PlanEntryDto(
                     new IssueCardDto(
@@ -247,7 +252,10 @@ public class PlanController(
                         StalledAt: row.StalledAt,
                         StalledWhy: row.StalledWhy,
                         Held: row.Held,
-                        PullRequestUrl: row.PullRequestUrl),
+                        PullRequestUrl: row.PullRequestUrl,
+                        OnePr: onePr,
+                        OnePrOwn: onePrOwn,
+                        OnePrFrom: onePrFrom),
                     tree.IsLeaf(id),
                     // The whole subtree, not the epics below it: an epic's
                     // meter is its stories and their tasks, and the nested
