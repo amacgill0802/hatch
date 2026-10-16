@@ -202,12 +202,18 @@ public sealed partial class Workspace(
         var remote = Git("ls-remote", "--symref", "origin", "HEAD");
         if (!remote.Ok) return null;
 
+        // Each symref line is "ref: <target>\tHEAD" - the target and the
+        // "ref:" marker share the column before the tab, not either side of it.
         foreach (var line in remote.Out.Split('\n'))
         {
             var parts = line.Split('\t', StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length < 2 || parts[0].Trim() != "ref:") continue;
+            if (parts.Length < 2) continue;
 
-            var name = parts[1].Trim();
+            const string marker = "ref: ";
+            var left = parts[0].Trim();
+            if (!left.StartsWith(marker, StringComparison.Ordinal)) continue;
+
+            var name = left[marker.Length..].Trim();
             const string heads = "refs/heads/";
             if (name.StartsWith(heads, StringComparison.Ordinal)) return name[heads.Length..];
         }

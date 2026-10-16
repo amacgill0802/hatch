@@ -363,6 +363,17 @@ export interface MergeWork {
   sentence: string;
 }
 
+/** One recorded landing: where an issue's work reached a repository's trunk. Mirrors LandingDto. */
+export interface Landing {
+  remote: string;
+  canonical: string;
+  trunk: string;
+  sha: string;
+  containedBy: string | null;
+  recordedAt: string;
+  checkedAt: string | null;
+}
+
 export interface Issue {
   key: string;
   projectId: number;
@@ -459,6 +470,9 @@ export interface Issue {
       `failedBuilds` - only a failed one is drawn. Absent from a board that
       predates them. */
   buildChecks?: BuildCheck[];
+  /** One landing per repository whose trunk this issue's work has reached.
+      Absent from a board that predates them, the same as buildChecks. */
+  landings?: Landing[];
   /** The judge's answer for a row in the merges column, or null for a row
       anywhere else. See MergeHoldChip and IssueDto.MergeWork. */
   mergeWork?: MergeWork | null;

@@ -149,6 +149,11 @@ public static class Fixtures
             verdict is MergeVerdicts.Clean or MergeVerdicts.Conflicted ? new string('b', 40) : null,
             files, holdsTrunk, DateTimeOffset.UnixEpoch, "runner", "hatch");
 
+    /// <summary>A landing as the board would answer a write with.</summary>
+    public static LandingDto Landing(
+        string trunk = "main", string canonical = "example.com/o/r", string? sha = null, string? containedBy = null) =>
+        new($"https://{canonical}.git", canonical, trunk, sha ?? new string('a', 40), containedBy, DateTimeOffset.UnixEpoch, containedBy is null ? null : DateTimeOffset.UnixEpoch);
+
     /// <summary>A build verdict as a runner would have put it, failed unless said otherwise. A failed one names <c>api</c> unless it is told what failed.</summary>
     public static BuildCheckDto Build(
         string verdict = BuildVerdicts.Failed, string canonical = "example.com/o/r", string? sha = null,

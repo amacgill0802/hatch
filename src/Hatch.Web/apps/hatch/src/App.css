@@ -1401,6 +1401,14 @@
   text-decoration: underline;
 }
 
+/* A landing is good news - work that reached trunk - so it wears the success
+   hue rather than the warn hue the chips above it share. */
+.hatch-chip-landing {
+  border-color: var(--success);
+  background: var(--success-bg);
+  color: var(--success-ink);
+}
+
 /* The pull request chip, which is the only chip that goes anywhere. It is a
    link, so it says so on hover and carries the primary ink rather than the
    muted grey the dates wear - a chip nobody can tell is clickable is a chip
