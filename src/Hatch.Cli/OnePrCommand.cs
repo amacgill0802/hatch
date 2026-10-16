@@ -11,8 +11,9 @@ namespace Hatch.Cli;
 /// decides how a story is branched and nothing the loop could use to advance its
 /// own ticket - see <c>IssueOnePrController</c>.</para>
 ///
-/// <para>Changeable at any time. A task that already has its own branch or pull
-/// request keeps them; a task that starts afterwards follows the setting.</para>
+/// <para>Locked once work under the story has started: the server refuses a
+/// change then, naming the task, because work begun on one branch cannot be moved
+/// onto the other.</para>
 /// </remarks>
 public sealed class OnePrCommand(Cli cli)
 {
@@ -25,8 +26,8 @@ public sealed class OnePrCommand(Cli cli)
         "  hatch one-pr AER-5 off      ...do not, whatever the project's default is",
         "  hatch one-pr AER-5 inherit  ...follow the project's default",
         "",
-        "  A story only. A task that already has its own branch or pull request",
-        "  keeps them; a task that starts afterwards follows the new setting.",
+        "  A story only, and locked once any task under it has started - set it when",
+        "  the story is filed, before its tasks are worked.",
     ];
 
     public async Task<int> RunAsync(string[] args, CancellationToken ct)

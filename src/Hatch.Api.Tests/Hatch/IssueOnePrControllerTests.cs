@@ -142,6 +142,113 @@ public class IssueOnePrControllerTests
         Assert.All(events, e => Assert.Equal("a key", e.Actor));
     }
 
+    // ---- Locked once work has started ----
+
+    private static async Task<(IssueDto Story, IssueDto Task)> StoryWithTaskAsync(Harness h)
+    {
+        var story = await h.FileAsync("story", "the story");
+        var task = await h.FileAsync("task", "the task", story.Key);
+        return (story, task);
+    }
+
+    [Fact]
+    public async Task WhileNothingHasStarted_TheSettingCanBeChangedFreely()
+    {
+        var h = await NewAsync(board: true);
+        var (story, _) = await StoryWithTaskAsync(h);
+
+        await h.SetAsync(story.Key, "on");
+        await h.SetAsync(story.Key, "off");
+        var last = await h.SetAsync(story.Key, "inherit");
+
+        Assert.Null(last.OnePrOwn);
+    }
+
+    [Fact]
+    public async Task OnceATaskIsInTheImplementationColumn_TheSettingIsLocked()
+    {
+        var h = await NewAsync(board: true);
+        var (story, task) = await StoryWithTaskAsync(h);
+        await h.SetAsync(story.Key, "on");
+        await h.MoveAsync(task.Key, h.Doing);
+
+        var refused = await h.OnePr.PutIssueOnePr(story.Key, new OnePrRequest("off"), default);
+
+        var conflict = Assert.IsType<ConflictObjectResult>(refused.Result);
+        Assert.Contains($"{task.Key} is in \"in progress\"", conflict.Value!.ToString());
+        Assert.True((await h.RowAsync(story.Key)).OnePullRequest);
+        Assert.Single(await h.EventsAsync(story.Key));
+    }
+
+    [Fact]
+    public async Task ATaskThatHasMovedPastTheImplementationColumn_LocksItToo()
+    {
+        var h = await NewAsync(board: true);
+        var (story, task) = await StoryWithTaskAsync(h);
+        await h.MoveAsync(task.Key, (await h.Db.Statuses.FirstAsync(s => s.Name == "review")).Id);
+
+        var refused = await h.OnePr.PutIssueOnePr(story.Key, new OnePrRequest("on"), default);
+
+        Assert.IsType<ConflictObjectResult>(refused.Result);
+    }
+
+    [Fact]
+    public async Task ADoneTaskCountsAsStarted()
+    {
+        var h = await NewAsync(board: true);
+        var (story, task) = await StoryWithTaskAsync(h);
+        await h.MoveAsync(task.Key, (await h.Db.Statuses.FirstAsync(s => s.IsTerminal)).Id);
+
+        Assert.IsType<ConflictObjectResult>((await h.OnePr.PutIssueOnePr(story.Key, new OnePrRequest("on"), default)).Result);
+    }
+
+    [Fact]
+    public async Task ATaskStillToDoOrShelved_DoesNotLock()
+    {
+        var h = await NewAsync(board: true);
+        var (story, task) = await StoryWithTaskAsync(h);
+        await h.MoveAsync(task.Key, (await h.Db.Statuses.FirstAsync(s => s.Name == "todo")).Id);
+        var shelved = await h.FileAsync("task", "set aside", story.Key);
+        await h.MoveAsync(shelved.Key, h.Shelved);
+
+        Assert.True((await h.SetAsync(story.Key, "on")).OnePr);
+    }
+
+    [Fact]
+    public async Task ADescendantBelowATaskLocksItsStory()
+    {
+        var h = await NewAsync(board: true);
+        var story = await h.FileAsync("story", "the story");
+        var bug = await h.FileAsync("bug", "under the story", story.Key);
+        var deep = await h.FileAsync("task", "under the bug", bug.Key);
+        await h.MoveAsync(deep.Key, h.Doing);
+
+        Assert.IsType<ConflictObjectResult>((await h.OnePr.PutIssueOnePr(story.Key, new OnePrRequest("on"), default)).Result);
+    }
+
+    [Fact]
+    public async Task SettingTheValueItAlreadyHolds_IsNeverRefused_EvenOnceWorkHasStarted()
+    {
+        var h = await NewAsync(board: true);
+        var (story, task) = await StoryWithTaskAsync(h);
+        await h.SetAsync(story.Key, "on");
+        await h.MoveAsync(task.Key, h.Doing);
+
+        var again = await h.SetAsync(story.Key, "on");
+
+        Assert.True(again.OnePrOwn);
+    }
+
+    [Fact]
+    public async Task OnABoardWithNoImplementationColumn_NothingHasStarted()
+    {
+        var h = await NewAsync();
+        var (story, task) = await StoryWithTaskAsync(h);
+        await h.MoveAsync(task.Key, (await h.Db.Statuses.FirstAsync(s => s.IsTerminal)).Id);
+
+        Assert.True((await h.SetAsync(story.Key, "on")).OnePr);
+    }
+
     // ---- The trail ----
 
     [Fact]
@@ -357,6 +464,17 @@ public class IssueOnePrControllerTests
         public required IssueThreadController Thread { get; init; }
         public required FakeTimeProvider Time { get; init; }
         public required int ProjectId { get; init; }
+        public int Doing { get; init; }
+        public int Shelved { get; init; }
+
+        /// <summary>Straight onto the row - these tests are about what a story's setting does once work has begun, not about how it got there.</summary>
+        public async Task MoveAsync(string key, int statusId)
+        {
+            IssueKey.TryParse(key, out var projectKey, out var number);
+            var issue = await Db.Issues.WithKey(projectKey, number).FirstAsync();
+            issue.StatusId = statusId;
+            await Db.SaveChangesAsync();
+        }
 
         public async Task<IssueDto> FileAsync(string type, string title, string? parentKey = null) =>
             Created(await Issues.CreateIssue(new IssueCreateRequest(ProjectId, type, title, null, parentKey, null, null), default));
@@ -388,7 +506,7 @@ public class IssueOnePrControllerTests
         }
     }
 
-    private static async Task<Harness> NewAsync()
+    private static async Task<Harness> NewAsync(bool board = false)
     {
         var db = new HatchContext(
             new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
@@ -397,7 +515,18 @@ public class IssueOnePrControllerTests
         db.Add(project);
         db.AddRange(
             new EfHatchStatus { Name = "inbox", SortOrder = 10 },
-            new EfHatchStatus { Name = "done", SortOrder = 20, IsTerminal = true });
+            new EfHatchStatus { Name = "done", SortOrder = 50, IsTerminal = true });
+
+        // A board with somewhere for work to start: the lock below is measured
+        // from the implementation column, and the two-column board has none.
+        EfHatchStatus? doing = null, shelved = null;
+        if (board)
+        {
+            doing = new EfHatchStatus { Name = "in progress", SortOrder = 30, IsImplementation = true };
+            shelved = new EfHatchStatus { Name = "shelved", SortOrder = 35, IsDeferred = true };
+            db.AddRange(new EfHatchStatus { Name = "todo", SortOrder = 20 }, doing, shelved, new EfHatchStatus { Name = "review", SortOrder = 40 });
+        }
+
         await db.SaveChangesAsync();
 
         var time = new FakeTimeProvider(Now);
@@ -414,6 +543,8 @@ public class IssueOnePrControllerTests
             Thread = new IssueThreadController(db, caller, time),
             Time = time,
             ProjectId = project.Id,
+            Doing = doing?.Id ?? 0,
+            Shelved = shelved?.Id ?? 0,
         };
     }
 

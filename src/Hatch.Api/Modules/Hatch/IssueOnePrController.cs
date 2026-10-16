@@ -22,9 +22,13 @@ namespace Hatch.Api.Modules.Hatch;
 /// do - it is the project's default, which changes how every story is worked,
 /// that is an owner's (<see cref="ProjectsController.PutLanding"/>).</para>
 ///
-/// <para>Changeable at any time. A task that already has its own branch or
-/// pull request keeps them; a task that starts afterwards follows the setting
-/// as it then reads.</para>
+/// <para>Locked once any work under the story has started. A task begun on its
+/// own branch cannot be moved onto the story's, and a task begun on the story's
+/// cannot be given a pull request of its own, so changing the setting under
+/// either would leave work that no longer agrees with the story it is part of.
+/// "Started" is a descendant standing in the implementation column or any
+/// column to its right, a terminal one included; a shelved descendant has not
+/// started. Setting the value the story already holds is never refused.</para>
 /// </remarks>
 [ApiController]
 [Route("api/hatch/issues")]
@@ -62,6 +66,11 @@ public class IssueOnePrController(
 
         if (value != issue.OnePullRequest)
         {
+            if (await StartedAsync(issue, ct) is { } started)
+                return Conflict(
+                    $"{key} has work under it that has already started ({started}), so whether its tasks share one " +
+                    "pull request can no longer be changed - a task begun on one branch cannot be moved onto the other");
+
             var now = time.GetUtcNow();
 
             issue.Events.Add(new EfHatchIssueEvent
@@ -78,6 +87,37 @@ public class IssueOnePrController(
         }
 
         return await IssueProjection.ToDtoAsync(db, actors, issue, claims, time.GetUtcNow(), ct);
+    }
+
+    /// <summary>
+    /// The first descendant of the story that has started, as <c>AER-6 is in
+    /// "In Progress"</c>, or null while none has. Nothing has started on a board
+    /// with no implementation column to start in.
+    /// </summary>
+    private async Task<string?> StartedAsync(EfHatchIssue story, CancellationToken ct)
+    {
+        var statuses = await db.Statuses.AsNoTracking().OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync(ct);
+        if (Columns.Implementation(statuses) is not { } implementation) return null;
+
+        var board = Columns.Board(statuses);
+        var from = board.FindIndex(s => s.Id == implementation.Id);
+
+        var ids = await Rollup.DescendantIdsAsync(db, story.Id, ct);
+        if (ids.Count == 0) return null;
+
+        var rows = await db.Issues.AsNoTracking()
+            .Where(i => ids.Contains(i.Id))
+            .OrderBy(i => i.Rank).ThenBy(i => i.Id)
+            .Select(i => new { ProjectKey = i.Project!.Key, i.Number, i.StatusId })
+            .ToListAsync(ct);
+
+        foreach (var row in rows)
+        {
+            var at = board.FindIndex(s => s.Id == row.StatusId);
+            if (at >= from && at >= 0) return $"{IssueKey.Format(row.ProjectKey, row.Number)} is in \"{board[at].Name}\"";
+        }
+
+        return null;
     }
 
     private static bool TryParse(string? text, out bool? value)

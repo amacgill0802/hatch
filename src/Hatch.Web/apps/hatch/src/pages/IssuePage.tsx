@@ -703,7 +703,7 @@ export function IssuePage() {
             <Field
               label="One pull request"
               as="div"
-              hint="Whether this story's tasks share its branch and open one pull request, merged once, instead of one each. A task that already has its own branch or pull request keeps it; a task that starts afterwards follows this."
+              hint="Whether this story's tasks share its branch and open one pull request, merged once, instead of one each. Locked once any task under it has started: work begun on one branch cannot be moved onto the other."
             >
               <OnePrControl issue={issue} busy={onePrBusy} onChange={(setting) => void saveOnePr(setting)} />
             </Field>

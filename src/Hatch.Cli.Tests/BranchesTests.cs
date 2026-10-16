@@ -11,7 +11,10 @@ public sealed class BranchesTests
     [InlineData("ha-310-thing", "HA-31", false)]
     [InlineData("ha-31thing", "HA-31", false)]
     [InlineData("main", "HA-31", false)]
-    public void A_branch_names_a_key_at_a_hyphen(string branch, string key, bool expected) =>
+    [InlineData("ha-31_2", "HA-31", true)]
+    [InlineData("ha-31-thing_3", "HA-31", true)]
+    [InlineData("ha-310_2", "HA-31", false)]
+    public void A_branch_names_a_key_at_a_hyphen_or_an_underscore(string branch, string key, bool expected) =>
         Assert.Equal(expected, Branches.Names(branch, key));
 
     [Theory]
@@ -24,8 +27,8 @@ public sealed class BranchesTests
     [Fact]
     public void A_taken_name_gets_the_first_free_number()
     {
-        var taken = new HashSet<string> { "a", "a-2" };
-        Assert.Equal("a-3", Branches.Free("a", taken.Contains));
+        var taken = new HashSet<string> { "a", "a_2" };
+        Assert.Equal("a_3", Branches.Free("a", taken.Contains));
         Assert.Equal("b", Branches.Free("b", taken.Contains));
     }
 

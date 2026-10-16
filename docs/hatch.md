@@ -1238,10 +1238,16 @@ route as the landing policy (`PUT /projects/{id}/landing`, `{ onePullRequest }`)
 A story's override is open to anyone or anything, an API key included - it decides
 how a story is branched, not what the loop reaches for or which gates it may
 pass unattended, so it is not the edge [priority and pre-approval](#the-one-edge-that-is-deliberately-cut)
-are. It can be changed at any time: a task that already has its own branch or
-pull request keeps them, and a task that starts afterwards follows the setting
-as it then reads. Setting what a story already holds writes nothing; a change
-writes a `one_pr_changed` event carrying both sides as `on`, `off` or `inherit`.
+are. **It is locked once work under the story has started** — any descendant
+standing in the implementation column or to its right, a terminal one included
+(a shelved one has not started) — and the route answers `409` naming the first.
+Work begun on one branch cannot be moved onto the other, and a task begun on the
+story's cannot be given a pull request of its own, so a change would leave work
+that no longer agrees with its story. Setting what a story already holds is
+never refused and writes nothing; a change writes a `one_pr_changed` event
+carrying both sides as `on`, `off` or `inherit`. The project's default is not
+locked, and moves every story that inherits it: change it while no story that
+inherits it has work started.
 
 **A task waiting on the story's pull request.** With the effective value on, a
 task that has pushed to the story's branch moves to the review column and
@@ -1302,14 +1308,10 @@ own branch's, since a waiting task is left out.
 a gap filed after the merge — with no branch to join and no pull request coming
 to carry it. The runner sees that (every branch the story has on origin is
 already in the trunk) and hands the task back to its own key, so it is cut its
-own branch and opens its own pull request, as it would with sharing off. Turning the setting off
-while tasks wait leaves them waiting on nothing — they are no longer "waiting"
-by the definition above, so the story's merge no longer takes them — and a
-person moves them. A conflict or failing build on the shared branch holds every
-sibling, which is the cost of sharing it. Turning the setting
-*on* is the mirror: a task already in review whose pull request has not yet been
-recorded reads as waiting from that moment, so record a task's pull request
-before flipping the story. And the one-at-a-time claim rule is about the branch
+own branch and opens its own pull request, as it would with sharing off. A conflict or failing build on the shared branch holds every
+sibling, which is the cost of sharing it. The setting is locked once work under the story has started, so
+flipping it can neither strand a waiting task nor make a task in review read as
+waiting; the project's default is the one door that is not locked. And the one-at-a-time claim rule is about the branch
 and not the move, so it also holds a sibling back from a session that would
 never push - the cost of not having to ask what a session will do.
 
@@ -2367,7 +2369,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/issues/{key}/priority` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ priority }` — `"paused"`, `"economy"`, `"low"`, `"normal"`, `"expedited"` or `"emergency"`. Every level but paused floats on the board and is taken first by the dispatcher, most severe first; paused sinks to the bottom and is folded by every dispatch with its own sentence. Setting what it already holds writes nothing; an unknown name is `400` |
 | `/issues/{key}/expedite` | PUT | **Person only** — plain `[RequireRole(User)]`. Legacy two-level alias for `/priority` above. `{ expedited }` — `true` sets expedited, `false` sets normal. Setting what it already holds writes nothing |
 | `/issues/{key}/pre-approval` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action so it holds with the wall off. `{ level }` — `"none"`, `"express"` or `"preapproved"` — see [Express](#express). Express needs the same permission a move into the column that feeds implementation needs; preapproved needs an approver. Setting what it already holds writes nothing; an unknown name is `400` |
-| `/issues/{key}/one-pr` | PUT | **Open to a key** — `[RequireRole(User, AcceptScope = hatch)]`. `{ value }` — `"on"`, `"off"` or `"inherit"` (the project's default) — see [One pull request](#one-pull-request). A story only: anything else is `400` naming its type; an unknown value is `400`. Setting what it already holds writes nothing |
+| `/issues/{key}/one-pr` | PUT | **Open to a key** — `[RequireRole(User, AcceptScope = hatch)]`. `{ value }` — `"on"`, `"off"` or `"inherit"` (the project's default) — see [One pull request](#one-pull-request). A story only: anything else is `400` naming its type; an unknown value is `400`. `409` once work under the story has started. Setting what it already holds writes nothing |
 | `/issues/{key}/express` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ express }` — see [Express](#express). Setting what it already holds writes nothing. Now an alias for `/pre-approval` above, sharing its guards |
 | `/issues/{key}/stall` | PUT | Carries no `[RequireRole]` at all — a dispatcher is exactly who leaves this mark. `{ why }` — the sentence an increment leaves behind it saying why it left the ticket where it found it; sets `StalledAt` to now and `StalledWhy` to it, normalised and capped the way claim chatter is. Always writes, so a second mark replaces the first on the row but still leaves its own `stalled` event behind it |
 | `/issues/{key}/hold` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action: an agent that could hold its own ticket could park it off the board for the night. `{ held }` — holds it or resumes it. Resuming clears `StalledAt` and `StalledWhy` together, so *Resume now* leaves nothing behind for the dispatcher to fold on, even where nothing had set `held` true. Setting what it already holds writes nothing and does not move `UpdatedAt` — except that `held: false` still clears a stall mark where one is there to clear |
@@ -4464,7 +4466,9 @@ and before the spawn:
   is used, and one that names none is passed on to the session rather than asked
   again.
 - **With no branch, the tree is on the trunk** and the prompt names the branch to
-  cut, `<key-lowercased>-<slug of the title>`.
+  cut, `<key-lowercased>-<slug of the title>` - or, where that name is taken (by
+  a branch already merged, say), the same with `_2`, then `_3`, appended. An
+  underscore and not a hyphen, so a suffix is never read as part of a key.
 - **The copy on this machine is only a copy.** Behind `origin`, it is
   fast-forwarded. Ahead, it is used as it is. Diverged, the local tip is kept
   under `<branch>-local-<short sha>`, said on the terminal and in the prompt, and

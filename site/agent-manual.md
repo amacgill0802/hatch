@@ -324,8 +324,9 @@ clears when the issue it names is in a terminal column.
   following it. A story only - any other type is refused by the server. Open to
   a key, unlike priority and pre-approval; the project's default is an owner's,
   set from the project's edit dialog.
-- Changeable at any time. A task that already has its own branch or pull
-  request keeps them; a task that starts afterwards follows the setting.
+- Locked once work under the story has started - any descendant in the
+  implementation column or to its right. The server answers `409` naming the
+  first; set it when the story is filed, before its tasks are worked.
 
 `hatch show` prints the same line wherever the value is on, or a story has been
 told one way or the other.

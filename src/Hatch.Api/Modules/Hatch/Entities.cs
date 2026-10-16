@@ -808,9 +808,9 @@ public class EfHatchIssue
     /// Open to agent keys, unlike <see cref="Priority"/> and
     /// <see cref="PreApproval"/>: it decides how work is branched, not which
     /// gates the loop may pass unattended, and a story's author is the one who
-    /// knows whether its tasks build on one another. It can be changed at any
-    /// time - a task that already has its own branch or pull request keeps
-    /// them, and a task that starts afterwards follows the setting.
+    /// knows whether its tasks build on one another. It is locked once any
+    /// descendant has started (<see cref="IssueOnePrController"/>): work begun
+    /// on one branch cannot be moved onto the other.
     ///
     /// Derived at read, never copied: <c>PriorityTree.EffectiveOnePr</c> walks
     /// to the nearest story at or above an issue and answers with that story's
