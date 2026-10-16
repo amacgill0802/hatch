@@ -951,6 +951,7 @@ public class EfHatchIssue
     public ICollection<EfHatchIssueEvent> Events { get; set; } = [];
     public ICollection<EfHatchMergeCheck> MergeChecks { get; set; } = [];
     public ICollection<EfHatchBuildCheck> BuildChecks { get; set; } = [];
+    public ICollection<EfHatchLanding> Landings { get; set; } = [];
     public ICollection<EfHatchVerdict> Verdicts { get; set; } = [];
     public ICollection<EfHatchWorkLogEntry> WorkLog { get; set; } = [];
 
@@ -1180,6 +1181,38 @@ public class EfHatchMergeCheck
 
     public static IReadOnlyList<string> SplitFiles(string? files) =>
         files?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? [];
+}
+
+[Table("Landings")]
+[Index(nameof(IssueId), nameof(Canonical), IsUnique = true)]
+public class EfHatchLanding
+{
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public long Id { get; set; }
+
+    public long IssueId { get; set; }
+    public EfHatchIssue? Issue { get; set; }
+
+    [MaxLength(EfHatchMergeCheck.MaxRemoteLength)]
+    public required string Remote { get; set; }
+
+    [MaxLength(EfHatchMergeCheck.MaxRemoteLength)]
+    public required string Canonical { get; set; }
+
+    [MaxLength(EfHatchMergeCheck.MaxRefLength)]
+    public required string Trunk { get; set; }
+
+    [MaxLength(EfHatchMergeCheck.MaxShaLength)]
+    public required string Sha { get; set; }
+
+    [MaxLength(EfHatchMergeCheck.MaxShaLength)]
+    public string? ContainedBy { get; set; }
+
+    public required DateTimeOffset RecordedAt { get; set; }
+    public DateTimeOffset? CheckedAt { get; set; }
+
+    [MaxLength(Common.PersonName.MaxChars)]
+    public required string RecordedBy { get; set; }
 }
 
 /// <summary>
