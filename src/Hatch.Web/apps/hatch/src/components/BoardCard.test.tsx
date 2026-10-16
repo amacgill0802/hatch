@@ -75,6 +75,7 @@ describe('BoardCard CardFace', () => {
     expect(head).toContain('hatch-card-key');
     expect(head).not.toContain('hatch-card-expedited');
     expect(head).not.toContain('hatch-card-express');
+    expect(head).not.toContain('hatch-card-preapproved');
     expect(head).not.toContain('hatch-card-claim');
     expect(head).not.toContain('hatch-card-asking');
     expect(head).not.toContain('hatch-card-held');
@@ -90,10 +91,21 @@ describe('BoardCard CardFace', () => {
     expect(html).not.toContain('>bug<');
   });
 
+  it('wears the pre-approved mark when pre-approved', () => {
+    const preapproved = card({ preApproval: 'preapproved', express: true });
+    const html = renderToStaticMarkup(
+      <CardPreview card={preapproved} waiting={false} terminal={false} project={project()} />,
+    );
+
+    const marks = between(html, '<div class="hatch-card-marks">');
+    expect(marks).toContain('hatch-card-preapproved');
+  });
+
   it('draws every enhancer together on the marks row, in order, ending in the assignee', () => {
     const full = card({
       priority: 'expedited',
       express: true,
+      preApproval: 'preapproved',
       claim: { claimedBy: 'hatch', runner: 'Jeff Winger', claimedAt: new Date().toISOString(), heartbeatAt: new Date().toISOString(), chatter: null, chatterAt: null, ttlSeconds: 300 },
       openQuestions: 2,
       held: true,
@@ -107,6 +119,7 @@ describe('BoardCard CardFace', () => {
     const classes = [
       'hatch-card-expedited',
       'hatch-card-express',
+      'hatch-card-preapproved',
       'hatch-card-claim',
       'hatch-card-asking',
       'hatch-card-held',

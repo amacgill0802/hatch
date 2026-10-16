@@ -3593,6 +3593,21 @@ input.hatch-inline-title-input {
   line-height: 1.6;
 }
 
+/* Pre-approved, beside Express and drawn the same way - a visibly stronger
+   tint than Express's plain --success-bg/--success-ink, so the two marks
+   read as two different facts rather than one fact twice. */
+.hatch-card-preapproved {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--sp-1-5);
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--success) 45%, transparent);
+  color: color-mix(in srgb, var(--success) 70%, var(--ink));
+  font-size: var(--t-micro);
+  font-weight: 700;
+  line-height: 1.6;
+}
+
 /* The control itself, on the issue page and in the summary - the same shape
    as .hatch-priority-pill's rest state, in --success instead of --primary. */
 .hatch-express {
