@@ -194,6 +194,14 @@ function CardFace({ card, waiting, terminal, project }: Required<Omit<CardProps,
               »
             </span>
           )}
+          {card.preApproval === 'preapproved' && (
+            <span
+              className="hatch-card-preapproved"
+              title="Pre-approved - the approve press given in advance: carried into the merge column, or closed, with no session"
+            >
+              ✓
+            </span>
+          )}
           {/* Something is holding this one right now. On the face rather than on
               the page, so the drag preview carries it too - a card being moved is
               exactly the card where knowing a runner is mid-increment on it
