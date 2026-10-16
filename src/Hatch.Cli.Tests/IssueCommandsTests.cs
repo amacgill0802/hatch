@@ -576,6 +576,46 @@ public sealed class IssueCommandsTests
         Assert.Empty(h.Wire.Calls);
     }
 
+    // ---- verdict ----
+
+    [Fact]
+    public async Task Verdict_pass_posts_the_word_alone()
+    {
+        using var h = new CliHarness();
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-12/verdicts", HttpStatusCode.NoContent);
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).VerdictAsync(["AER-12", "pass"], default));
+
+        var sent = h.Wire.To("POST", "/api/hatch/issues/AER-12/verdicts").Single().Read<VerdictCreateRequest>();
+        Assert.Equal("pass", sent.Verdict);
+        Assert.Null(sent.Findings);
+        Assert.Equal("recorded pass on AER-12", h.Said);
+    }
+
+    [Fact]
+    public async Task Verdict_fail_with_findings_posts_both()
+    {
+        using var h = new CliHarness();
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-12/verdicts", HttpStatusCode.NoContent);
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).VerdictAsync(["AER-12", "fail", "the build is red"], default));
+
+        var sent = h.Wire.To("POST", "/api/hatch/issues/AER-12/verdicts").Single().Read<VerdictCreateRequest>();
+        Assert.Equal("fail", sent.Verdict);
+        Assert.Equal("the build is red", sent.Findings);
+        Assert.Equal("recorded fail on AER-12", h.Said);
+    }
+
+    [Fact]
+    public async Task A_word_that_is_not_pass_or_fail_is_refused_before_any_request()
+    {
+        using var h = new CliHarness();
+
+        Assert.Equal(1, await new IssueCommands(h.Cli).VerdictAsync(["AER-12", "maybe"], default));
+        Assert.Contains("\"maybe\" is not a verdict - it is \"pass\" or \"fail\"", h.Complained);
+        Assert.Empty(h.Wire.Calls);
+    }
+
     // ---- the shape they share ----
 
     [Fact]
