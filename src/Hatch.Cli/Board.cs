@@ -74,6 +74,14 @@ public sealed class Board(HatchClient client)
         Client.WriteAsync<BuildCheckDto>(HttpMethod.Put, $"/api/hatch/issues/{key}/build-check", request, ct);
 
     /// <summary>
+    /// What one repository now holds for an issue's branch - see
+    /// <see cref="LandingWriteRequest"/>. The remote is spelled the way this
+    /// runner has it; the board canonicalises it.
+    /// </summary>
+    public Task<LandingDto?> LandedAsync(string key, LandingWriteRequest request, CancellationToken ct) =>
+        Client.WriteAsync<LandingDto>(HttpMethod.Put, $"/api/hatch/issues/{key}/landing", request, ct);
+
+    /// <summary>
     /// Every trunk verdict the board holds, read once per poll and matched
     /// locally against each checkout - a trunk is nobody's issue, so there is
     /// no issue to ride the verdict in on the way the branch checks do.
