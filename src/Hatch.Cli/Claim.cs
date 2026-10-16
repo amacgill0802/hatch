@@ -378,6 +378,22 @@ public sealed class Claim : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Attaches a playbook to this already-held claim, for a caller that
+    /// matched one after the take rather than at it - see
+    /// <see cref="Picker"/>. Best-effort: a failed attach loses the
+    /// move-refusal protection for this one dispatch, not the claim itself,
+    /// so the caller keeps the ticket either way and only reads the answer
+    /// to decide whether to complain.
+    /// </summary>
+    public async Task<bool> AttachPlaybookAsync(int playbookId, CancellationToken ct)
+    {
+        var answer = await _quiet.Send(
+            HttpMethod.Post, $"/api/hatch/issues/{Key}/claim/heartbeat",
+            new ClaimHeartbeatRequest(Token, null, playbookId), ct);
+        return answer.Ok;
+    }
+
     public async ValueTask DisposeAsync()
     {
         await ReleaseAsync();

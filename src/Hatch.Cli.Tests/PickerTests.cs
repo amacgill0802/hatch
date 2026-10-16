@@ -50,6 +50,53 @@ public sealed class PickerTests
         await picked.Claim!.ReleaseAsync();
     }
 
+    /// <summary>HA-582: the match is only known after the take, so the playbook rides a heartbeat rather than the claim itself.</summary>
+    [Fact]
+    public async Task A_claim_against_a_row_with_a_playbook_attaches_it_after_the_match_resolves()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-2") });
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-2/claim", HttpStatusCode.OK, Fixtures.Taken(token));
+        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2"));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-2/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-2/claim", HttpStatusCode.NoContent);
+
+        var picked = await MakePicker(h)
+            .PickAsync(null, 0, default, Harness.Beat);
+
+        Assert.Equal(Pick.Claimed, picked.Outcome);
+        var sent = Assert.Single(
+            h.Wire.To("POST", "/api/hatch/issues/AER-2/claim/heartbeat").Select(c => c.Read<ClaimHeartbeatRequest>()),
+            b => b.PlaybookId == Fixtures.Playbook().Id);
+        Assert.Equal(token, sent.Token);
+
+        await picked.Claim!.ReleaseAsync();
+    }
+
+    /// <summary>A failed attach is weather, not a reason to let the claim go - the walk keeps the ticket either way.</summary>
+    [Fact]
+    public async Task A_failed_playbook_attach_does_not_cost_the_dispatch()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-2") });
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-2/claim", HttpStatusCode.OK, Fixtures.Taken(token));
+        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2"));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-2/claim/heartbeat", HttpStatusCode.InternalServerError, "boom");
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-2/claim", HttpStatusCode.NoContent);
+
+        var picked = await MakePicker(h)
+            .PickAsync(null, 0, default, Harness.Beat);
+
+        Assert.Equal(Pick.Claimed, picked.Outcome);
+        Assert.Contains(h.Say.Complained, l => l.Contains("AER-2", StringComparison.Ordinal));
+
+        await picked.Claim!.ReleaseAsync();
+    }
+
     [Fact]
     public async Task A_ticket_taken_between_the_scan_and_the_claim_moves_the_pass_on()
     {
