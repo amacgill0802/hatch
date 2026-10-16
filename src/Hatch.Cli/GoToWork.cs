@@ -1588,7 +1588,9 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 // pull request for it. Never also a stall: the two guards'
                 // conditions are mutually exclusive by construction.
                 if ((report.Moved || report.Resolved || report.FixPushed)
-                    && report.EndedInReview && left.BranchOnOrigin && !left.HasPullRequest)
+                    && report.EndedInReview
+                    && (left.BranchOnOrigin && !left.HasPullRequest
+                        || work.Landing == Landings.Trunk && !left.HasLanding))
                 {
                     releaseOutcome = await Unpublished.RefuseAsync(
                         runtime.Board, runtime.Say, report, entering.Entries, work.LetGo, ct);

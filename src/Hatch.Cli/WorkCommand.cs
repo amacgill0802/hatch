@@ -629,7 +629,9 @@ public sealed class WorkCommand(Runtime runtime)
                 // conditions are mutually exclusive by construction.
                 if (report is not null
                     && (report.Moved || report.Resolved || report.FixPushed)
-                    && report.EndedInReview && left.BranchOnOrigin && !left.HasPullRequest)
+                    && report.EndedInReview
+                    && (left.BranchOnOrigin && !left.HasPullRequest
+                        || work.Landing == Landings.Trunk && !left.HasLanding))
                 {
                     releaseOutcome = await Unpublished.RefuseAsync(
                         runtime.Board, runtime.Say, report, entering.Entries, work.LetGo, CancellationToken.None);
