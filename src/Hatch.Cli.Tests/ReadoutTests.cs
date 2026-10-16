@@ -203,8 +203,9 @@ public sealed class ReadoutTests
 
         var row = Readout.Draw(snapshot, Now, 200, color: false)[^1];
 
-        Assert.Contains("s stop after this increment", row, StringComparison.Ordinal);
-        Assert.Contains("c cancel now", row, StringComparison.Ordinal);
+        Assert.Equal(
+            "n check now   s stop after this increment   c cancel   p pause   k skip this increment   ? more",
+            row);
     }
 
     [Fact]
@@ -216,7 +217,8 @@ public sealed class ReadoutTests
         var rows = Readout.Draw(snapshot, Now, 200, color: false);
 
         Assert.DoesNotContain(rows, r => r.Contains("stop after this increment", StringComparison.Ordinal));
-        Assert.DoesNotContain(rows, r => r.Contains("cancel now", StringComparison.Ordinal));
+        Assert.DoesNotContain(rows, r => r.Contains("check now", StringComparison.Ordinal));
+        Assert.DoesNotContain(rows, r => r.Contains("c cancel", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -238,7 +240,8 @@ public sealed class ReadoutTests
 
         var row = Readout.Draw(snapshot, Now, 200, color: false)[^1];
 
-        Assert.Contains("cancel now?", row, StringComparison.Ordinal);
+        Assert.Equal("cancel? y to confirm, any other key to go back", row);
+        Assert.DoesNotContain("cancel now", row, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -294,11 +297,18 @@ public sealed class ReadoutTests
         var snapshot = new ReadoutSnapshot(null, null, RunnerSnapshot.Empty, [], null, controls);
 
         var rows = Readout.Draw(snapshot, Now, 200, color: false);
-        var legend = rows.TakeLast(5).ToList();
+        var legend = rows.TakeLast(6).ToList();
 
-        Assert.Equal(5, legend.Count);
-        foreach (var key in new[] { "s", "c", "p", "k", "?" })
-            Assert.Contains(legend, r => r.TrimStart().StartsWith(key, StringComparison.Ordinal));
+        Assert.Equal(
+            [
+                "n   check now, skips the wait",
+                "s   stop after this increment, undo with s",
+                "c   cancel, asks first",
+                "p   pause and resume",
+                "k   skip this increment, asks first",
+                "?   back to the short legend",
+            ],
+            legend);
     }
 
     [Fact]
@@ -309,6 +319,7 @@ public sealed class ReadoutTests
 
         var row = Readout.Draw(snapshot, Now, 200, color: false)[^1];
 
+        Assert.Contains("n check now", row, StringComparison.Ordinal);
         Assert.Contains("s stop after this increment", row, StringComparison.Ordinal);
         Assert.Contains("k skip this increment", row, StringComparison.Ordinal);
         Assert.Contains("? more", row, StringComparison.Ordinal);

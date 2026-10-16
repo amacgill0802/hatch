@@ -178,10 +178,10 @@ public sealed class Claim : IAsyncDisposable
     /// </param>
     public static async Task<(Claim? Held, NotClaimed? Refused)> TakeAsync(
         HatchClient client, string key, string runner, CancellationToken ct, TimeSpan? interval = null,
-        TimeSpan? stallLapse = null)
+        TimeSpan? stallLapse = null, int? playbookId = null)
     {
         var answer = await client.Send(
-            HttpMethod.Post, $"/api/hatch/issues/{key}/claim", new ClaimRequest(runner), ct);
+            HttpMethod.Post, $"/api/hatch/issues/{key}/claim", new ClaimRequest(runner, playbookId), ct);
 
         if (answer.Conflict) return (null, new NotClaimed(answer.Sentence, Held: true));
         if (!answer.Ok) return (null, new NotClaimed($"the claim was refused - {answer.Sentence}", Held: false));

@@ -199,7 +199,7 @@ public sealed class IncrementReport
     public string Outcome =>
         Moved ? $"{From} -> {Ended}{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
         : Preempted ? $"put down for {PreemptedKey} - {PreemptedTitle}"
-        : UsageLimited ? $"out of Claude usage until {UsageLimit.Clock(UsageLimitResetAt!.Value)}{(UsageLimitResetKnown ? "" : " (unknown, one hour assumed)")}"
+        : UsageLimited ? $"out of Claude usage until {UsageLimit.Clock(UsageLimitResetAt!.Value, UsageLimitResetKnown)}{(UsageLimitResetKnown ? "" : " (unknown, one hour assumed)")}"
         : Skipped ? "skipped from the keyboard"
         : Resolved ? $"conflicts with {ConflictTrunk ?? Conflicts.UnnamedTrunk} resolved{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
         : FixPushed ? $"fix pushed, build pending{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
@@ -392,7 +392,7 @@ public sealed class Increment(
 
                 say.Line("");
                 say.Line(hit.ResetKnown
-                    ? $"hatch: {report.Key} - out of Claude usage, resets {UsageLimit.Clock(hit.ResetAt)}"
+                    ? $"hatch: {report.Key} - out of Claude usage, resets {UsageLimit.Clock(hit.ResetAt, hit.ResetKnown)}"
                     : $"hatch: {report.Key} - out of Claude usage, and the reset time could not be read - treating it as an hour away");
             }
 
