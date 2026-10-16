@@ -736,7 +736,12 @@ public class WorkController(
 
             if (waitingIds.Count > 0)
             {
-                var tasks = await db.Issues.Where(i => waitingIds.Contains(i.Id)).OrderBy(i => i.Rank).ThenBy(i => i.Id).ToListAsync(ct);
+                // Re-read, and re-checked: the tree above was read a moment ago,
+                // and a task a person moved, or that gained a pull request of
+                // its own, in between is not this merge's to carry.
+                var tasks = (await db.Issues.Where(i => waitingIds.Contains(i.Id)).OrderBy(i => i.Rank).ThenBy(i => i.Id).ToListAsync(ct))
+                    .Where(i => string.IsNullOrWhiteSpace(i.PullRequestUrl) && Columns.AtOrPastReview(statuses, i.StatusId))
+                    .ToList();
                 var below = 0;
                 foreach (var task in tasks)
                 {

@@ -480,12 +480,12 @@ public sealed class ClaimLineage
 
         // Then sideways, for a task whose story shares one branch: a sibling
         // under the same story that somebody is working would be pushing to the
-        // very branch this one would. Claimed ones only, in key order, so the
+        // very branch this one would. Claimed ones only, in the order they were filed, so the
         // sentence names the same sibling on every pass.
         if (_sharedStory.TryGetValue(issueId, out var story))
         {
             foreach (var id in _live.Keys.Where(id => id != issueId && _sharedStory.GetValueOrDefault(id, -1) == story)
-                         .OrderBy(id => _keys.GetValueOrDefault(id, ""), StringComparer.Ordinal))
+                         .Order())
             {
                 if (Named(id, heldToken, "sharing this story's branch") is { } beside) return beside;
             }

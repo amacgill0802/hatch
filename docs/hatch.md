@@ -1304,7 +1304,12 @@ merge gets a new pull request, and that is accepted. Turning the setting off
 while tasks wait leaves them waiting on nothing — they are no longer "waiting"
 by the definition above, so the story's merge no longer takes them — and a
 person moves them. A conflict or failing build on the shared branch holds every
-sibling, which is the cost of sharing it.
+sibling, which is the cost of sharing it. Turning the setting
+*on* is the mirror: a task already in review whose pull request has not yet been
+recorded reads as waiting from that moment, so record a task's pull request
+before flipping the story. And the one-at-a-time claim rule is about the branch
+and not the move, so it also holds a sibling back from a session that would
+never push - the cost of not having to ask what a session will do.
 
 At a terminal, `hatch one-pr <key> [on|off|inherit]` reads and sets it, and
 `hatch show` prints the line wherever it is on or a story has been told one way

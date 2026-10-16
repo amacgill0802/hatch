@@ -1401,10 +1401,13 @@ public sealed class PriorityTree
     public string? WaitingOn(long issueId, List<EfHatchStatus> statuses)
     {
         if (!_onePr.TryGetValue(issueId, out var row) || row.Type != "task" || row.HasPr) return null;
-        if (!Columns.AtOrPastReview(statuses, row.StatusId)) return null;
 
+        // The flag first: it is a short walk, and on a board that shares no pull
+        // request it ends every call here before the column arithmetic below.
         var (onePr, _, storyKey) = EffectiveOnePr(issueId);
-        return onePr ? storyKey : null;
+        if (!onePr) return null;
+
+        return Columns.AtOrPastReview(statuses, row.StatusId) ? storyKey : null;
     }
 
     /// <summary>
@@ -1414,7 +1417,7 @@ public sealed class PriorityTree
     public IReadOnlyList<long> WaitingUnder(long storyId, List<EfHatchStatus> statuses) =>
         !_rows.TryGetValue(storyId, out var story)
             ? []
-            : _onePr.Keys.Where(id => WaitingOn(id, statuses) == story.Key).Order().ToList();
+            : _onePr.Where(r => r.Value.Type == "task" && WaitingOn(r.Key, statuses) == story.Key).Select(r => r.Key).Order().ToList();
 
     /// <summary>
     /// The story a task shares the pull request of, by its row and with no
