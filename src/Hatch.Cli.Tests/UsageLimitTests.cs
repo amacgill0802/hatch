@@ -91,6 +91,44 @@ public sealed class UsageLimitTests
         Assert.Null(UsageLimit.Recognise("the build failed on main", EndedAt));
     }
 
+    [Theory]
+    [InlineData("You've hit your session limit · resets 7:40pm (America/New_York)", null, "2026-09-28T22:00:00+00:00", "2026-09-28T23:40:00+00:00", true)]
+    [InlineData("You've hit your session limit · resets 7pm (America/New_York)", null, "2026-09-28T22:00:00+00:00", "2026-09-28T23:00:00+00:00", true)]
+    [InlineData("You've hit your weekly limit · resets Oct 5 at 7:40pm (America/New_York)", null, "2026-09-28T22:00:00+00:00", "2026-10-05T23:40:00+00:00", true)]
+    [InlineData("You've hit your weekly limit · resets Oct 5, 7:40pm (America/New_York)", null, "2026-09-28T22:00:00+00:00", "2026-10-05T23:40:00+00:00", true)]
+    [InlineData("You've hit your Opus limit · resets 7:40pm (America/New_York)", null, "2026-09-28T22:00:00+00:00", "2026-09-28T23:40:00+00:00", true)]
+    [InlineData("You've hit your Sonnet limit · resets Oct 5, 7:40pm (America/New_York)", null, "2026-09-28T22:00:00+00:00", "2026-10-05T23:40:00+00:00", true)]
+    [InlineData("You've hit your Fable limit · resets 7:40pm (America/New_York)", null, "2026-09-28T22:00:00+00:00", "2026-09-28T23:40:00+00:00", true)]
+    [InlineData("You've hit your session limit · resets 7:40pm (America/New_York) · progress saved", null, "2026-09-28T22:00:00+00:00", "2026-09-28T23:40:00+00:00", true)]
+    [InlineData("You're out of usage credits · resets 7:40pm (America/New_York)", null, "2026-09-28T22:00:00+00:00", "2026-09-28T23:40:00+00:00", true)]
+    [InlineData("You've hit your session limit · resets 7:40pm", "America/New_York", "2026-09-28T22:00:00+00:00", "2026-09-28T23:40:00+00:00", true)]
+    [InlineData("You've hit your session limit · resets 5:00pm", "America/New_York", "2026-09-28T22:00:00+00:00", "2026-09-29T21:00:00+00:00", true)]
+    [InlineData("You've hit your weekly limit · resets Jan 3, 2027 at 7:40pm (America/New_York)", null, "2026-12-30T22:00:00+00:00", "2027-01-04T00:40:00+00:00", true)]
+    [InlineData("You've hit your weekly limit · resets Jan 3, 2027, 7:40pm (America/New_York)", null, "2026-12-30T22:00:00+00:00", "2027-01-04T00:40:00+00:00", true)]
+    [InlineData("You've hit your session limit · resets 7:40pm (Mars/Colony)", null, "2026-09-28T22:00:00+00:00", "2026-09-29T19:40:00+00:00", true)]
+    [InlineData("You've hit your session limit · resets soon, we promise", null, "2026-09-28T22:00:00+00:00", null, false)]
+    [InlineData("the build failed on main", null, "2026-09-28T22:00:00+00:00", null, null)]
+    public void Every_sentence_shape_the_CLI_prints_resolves_to_the_instant_it_names(
+        string said, string? runnerZone, string endedAt, string? expectedResetAt, bool? expectedResetKnown)
+    {
+        var ended = DateTimeOffset.Parse(endedAt);
+        var zone = runnerZone is null ? null : TimeZoneInfo.FindSystemTimeZoneById(runnerZone);
+
+        var hit = UsageLimit.Recognise(said, ended, zone);
+
+        if (expectedResetKnown is null)
+        {
+            Assert.Null(hit);
+            return;
+        }
+
+        Assert.NotNull(hit);
+        Assert.Equal(expectedResetKnown, hit!.Value.ResetKnown);
+        Assert.Equal(
+            expectedResetAt is null ? ended + UsageLimit.UnknownWindow : DateTimeOffset.Parse(expectedResetAt),
+            hit.Value.ResetAt);
+    }
+
     [Fact]
     public void Nothing_said_is_not_a_limit()
     {

@@ -2270,6 +2270,30 @@ public static class BuildVerdicts
 }
 
 /// <summary>
+/// The two things a check session can say about an issue - see
+/// <see cref="VerdictCreateRequest"/>. Spelled on the contract, not the entity
+/// side, because the CLI half that posts a verdict has no reference to
+/// <c>Hatch.Api</c> and still wants to refuse a bad word before it ever
+/// reaches the wire.
+/// </summary>
+public static class CheckVerdicts
+{
+    public const string Pass = "pass";
+    public const string Fail = "fail";
+
+    public static readonly IReadOnlyList<string> All = [Pass, Fail];
+}
+
+/// <summary>
+/// A verdict a check session wrote about the issue it was looking at. Who took
+/// it is the credential's to say, and when is the board's, so the body names
+/// neither.
+/// </summary>
+/// <param name="Verdict">One of <see cref="CheckVerdicts"/>.</param>
+/// <param name="Findings">What the session found, or null for none.</param>
+public record VerdictCreateRequest(string Verdict, string? Findings);
+
+/// <summary>
 /// What a forge says a pull request's own state is - the only place that tells
 /// a merged one from one closed without merging. Neither git nor the absence
 /// of a branch can: a squash merge puts none of the branch's commits in the
