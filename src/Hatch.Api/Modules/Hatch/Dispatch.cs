@@ -90,10 +90,14 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         // One instant for the whole pass. A scan in which the clock moved
         // between two rows could fold one card and not its neighbour for a
         // reason nobody could reconstruct afterwards.
-        var claimed = new ClaimGate(claims, now, heldToken, await claims.LineageAsync(db, now, ct));
+        // Read once for the pass: the claim lineage, the dependency gate and the
+        // family gate all answer one-PR questions from it.
+        var tree = await PriorityTree.ForAsync(db, ct);
 
-        var gate = await DependencyGate.ForAsync(db, statuses, ct);
-        var family = await FamilyGate.ForAsync(db, statuses, ct);
+        var claimed = new ClaimGate(claims, now, heldToken, await claims.LineageAsync(db, now, ct, tree));
+
+        var gate = await DependencyGate.ForAsync(db, statuses, ct, tree);
+        var family = await FamilyGate.ForAsync(db, statuses, ct, tree);
         var wip = await Wip.LoadAsync(db, claims, statuses, now, ct);
         var open = await Questions.WaitingCountsAsync(db, ct);
         var playbooks = await db.Playbooks.AsNoTracking()
@@ -1278,9 +1282,9 @@ public sealed class PriorityTree
     // The one-PR walk needs two things the other two do not: each issue's type,
     // to find the nearest story, and each story's own override. Kept beside
     // _rows rather than widening its tuple, which every other walk destructures.
-    private readonly Dictionary<long, (string Type, bool? OnePr, bool ProjectOnePr, int StatusId, bool HasPr)> _onePr;
+    private readonly Dictionary<long, (string Type, bool? OnePr, bool ProjectOnePr, int StatusId, bool HasPr, bool Terminal)> _onePr;
 
-    internal PriorityTree(Dictionary<long, (long?, string, int, int)> rows, Dictionary<long, (string, bool?, bool, int, bool)>? onePr = null)
+    internal PriorityTree(Dictionary<long, (long?, string, int, int)> rows, Dictionary<long, (string, bool?, bool, int, bool, bool)>? onePr = null)
     {
         _rows = rows;
         _onePr = onePr ?? new();
@@ -1293,7 +1297,7 @@ public sealed class PriorityTree
             {
                 i.Id, i.ParentId, i.Priority, i.PreApproval, ProjectKey = i.Project!.Key, i.Number,
                 i.Type, i.OnePullRequest, ProjectOnePr = i.Project!.OnePullRequest,
-                i.StatusId, HasPr = i.PullRequestUrl != null && i.PullRequestUrl != "",
+                i.StatusId, HasPr = i.PullRequestUrl != null && i.PullRequestUrl != "", Terminal = i.Status!.IsTerminal,
             })
             .ToListAsync(ct);
 
@@ -1301,7 +1305,7 @@ public sealed class PriorityTree
             rows.ToDictionary(
                 r => r.Id,
                 r => ((long?)r.ParentId, IssueKey.Format(r.ProjectKey, r.Number), r.Priority, r.PreApproval)),
-            rows.ToDictionary(r => r.Id, r => (r.Type, r.OnePullRequest, r.ProjectOnePr, r.StatusId, r.HasPr)));
+            rows.ToDictionary(r => r.Id, r => (r.Type, r.OnePullRequest, r.ProjectOnePr, r.StatusId, r.HasPr, r.Terminal)));
     }
 
     internal bool TryGet(long id, out (long? ParentId, string Key, int Priority, int PreApproval) row) => _rows.TryGetValue(id, out row);
@@ -1368,18 +1372,30 @@ public sealed class PriorityTree
         _onePr.TryGetValue(issueId, out var self);
         var own = self.Type == "story" ? self.OnePr : null;
 
+        if (StoryAbove(issueId) is not { } story) return (false, own, null);
+
+        var row = _onePr[story];
+        return (row.OnePr ?? row.ProjectOnePr, own, story == issueId ? null : _rows[story].Key);
+    }
+
+    /// <summary>
+    /// The nearest story at or above an issue, or null. The one walk every
+    /// one-PR question is asked through, so they cannot come to pick different
+    /// stories.
+    /// </summary>
+    private long? StoryAbove(long issueId)
+    {
         var seen = new HashSet<long>();
         long? at = issueId;
 
         while (at is { } id && seen.Add(id))
         {
-            if (_onePr.TryGetValue(id, out var row) && row.Type == "story")
-                return (row.OnePr ?? row.ProjectOnePr, own, id == issueId ? null : _rows[id].Key);
+            if (_onePr.TryGetValue(id, out var row) && row.Type == "story") return id;
 
             at = TryGet(id, out var found) ? found.ParentId : null;
         }
 
-        return (false, own, null);
+        return null;
     }
 
     /// <summary>
@@ -1394,20 +1410,32 @@ public sealed class PriorityTree
     /// on to open the one pull request - and it is not finished as far as the
     /// board is concerned: it ends in a terminal column only when that pull
     /// request merges. A task with a pull request of its own is not waiting on
-    /// the story's, so a story flipped on after some of its tasks had begun
-    /// leaves those tasks exactly as they were. See
+    /// the story's. See <see cref="SharedStoryOf"/> for who shares, and
     /// <c>docs/hatch.md</c>, "One pull request".
     /// </remarks>
-    public string? WaitingOn(long issueId, List<EfHatchStatus> statuses)
+    public string? WaitingOn(long issueId, List<EfHatchStatus> statuses) =>
+        _onePr.TryGetValue(issueId, out var row)
+        && SharedStoryOf(issueId) is { } story
+        && Columns.AtOrPastReview(statuses, row.StatusId)
+            ? _rows[story].Key
+            : null;
+
+    /// <summary>
+    /// Every task waiting on a story's pull request, with that story's key -
+    /// <see cref="WaitingOn"/> asked of the whole board, with the column test
+    /// worked out once instead of once a task.
+    /// </summary>
+    public Dictionary<long, string> WaitingIds(List<EfHatchStatus> statuses)
     {
-        if (!_onePr.TryGetValue(issueId, out var row) || row.Type != "task" || row.HasPr) return null;
+        var lane = Columns.AtOrPastReviewIds(statuses);
+        var waiting = new Dictionary<long, string>();
+        if (lane.Count == 0) return waiting;
 
-        // The flag first: it is a short walk, and on a board that shares no pull
-        // request it ends every call here before the column arithmetic below.
-        var (onePr, _, storyKey) = EffectiveOnePr(issueId);
-        if (!onePr) return null;
+        foreach (var (id, row) in _onePr)
+            if (row.Type == "task" && !row.HasPr && lane.Contains(row.StatusId) && SharedStoryOf(id) is { } story)
+                waiting[id] = _rows[story].Key;
 
-        return Columns.AtOrPastReview(statuses, row.StatusId) ? storyKey : null;
+        return waiting;
     }
 
     /// <summary>
@@ -1417,29 +1445,24 @@ public sealed class PriorityTree
     public IReadOnlyList<long> WaitingUnder(long storyId, List<EfHatchStatus> statuses) =>
         !_rows.TryGetValue(storyId, out var story)
             ? []
-            : _onePr.Where(r => r.Value.Type == "task" && WaitingOn(r.Key, statuses) == story.Key).Select(r => r.Key).Order().ToList();
+            : WaitingIds(statuses).Where(r => r.Value == story.Key).Select(r => r.Key).Order().ToList();
 
     /// <summary>
     /// The story a task shares the pull request of, by its row and with no
-    /// regard to where the task stands - the question the claim lineage and the
-    /// dependency gate ask about two tasks that are not yet, or no longer,
-    /// waiting. Null for anything that is not a task under such a story, and
-    /// for a task that already has a pull request of its own.
+    /// regard to where the task stands - the question the claim lineage, the
+    /// dependency gate and the branch a dispatch is named for ask about tasks
+    /// that are not yet, or no longer, waiting. Null for anything that is not a
+    /// task under a story that shares, for a task that already has a pull
+    /// request of its own, and for a task whose story is in a terminal column:
+    /// that story's pull request has merged, so there is none left to share.
     /// </summary>
     public long? SharedStoryOf(long issueId)
     {
         if (!_onePr.TryGetValue(issueId, out var self) || self.Type != "task" || self.HasPr) return null;
-        if (!EffectiveOnePr(issueId).OnePr) return null;
+        if (StoryAbove(issueId) is not { } story) return null;
 
-        var seen = new HashSet<long>();
-        long? at = issueId;
-        while (at is { } id && seen.Add(id))
-        {
-            if (_onePr.TryGetValue(id, out var row) && row.Type == "story") return id;
-            at = TryGet(id, out var found) ? found.ParentId : null;
-        }
-
-        return null;
+        var row = _onePr[story];
+        return !row.Terminal && (row.OnePr ?? row.ProjectOnePr) ? story : null;
     }
 }
 
@@ -1478,7 +1501,7 @@ public sealed class DependencyGate
     }
 
     public static async Task<DependencyGate> ForAsync(
-        HatchContext db, List<EfHatchStatus> statuses, CancellationToken ct)
+        HatchContext db, List<EfHatchStatus> statuses, CancellationToken ct, PriorityTree? tree = null)
     {
         var terminal = statuses.Where(s => s.IsTerminal).Select(s => s.Id).ToList();
 
@@ -1491,7 +1514,7 @@ public sealed class DependencyGate
             .Select(d => new { d.IssueId, d.DependsOnId, ProjectKey = d.DependsOn!.Project!.Key, d.DependsOn!.Number })
             .ToListAsync(ct);
 
-        var tree = await PriorityTree.ForAsync(db, ct);
+        tree ??= await PriorityTree.ForAsync(db, ct);
 
         // The one exception to "satisfied means done": a task under a story that
         // shares one pull request, waiting on its pull request, satisfies an
@@ -1606,7 +1629,7 @@ public sealed class FamilyGate
     }
 
     public static async Task<FamilyGate> ForAsync(
-        HatchContext db, List<EfHatchStatus> statuses, CancellationToken ct)
+        HatchContext db, List<EfHatchStatus> statuses, CancellationToken ct, PriorityTree? tree = null)
     {
         var terminal = statuses.Where(s => s.IsTerminal).Select(s => s.Id).ToHashSet();
 
@@ -1633,8 +1656,8 @@ public sealed class FamilyGate
         // Every task waiting on its story's pull request, found once for the
         // pass - see PriorityTree.WaitingOn. A board that shares no pull request
         // anywhere has an empty set and every rule below is exactly as it was.
-        var tree = await PriorityTree.ForAsync(db, ct);
-        var waiting = rows.Where(r => tree.WaitingOn(r.Id, statuses) is not null).Select(r => r.Id).ToHashSet();
+        tree ??= await PriorityTree.ForAsync(db, ct);
+        var waiting = tree.WaitingIds(statuses).Keys.ToHashSet();
 
         return new FamilyGate(children, open, statusById, byId, waiting);
     }

@@ -41,6 +41,15 @@ public sealed class SharedBranchTests
     }
 
     [Fact]
+    public void A_shared_dispatch_with_no_title_gets_no_slug_rather_than_the_key_cut_into_one()
+    {
+        var work = Fixtures.Work(Task) with { BranchKey = Story, BranchTitle = null };
+
+        Assert.Equal("", Branches.TitleOf(work));
+        Assert.Equal("aer-5", Branches.Cut(Branches.KeyOf(work), Branches.TitleOf(work)));
+    }
+
+    [Fact]
     public void Settle_leaves_an_unshared_dispatch_alone_and_asks_git_nothing()
     {
         using var h = new Harness();

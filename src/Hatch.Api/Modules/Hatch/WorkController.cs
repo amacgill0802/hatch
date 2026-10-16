@@ -314,7 +314,7 @@ public class WorkController(
         IReadOnlyDictionary<long, Dispatch.TrainSlot> trainSlots = new Dictionary<long, Dispatch.TrainSlot>();
         if (merging.Count > 0)
         {
-            var gate = await DependencyGate.ForAsync(db, statuses, ct);
+            var gate = await DependencyGate.ForAsync(db, statuses, ct, tree);
             var effective = merging.ToDictionary(i => i.Id, i => gate.Effective(i.Id));
             var judged = merging.ToDictionary(i => i.Id, i => MergeWork.Judge(
                 i.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),

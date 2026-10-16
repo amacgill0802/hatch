@@ -109,13 +109,19 @@ public static class Columns
     /// not terminal - the lane a task is finished in once its work is pushed.
     /// A deferred column is on no lane, so it is never in this one.
     /// </summary>
-    public static bool AtOrPastReview(List<EfHatchStatus> statuses, int statusId)
+    public static bool AtOrPastReview(List<EfHatchStatus> statuses, int statusId) =>
+        AtOrPastReviewIds(statuses).Contains(statusId);
+
+    /// <summary>
+    /// Every column <see cref="AtOrPastReview"/> is true of, worked out once - for
+    /// the caller that asks it of every issue on the board.
+    /// </summary>
+    public static HashSet<int> AtOrPastReviewIds(List<EfHatchStatus> statuses)
     {
-        if (AwaitingReview(statuses) is not { } review) return false;
+        if (AwaitingReview(statuses) is not { } review) return [];
 
         var board = Board(statuses);
-        var at = board.FindIndex(s => s.Id == statusId);
-        return at >= 0 && at >= board.FindIndex(s => s.Id == review.Id) && !board[at].IsTerminal;
+        return board.Skip(board.FindIndex(s => s.Id == review.Id)).Where(s => !s.IsTerminal).Select(s => s.Id).ToHashSet();
     }
 
     /// <summary>

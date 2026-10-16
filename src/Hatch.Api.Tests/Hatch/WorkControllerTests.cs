@@ -8380,6 +8380,21 @@ public class WorkControllerTests
     }
 
     [Fact]
+    public async Task OnePr_ATaskWhoseStoryHasAlreadyShipped_IsNotWaiting_AndIsNamedForItself()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", "the story", h.Done);
+        await h.OnePrAsync(story, true);
+        var late = await h.FileAsync("task", "arrived after the merge", h.Review, parentId: story.Id);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(late));
+        var work = Value(await h.Work.GetWork(Key(late), null, default));
+
+        Assert.DoesNotContain("waiting on", entry.Blocked);
+        Assert.Equal(Key(late), work.BranchKey);
+    }
+
+    [Fact]
     public async Task OnePr_ATaskStillBeingWritten_IsNotWaiting()
     {
         var h = await NewAsync();

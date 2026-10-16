@@ -180,7 +180,7 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
     /// already in the order the board draws them, which is the order
     /// <see cref="ClaimLineage.Holder"/> names a holder in.
     /// </remarks>
-    public async Task<ClaimLineage> LineageAsync(HatchContext db, DateTimeOffset now, CancellationToken ct)
+    public async Task<ClaimLineage> LineageAsync(HatchContext db, DateTimeOffset now, CancellationToken ct, PriorityTree? priorities = null)
     {
         var cutoff = Cutoff(now);
         var quietCutoff = QuietCutoff(now);
@@ -227,7 +227,7 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
         var shared = new Dictionary<long, long>();
         if (live.Count > 0)
         {
-            var priorities = await PriorityTree.ForAsync(db, ct);
+            priorities ??= await PriorityTree.ForAsync(db, ct);
             foreach (var id in keys.Keys)
                 if (priorities.SharedStoryOf(id) is { } story) shared[id] = story;
         }

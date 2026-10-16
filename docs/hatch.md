@@ -1311,9 +1311,11 @@ own branch's, since a waiting task is left out.
 
 **Known edges.** A story whose pull request merges early leaves a later task —
 a gap filed after the merge — with no branch to join and no pull request coming
-to carry it. The runner sees that (every branch the story has on origin is
-already in the trunk) and hands the task back to its own key, so it is cut its
-own branch and opens its own pull request, as it would with sharing off. A conflict or failing build on the shared branch holds every
+to carry it. The board sees that the story is in a terminal column and no
+longer counts the task as sharing it (no waiting, no sibling claim, its own
+branch key); the runner, which can see git, does the same where every branch the
+story has on origin is already in the trunk. The task is cut its own branch and
+opens its own pull request, as it would with sharing off. A conflict or failing build on the shared branch holds every
 sibling, which is the cost of sharing it. The setting is locked once work under the story has started, so
 flipping it can neither strand a waiting task nor make a task in review read as
 waiting; the project's default is the one door that is not locked. And the one-at-a-time claim rule is about the branch

@@ -256,9 +256,15 @@ public static class Branches
     /// <summary>The key every git call for this dispatch names its branch by - the issue's own, unless it shares.</summary>
     public static string KeyOf(WorkDto work) => IsShared(work) ? work.BranchKey! : work.Issue.Key;
 
-    /// <summary>The title the branch's slug is cut from - the story's, when the branch is the story's.</summary>
+    /// <summary>
+    /// The title the branch's slug is cut from - the story's, when the branch is
+    /// the story's. A response that names the story's key and not its title gets
+    /// no slug at all, and so a branch named for the key alone: never the key
+    /// cut into its own slug, which every sibling that follows would have to
+    /// join.
+    /// </summary>
     public static string TitleOf(WorkDto work) =>
-        IsShared(work) ? work.BranchTitle is { Length: > 0 } title ? title : work.BranchKey! : work.Issue.Title;
+        IsShared(work) ? work.BranchTitle ?? "" : work.Issue.Title;
 
     /// <summary>The prefix every which-branch question starts with, so a later pass can find its answer.</summary>
     public static string Question(string key) => $"Which branch should {key} continue on?";
