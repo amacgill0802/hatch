@@ -538,6 +538,66 @@ public sealed class LifecycleTests
         Assert.True(left.HasLanding);
     }
 
+    // ---- What EnterAsync/Plan compute for a trunk-landing project ----
+
+    [Fact]
+    public async Task EnterAsync_on_a_trunk_landing_project_enters_a_trunk_landing_branch()
+    {
+        using var h = new Harness();
+        var chosen = new Checkouts.Choice(h.Root, [], [(h.Root, null)], []);
+
+        var entering = await new Lifecycle(h.Runtime).EnterAsync(
+            Fixtures.Work("AER-1", landing: Landings.Trunk), chosen, default);
+
+        Assert.True(Assert.Single(entering.Entries).TrunkLanding);
+    }
+
+    [Fact]
+    public async Task EnterAsync_on_a_pull_request_project_enters_a_branch_that_is_not_trunk_landing()
+    {
+        using var h = new Harness();
+        var chosen = new Checkouts.Choice(h.Root, [], [(h.Root, null)], []);
+
+        var entering = await new Lifecycle(h.Runtime).EnterAsync(Fixtures.Work("AER-1"), chosen, default);
+
+        Assert.False(Assert.Single(entering.Entries).TrunkLanding);
+    }
+
+    [Fact]
+    public void Plan_on_a_trunk_landing_project_plans_a_trunk_landing_branch()
+    {
+        using var h = new Harness();
+        var chosen = new Checkouts.Choice(h.Root, [], [(h.Root, null)], []);
+
+        var plan = new Lifecycle(h.Runtime).Plan(Fixtures.Work("AER-1", landing: Landings.Trunk), chosen);
+
+        Assert.True(Assert.Single(plan).TrunkLanding);
+    }
+
+    [Fact]
+    public void Plan_on_a_pull_request_project_plans_a_branch_that_is_not_trunk_landing()
+    {
+        using var h = new Harness();
+        var chosen = new Checkouts.Choice(h.Root, [], [(h.Root, null)], []);
+
+        var plan = new Lifecycle(h.Runtime).Plan(Fixtures.Work("AER-1"), chosen);
+
+        Assert.False(Assert.Single(plan).TrunkLanding);
+    }
+
+    [Fact]
+    public async Task A_dry_run_on_a_trunk_landing_project_says_so_and_changes_nothing()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", landing: Landings.Trunk));
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["AER-1", "--dry-run"], default));
+
+        Assert.Contains(h.Say.Said, l => l.StartsWith("# would enter:", StringComparison.Ordinal)
+            && l.Contains("this project lands on the trunk", StringComparison.Ordinal));
+        Assert.Empty(h.Wire.Calls.Where(c => c.Method != "GET"));
+    }
+
     [Fact]
     public async Task A_lost_lease_puts_the_tree_back_and_writes_nothing()
     {
