@@ -55,6 +55,28 @@ describe('describe', () => {
     ).toBe('In Progress → To Do, sent back - brief is 9000 characters, limit 8000');
   });
 
+  it('marks a hop with pre-approved, after the ordinary from/to', () => {
+    expect(
+      describeEvent(
+        event({ kind: 'status_changed', payload: { from: 'In Review', to: 'Done', preapproved: true } }),
+      ),
+    ).toBe('In Review → Done, pre-approved');
+  });
+
+  it('reads an old express_changed row as the words it toggled', () => {
+    expect(
+      describeEvent(event({ kind: 'express_changed', payload: { from: false, to: true } })),
+    ).toBe('Not express → Express');
+  });
+
+  it('reads an old created row that inherited express from its parent', () => {
+    expect(
+      describeEvent(
+        event({ kind: 'created', payload: { type: 'story', title: 'A story', expressFrom: 'AER-12' } }),
+      ),
+    ).toBe('express, inherited from AER-12');
+  });
+
   it('names a project move that carried its descendants with it', () => {
     expect(
       describeEvent(
