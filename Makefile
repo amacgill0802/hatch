@@ -50,8 +50,13 @@ test-hatch:
 # supervisor calls this to make one - at two in the morning, between increments.
 # The shippable artifact is `publish-hatch` below, which is a different and much
 # slower thing aimed at a different consumer.
+# HATCH_BUILD_ARGS is for the caller that wants more of dotnet than this says,
+# e.g. `make build-hatch HATCH_BUILD_ARGS=--no-incremental` to compile
+# everything again whether or not MSBuild thinks it is current.
+HATCH_BUILD_ARGS ?=
+
 build-hatch:
-	dotnet build ./src/Hatch.Cli/Hatch.Cli.csproj --configuration Release
+	dotnet build ./src/Hatch.Cli/Hatch.Cli.csproj --configuration Release $(HATCH_BUILD_ARGS)
 
 # The artifact somebody else downloads: one file, no SDK on the far side, for
 # every platform this house runs on. Self-contained because an operator taking
