@@ -152,6 +152,9 @@ one loads on every increment. Two rules from it matter enough to repeat:
   the ticket is where somebody looks in six months.
 - Record a pull request with `./scripts/hatch.sh pr AER-12 <url>`, named the
   way the prompt's `## Opening a pull request` section says.
+  `./scripts/hatch.sh landed AER-12 [<sha>]` is the other half, once the work
+  is there: it records the sha AER-12's work reached the trunk at, in this
+  checkout's own origin remote.
 - **Never move a ticket to a terminal or deferred status** — only the
   operator does. The prompt's "Where this increment ends" section names
   where this one stops.
