@@ -99,10 +99,13 @@ public sealed class BoardCommands(Cli cli)
             var asideCount = column.Count(i => i.Priority == PriorityLevels.PausedName);
             var aside = asideCount > 0 ? $"  ({asideCount} paused)" : "";
 
-            var express = column.Count(i => i.Express);
+            var express = column.Count(i => i.PreApproval == PreApprovalLevels.ExpressName);
             var carried = express > 0 ? $"  ({express} express)" : "";
 
-            cli.Say.Line($"{status.Name}{terminal}: {column.Count}{emergency}{first}{low}{economy}{aside}{carried}");
+            var approved = column.Count(i => i.PreApproval == PreApprovalLevels.PreApprovedName);
+            var preapproved = approved > 0 ? $"  ({approved} pre-approved)" : "";
+
+            cli.Say.Line($"{status.Name}{terminal}: {column.Count}{emergency}{first}{low}{economy}{aside}{carried}{preapproved}");
         }
 
         if (board.Wip is { } wip)
@@ -183,7 +186,12 @@ public sealed class BoardCommands(Cli cli)
             PriorityLevels.EconomyName => "  (economy)",
             _ => "",
         };
-        var carried = card.Express ? "  (express)" : "";
+        var carried = card.PreApproval switch
+        {
+            PreApprovalLevels.ExpressName => "  (express)",
+            PreApprovalLevels.PreApprovedName => "  (pre-approved)",
+            _ => "",
+        };
         cli.Say.Line($"{card.Key}  [{card.Type}]  {card.Title}{first}{carried}{due}");
         return 0;
     }
