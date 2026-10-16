@@ -4651,26 +4651,28 @@ is offered again on the next pass exactly as if it had moved, unless something
 else - a dependency, a playbook, a question - holds it back.
 
 **Neither is a usage limit.** A session that ends because the Claude account it
-ran under hit its usage limit is read from what it said on its way out — the
-reported sentence is `You've hit your session limit · resets 7:40pm
-(America/New_York)`, and the same read handles an hour with no minutes, a
-weekly limit that names a date, and an unknown zone (falls back to UTC rather
-than giving up). A time with no date is the next occurrence of that clock time
-after the session ended, in the named zone; a limit the session named but whose
-time could not be parsed at all is treated as an hour away, and both the
-terminal and the ticket say so. No stall comment is written and no question is
-opened — the ticket is left exactly where the session left it, with no flag
-blocking the next dispatch — because nothing here is wrong with the ticket. The
-terminal says the runner is out of Claude usage and the reset time it read, and
-after [the tree is pushed](#leaving-the-tree), the ticket gets one comment: that
-the runner ran out of usage, when it expects to resume, the branch and sha that
-were pushed (or that there was nothing to push), and the `claude --resume`
-command. The night's tally counts it as **interrupted**, a third list beside
-*moved* and *stalled* — not a failure, and not one of the three in a row that end
-a night, the same treatment a lost lease gets and for the same reason: this is
-the loop working correctly against a spent account, not a broken increment. See
-[runners on the board](#runners-on-the-board) for what a runner does about the
-account itself.
+ran under hit its usage limit is read from what it said on its way out - the
+read now covers every spelling a limit comes back under (session, weekly, Opus,
+Sonnet and Fable), as well as the pay-as-you-go phrasing that never says "limit"
+at all (`You're out of usage credits · resets ...`); it handles a dated reset
+given either with "at" or with a bare comma, an hour with no minutes, an unknown
+zone (falls back to UTC rather than giving up), and a reset naming no zone at
+all, read against the runner's own zone rather than falling to the one-hour-away
+treatment. A time with no date is the next occurrence of that clock time after
+the session ended, in the named zone; a limit the session named but whose time
+could not be parsed at all is treated as an hour away, and both the terminal and
+the ticket say so. No stall comment is written and no question is opened — the
+ticket is left exactly where the session left it, with no flag blocking the next
+dispatch — because nothing here is wrong with the ticket. The terminal says the
+runner is out of Claude usage and the reset time it read, and after [the tree is
+pushed](#leaving-the-tree), the ticket gets one comment: that the runner ran out
+of usage, when it expects to resume, the branch and sha that were pushed (or
+that there was nothing to push), and the `claude --resume` command. The night's
+tally counts it as **interrupted**, a third list beside *moved* and *stalled* —
+not a failure, and not one of the three in a row that end a night, the same
+treatment a lost lease gets and for the same reason: this is the loop working
+correctly against a spent account, not a broken increment. See [runners on the
+board](#runners-on-the-board) for what a runner does about the account itself.
 
 **The wait re-asks the same probe.** The sentence above is only the first
 guess at when the account resets - the exhausted wait does not simply sit
@@ -4685,6 +4687,19 @@ direction; and a probe with no session window at all - or no answer at all -
 touches nothing, leaving the sentence standing. A correction says itself once,
 the same "out of Claude usage until ..." line the sentence itself prints, and
 not again merely because a later probe lands on the same corrected reading.
+
+**The wait cannot outlast the window.** The reset instant above is only
+ever a guess, and the "next occurrence of that clock time" rule it is
+built on can roll a single second of clock drift all the way to tomorrow -
+an hour's wait read as a day's. So the wait also carries the instant the
+limit was hit and which of the two windows Hatch knows the length of - a
+session's five hours or a weekly one's seven days - it belongs to. Once
+that much time has passed, the wait ends exactly as if the account had
+reset on its own, whatever the sentence's own instant still says and
+whether or not a probe has said anything to the contrary. A ticket a
+still-spent account refuses costs one session, not the rest of the window;
+the three-in-a-row stall machinery is what catches a spawn that keeps
+being refused.
 
 **Neither is a preemption.** The board can order the runner holding the
 lowest-priority ticket to stand down for an emergency one — see

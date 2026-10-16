@@ -1532,6 +1532,86 @@ public sealed class GoToWorkTests
         Assert.Contains(h.Say.Said, l => l.Contains(UsageLimit.Clock(carriedUntil, known: true), StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// Drives a fake clock forward by hand rather than through
+    /// <c>AutoAdvanceAmount</c>: the exhausted wait's own nap is
+    /// <c>Task.Delay(slice, runtime.Clock, ct)</c> (GoToWork.cs around line
+    /// 1740), so nothing about it ever elapses on its own - a read of
+    /// <c>AutoAdvanceAmount</c>'s clock advances it, but nothing reads the
+    /// clock while a pending <c>Task.Delay</c> is the only thing waiting on
+    /// it, which is exactly the shape of this wait. Advancing it from outside
+    /// is what lets that delay - and the loop behind it - complete without
+    /// an actual multi-hour wait.
+    /// </summary>
+    private static async Task DriveAsync(FakeTimeProvider clock, Task run, TimeSpan step)
+    {
+        for (var i = 0; !run.IsCompleted; i++)
+        {
+            Assert.True(i < 1_000, "the clock-driven run never finished");
+            clock.Advance(step);
+
+            // A real tick rather than Task.Yield(): what is left after the
+            // clamp clears is ordinary async work (claiming, spawning) with
+            // nothing left to drive by hand, and a bare yield never gives the
+            // thread pool behind it an actual turn.
+            await Task.Delay(1);
+        }
+    }
+
+    [Fact]
+    public async Task A_reset_rolled_a_day_out_is_clamped_to_the_sessions_own_window()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        var start = DateTimeOffset.UtcNow;
+        Carrying(h, new NightState { ExhaustedUntil = start.AddDays(1) });
+
+        var clock = new FakeTimeProvider(start);
+        var fake = new FakeProbingSessions { Behaviour = () => null };
+        var runtime = h.Supervised with { Clock = clock, Sessions = fake };
+
+        var run = new GoToWorkCommand(runtime).RunAsync(["--interval", "1", "--max-runs", "1", "--restart-after", "0"], default);
+        await DriveAsync(clock, run, TimeSpan.FromMinutes(15));
+
+        Assert.Equal(0, await run);
+
+        // Spawned at all, while the carried ExhaustedUntil (a day out) was
+        // nowhere near reached, is only possible through the clamp.
+        Assert.Single(fake.Inner.Spawned);
+        Assert.Contains(h.Say.Said, l => l.Contains("back within Claude usage", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_weekly_limits_seven_day_window_is_not_clamped_to_the_sessions_five_hours()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        var start = DateTimeOffset.UtcNow;
+        Carrying(h, new NightState
+        {
+            ExhaustedUntil = start.AddDays(6),
+            ExhaustedWindow = "weekly",
+            UntilAt = start.AddHours(12), // well past 5h, nowhere near 7d
+        });
+
+        var clock = new FakeTimeProvider(start);
+        var fake = new FakeProbingSessions { Behaviour = () => null };
+        var runtime = h.Supervised with { Clock = clock, Sessions = fake };
+
+        var run = new GoToWorkCommand(runtime).RunAsync(["--interval", "1", "--restart-after", "0"], default);
+        await DriveAsync(clock, run, TimeSpan.FromMinutes(15));
+
+        Assert.Equal(0, await run);
+
+        // Never spawned: by the time --until ended the night, well past the
+        // session's own 5 hours had elapsed on the fake clock, and the wait
+        // was still standing - proof the clamp used the weekly length.
+        Assert.Empty(fake.Inner.Spawned);
+        Assert.Contains(h.Say.Said, l => l.Contains("has come", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task Source_changed_during_the_wait_restarts_the_loop_and_carries_the_instant_forward()
     {
