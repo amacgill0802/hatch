@@ -240,4 +240,42 @@ public sealed class WorkspaceLeaveTests : RepoFixture
         Assert.Equal("", G(_work, "stash", "list").Trim());
         Assert.Equal("changed\n", File.ReadAllText(Path.Combine(_work, "a.txt")));
     }
+
+    // ---- TreeUnchanged ----
+
+    [Fact]
+    public void The_tree_is_unchanged_right_after_entry()
+    {
+        Publish("ha-31-thing", "x.txt", "x");
+        var ws = Ws();
+        ws.Prepare();
+        var entry = ws.Enter("HA-31", "Thing", null);
+
+        Assert.True(ws.TreeUnchanged(entry.Head));
+    }
+
+    [Fact]
+    public void A_file_changed_since_entry_is_not_unchanged()
+    {
+        Publish("ha-31-thing", "x.txt", "x");
+        var ws = Ws();
+        ws.Prepare();
+        var entry = ws.Enter("HA-31", "Thing", null);
+        File.WriteAllText(Path.Combine(_work, "a.txt"), "changed\n");
+
+        Assert.False(ws.TreeUnchanged(entry.Head));
+    }
+
+    [Fact]
+    public void A_head_moved_since_entry_is_not_unchanged()
+    {
+        Publish("ha-31-thing", "x.txt", "x");
+        var ws = Ws();
+        ws.Prepare();
+        var entry = ws.Enter("HA-31", "Thing", null);
+        File.WriteAllText(Path.Combine(_work, "more.txt"), "more");
+        Commit(_work, "Session work");
+
+        Assert.False(ws.TreeUnchanged(entry.Head));
+    }
 }

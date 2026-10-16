@@ -103,6 +103,12 @@ public sealed partial class Workspace
         return new Leaving(root, notes, found);
     }
 
+    public bool TreeUnchanged(string head)
+    {
+        var dirty = Git("status", "--porcelain");
+        return dirty.Ok && dirty.Out.Trim().Length == 0 && Short("HEAD") == head;
+    }
+
     public void Return()
     {
         if (BaseBranch() is not { Length: > 0 } trunk || !SettleMerge()) return;

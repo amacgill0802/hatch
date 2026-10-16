@@ -382,6 +382,22 @@ public sealed class Lifecycle(Runtime runtime)
         CheckAllAsync(work, chosen, fetch: true, ct);
 
     /// <summary>
+    /// Whether a check session left every checkout exactly as <see cref="EnterAsync"/>
+    /// put it, read against <paramref name="entered"/> - <see cref="BranchEntry.Head"/>,
+    /// not <see cref="BranchEntry.Sha"/>, since that is where the session actually
+    /// started from, after the trunk was merged forward into it.
+    /// </summary>
+    public Task<bool> TreeUnchangedAsync(Checkouts.Choice chosen, IReadOnlyList<BranchEntry> entered, CancellationToken ct)
+    {
+        foreach (var (path, baseBranch) in chosen.Resets)
+        {
+            var head = entered.FirstOrDefault(e => e.Path == path)?.Head;
+            if (head is { Length: > 0 } && !runtime.Workspace(path, baseBranch).TreeUnchanged(head)) return Task.FromResult(false);
+        }
+        return Task.FromResult(true);
+    }
+
+    /// <summary>
     /// Whether the build that made this a build dispatch is still failing on the
     /// sha it was about, read off origin's tip as it stands now - and told to the
     /// board.

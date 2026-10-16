@@ -38,10 +38,10 @@ public static class Fixtures
         string key, string type = "task", string title = "A ticket", string description = "The brief.",
         string? modelOverride = null, string? effortOverride = null, string? parentKey = null,
         bool expedited = false, string? pullRequestUrl = null, bool express = false, string? priority = null,
-        int? wipLimit = null, string? stalledWhy = null) =>
+        int? wipLimit = null, string? stalledWhy = null, int statusId = 3) =>
         new(
             Key: key, ProjectId: 1, ProjectKey: "AER", Type: type, Title: title, Description: description,
-            StatusId: 3, Rank: 1000, ParentKey: parentKey, ChildKeys: [], DependsOnKeys: [], DependentKeys: [],
+            StatusId: statusId, Rank: 1000, ParentKey: parentKey, ChildKeys: [], DependsOnKeys: [], DependentKeys: [],
             ReadyAt: null, DueAt: null, PullRequestUrl: pullRequestUrl,
             ModelOverride: modelOverride, EffortOverride: effortOverride, Assignee: null,
             CreatedBy: "somebody", CreatedAt: DateTimeOffset.UnixEpoch, UpdatedAt: DateTimeOffset.UnixEpoch,
@@ -77,12 +77,13 @@ public static class Fixtures
         int letGo = 0,
         bool inReview = false,
         SentBackDto? sentBack = null,
-        IReadOnlyList<StatusDto>? statuses = null) =>
+        IReadOnlyList<StatusDto>? statuses = null,
+        bool isCheck = false) =>
         new(
             Issue: issue ?? Issue(key),
             FromStatus: Status(3, from),
             ToStatus: to is null ? null : Status(kind is WorkKinds.Conflicts or WorkKinds.Build ? 3 : 4, to),
-            Playbook: hop ? null : Playbook(),
+            Playbook: hop ? null : Playbook(isCheck: isCheck),
             Children: children ?? [],
             Repositories: repositories ?? [],
             Questions: questions ?? [],

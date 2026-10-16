@@ -130,6 +130,25 @@ public sealed class Board(HatchClient client)
     }
 
     /// <summary>
+    /// Applies the verdict a check session recorded under <paramref name="heldToken"/> -
+    /// see <c>VerdictWork</c> on the server for what each of pass, first fail and held
+    /// second fail does to the issue. Null on a <c>404</c>: no unapplied verdict was
+    /// found under this token, which is what a dirty tree or a tree moved off the
+    /// session's branch is reported as by the caller, never as a thrown exception.
+    /// </summary>
+    public async Task<IssueDto?> VerdictAsync(
+        IReadOnlyList<CheckoutEntry> checkouts, string key, Guid heldToken, CancellationToken ct, bool clones = false)
+    {
+        var parts = DeclareParts(checkouts, clones);
+        parts.Add($"heldToken={heldToken}");
+        var answer = await Client.Send(HttpMethod.Post, $"/api/hatch/work/{key}/verdict?{string.Join('&', parts)}", null, ct);
+        if (answer.Status == System.Net.HttpStatusCode.NotFound) return null;
+        if (!answer.Ok) throw new HatchException(Client.Refusal(answer, $"/api/hatch/work/{key}/verdict"));
+        if (answer.Body.Trim().Length == 0) return null;
+        return System.Text.Json.JsonSerializer.Deserialize(answer.Body, HatchJson.Default.IssueDto);
+    }
+
+    /// <summary>
     /// Confirms a pull request's merge against the one recorded on an issue
     /// waiting in review - see <see cref="PullRequestMergedRequest"/>. A
     /// <c>409</c> is not a fault, the same as <see cref="HopAsync"/> documents:
