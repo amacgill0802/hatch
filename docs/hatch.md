@@ -1723,6 +1723,42 @@ a row an interval for as long as nothing changed. It is the same call a
 Every `IssueDto` carries its verdicts, ordered by canonical remote, read in one
 batched query for a list of issues.
 
+### Landing
+
+`EfHatchLanding` — `IssueId`, `Remote`, `Canonical`, `Trunk`, `Sha`,
+`ContainedBy?`, `RecordedAt`, `CheckedAt?`, `RecordedBy`. What a repository
+holds for an issue's branch: the sha a session or a runner last recorded
+against it, the trunk ref it is landing on, and — once a poll has confirmed
+it — the sha of whatever trunk commit contains it. `ContainedBy` is left null
+until that confirmation, and `CheckedAt` moves only with it, never with a
+session's own plain report of its sha.
+
+**One landing per issue per repository**, unique on `(IssueId, Canonical)`,
+where `Canonical` is [`RemoteIdentity.Canonical`](#repository) of the remote
+as the caller spelled it, for the reason the [merge check](#merge-check) is: a
+project may bind several repositories, and each gets its own row rather than
+one overwriting another.
+
+`PUT /api/hatch/issues/{key}/landing` writes it, and a key may, for the reason
+a key may write a merge check. It is refused, in a sentence, for a remote that
+does not canonicalise, an empty or non-hex sha, and `ContainedBy` given
+without a `Trunk` — a landing that names what contains it must also name its
+trunk. An unknown key is a `404`. **The issue's column is not checked**, for
+the reason the merge check's is not: a landing is a fact about a repository
+and a sha, true or not regardless of where the ticket sits.
+
+**A write that changes the stored sha or what contains it writes a
+`landing_changed` event; a repeat writes none.** The first landing for a
+repository counts as a change from nothing. The payload is `{ remote, from,
+to }`, each side `{ sha, containedBy }`, the remote canonical. A write that
+omits `ContainedBy` — a session's own report — leaves whatever a poll already
+found there rather than clearing it, so the two writers never race each
+other's half of the row; a repeat still refreshes the remote, the trunk and
+the time, the same call a [merge check](#merge-check)'s repeat makes.
+
+Every `IssueDto` carries its landings, ordered by canonical remote, read in
+one batched query for a list of issues.
+
 ### Build check
 
 `EfHatchBuildCheck` — `IssueId`, `Remote`, `Canonical`, `Branch`, `Sha`,
@@ -2384,6 +2420,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/issues/{key}/claim/heartbeat` | POST | `{ token, chatter? }` — refreshes it, `204`. `409` on a token that is not the row's, on a lease that is over, and on one that has gone quiet — see [Claim](#claim). `chatter` absent leaves the carried line alone, `""` clears it, anything longer than the column is truncated rather than refused |
 | `/issues/{key}/claim?token=…&outcome=…` | DELETE | Releases it, `204`. A mismatched token is `409` and clears nothing; an issue holding no claim is `204` and writes nothing. `outcome` (`dropped` or `worked`) is read only where `token` is given and is otherwise optional — an older CLI names none — and a value that is neither is `400`. **With no token at all it is person-only** — an agent that could clear another runner's claim could take a ticket off it mid-increment |
 | `/issues/{key}/merge-check` | PUT | Keeps a runner's [verdict](#merge-check) for one repository. `{ remote, trunk, trunkSha, verdict, branch?, branchSha?, files?, runner, holdsTrunk? }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an unknown verdict, `conflicted` with no files, and `clean` or `conflicted` with no branch sha; `404` on an unknown key. The column is not checked. A verdict that repeats the stored one writes no event, and neither does a change to `holdsTrunk` alone |
+| `/issues/{key}/landing` | PUT | Keeps what a repository holds for an issue's branch — see [landing](#landing). `{ remote, sha, trunk?, containedBy?, runner? }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an empty or non-hex sha, and `containedBy` given without a `trunk`; `404` on an unknown key. The column is not checked. A write that repeats the stored sha and `containedBy` writes no event |
 | `/questions` | GET | Every open question in the house |
 | `/plan`, `/plan/{key}` | GET | See [the level above the board](#the-level-above-the-board) |
 | `/work/next` | GET | See [the dispatcher](#the-dispatcher). `?heldToken=` names a [claim](#claim) of one's own, so it is not folded past as somebody else's. `?remote=` (repeatable), `?standing=` and `?clones=` declare what the runner has; absent is undeclared and folds nothing. `?mine=true` narrows the pass to the caller's own tickets — see [one more, on `next` alone](#one-more-on-next-alone); `400` when the calling key belongs to nobody. Carries `letGo`, the count of this issue's trailing dropped releases — `0` on a client too old to read it |

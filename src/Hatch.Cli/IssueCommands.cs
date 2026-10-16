@@ -23,9 +23,11 @@ public sealed class IssueCommands(Cli cli)
         "  \"expedited - this one goes first (inherited from AER-12)\".",
         "  A paused ticket says so too: a person set it aside, and nothing picks",
         "  it up until they set it back.",
-        "  An express ticket says so too: standing in a column marked to skip, it",
-        "  is carried on with no session. There is no verb here that sets either -",
-        "  the CLI holds a key, and both are a person's write.",
+        "  An express ticket says so too: standing in a column marked to skip, it is",
+        "  carried on with no session. A pre-approved ticket says so too, further",
+        "  still: once its pull request is green and current, or once every child is",
+        "  done, the loop carries it on itself. There is no verb here that sets any",
+        "  of them - the CLI holds a key, and every one is a person's write.",
     ];
 
     public static readonly string[] StartUsage =
@@ -113,7 +115,11 @@ public sealed class IssueCommands(Cli cli)
             cli.Say.Line($"priority:  economy - worked only with usage that would otherwise go spare{inherited}");
         else if (issue.Priority == PriorityLevels.PausedName)
             cli.Say.Line($"priority:  paused - set aside; the loop leaves it where it stands{inherited}");
-        if (issue.Express) cli.Say.Line("express:  yes - carried past a column marked to skip, with no session");
+        var preApprovalFrom = issue.PreApprovalFrom is { Length: > 0 } preApprovalAncestor ? $" (inherited from {preApprovalAncestor})" : "";
+        if (issue.PreApproval == PreApprovalLevels.ExpressName)
+            cli.Say.Line($"pre-approval:  express - carried past a column marked to skip, with no session{preApprovalFrom}");
+        else if (issue.PreApproval == PreApprovalLevels.PreApprovedName)
+            cli.Say.Line($"pre-approval:  preapproved - approved and closed by the loop once green{preApprovalFrom}");
 
         // Said only where it is on, or where a story has been told one way or
         // the other; a project that never turned it on has nothing to report.

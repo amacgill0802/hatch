@@ -130,7 +130,7 @@ public sealed class IssueCommandsTests
 
         await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default);
 
-        foreach (var absent in new[] { "parent:", "children:", "depends:", "blocks:", "ready:", "due:", "priority:", "express:", "stories at once:" })
+        foreach (var absent in new[] { "parent:", "children:", "depends:", "blocks:", "ready:", "due:", "priority:", "pre-approval:", "stories at once:" })
             Assert.DoesNotContain(absent, h.Said);
     }
 
@@ -245,13 +245,41 @@ public sealed class IssueCommandsTests
     public async Task Show_says_when_the_issue_is_express()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue() with { Express = true });
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue() with { PreApproval = PreApprovalLevels.ExpressName });
         h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
         h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
 
         Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
 
-        Assert.Contains("express:  yes - carried past a column marked to skip, with no session", h.Said);
+        Assert.Contains("pre-approval:  express - carried past a column marked to skip, with no session", h.Said);
+    }
+
+    [Fact]
+    public async Task Show_says_when_the_issue_is_preapproved()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue() with { PreApproval = PreApprovalLevels.PreApprovedName });
+        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
+
+        Assert.Contains("pre-approval:  preapproved - approved and closed by the loop once green", h.Said);
+    }
+
+    [Fact]
+    public async Task Show_names_the_ancestor_a_preapproval_level_came_from()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json(
+            "GET", "/api/hatch/issues/AER-12",
+            AnIssue() with { PreApproval = PreApprovalLevels.PreApprovedName, PreApprovalFrom = "HA-12" });
+        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
+
+        Assert.Contains("pre-approval:  preapproved - approved and closed by the loop once green (inherited from HA-12)", h.Said);
     }
 
     [Fact]
