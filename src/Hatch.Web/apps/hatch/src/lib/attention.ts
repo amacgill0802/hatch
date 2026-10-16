@@ -185,22 +185,32 @@ export const trunkBuildEmptyWords = (): string => 'No trunk build is failing.';
 export const trunkBuildHead = (build: TrunkBuild): string => `${build.trunk} in ${build.canonical}`;
 
 /**
- * `resets 7:40pm` today, `resets Tuesday at 7:40pm` within the week, `resets
- * Oct 5 at 7:40pm` otherwise - the same escalation a person reads a date with,
- * naming only as much of it as is not already obvious from today.
+ * `7:40pm` today, `Tuesday at 7:40pm` within the week, `Oct 5 at 7:40pm`
+ * otherwise - the same escalation a person reads a date with, naming only as
+ * much of it as is not already obvious from today. `null` when `at` cannot be
+ * told at all.
  */
-export function resetWords(exhaustedUntil: string, now: Date): string {
-  const at = new Date(exhaustedUntil);
-  if (Number.isNaN(at.getTime())) return 'resets at an unknown time';
+export function resetClockWords(at: Date, now: Date): string | null {
+  if (Number.isNaN(at.getTime())) return null;
 
   const clock = at.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(' ', '');
 
-  if (sameDay(at, now)) return `resets ${clock}`;
+  if (sameDay(at, now)) return clock;
 
   const days = Math.floor((startOfDay(at).getTime() - startOfDay(now).getTime()) / 86_400_000);
-  if (days > 0 && days < 7) return `resets ${at.toLocaleDateString(undefined, { weekday: 'long' })} at ${clock}`;
+  if (days > 0 && days < 7) return `${at.toLocaleDateString(undefined, { weekday: 'long' })} at ${clock}`;
 
-  return `resets ${at.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} at ${clock}`;
+  return `${at.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} at ${clock}`;
+}
+
+/**
+ * `resets 7:40pm` today, `resets Tuesday at 7:40pm` within the week, `resets
+ * Oct 5 at 7:40pm` otherwise - the escalation `resetClockWords` computes, worded
+ * as the reason a runner is unusable rather than the clock alone.
+ */
+export function resetWords(exhaustedUntil: string, now: Date): string {
+  const words = resetClockWords(new Date(exhaustedUntil), now);
+  return words === null ? 'resets at an unknown time' : `resets ${words}`;
 }
 
 const startOfDay = (d: Date): Date => new Date(d.getFullYear(), d.getMonth(), d.getDate());
