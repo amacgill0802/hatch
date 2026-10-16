@@ -210,6 +210,12 @@ public class AdminSurfaceTests
         // the person-only edge that decides whether a hop exists at all.
         "WorkController.HopWork",
 
+        // The runner's own write, same as the hop above: applies the verdict a
+        // check session recorded under its own claim token, with no session
+        // dispatched. Hatch-scoped like the hop, for the same reason - a key is
+        // exactly who calls this once a check has run.
+        "WorkController.VerdictWork",
+
         // The one path that may move an issue into a terminal column without
         // the operator pressing it there themselves - but only because a
         // merged pull request already is that decision, made on the forge and

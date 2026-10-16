@@ -526,6 +526,133 @@ public class WorkController(
     }
 
     /// <summary>
+    /// The runner's own write: applies the verdict a check session recorded
+    /// under <paramref name="heldToken"/> - a pass moves the issue one column
+    /// right, a first fail of its playbook returns it to
+    /// <see cref="Columns.Implementation"/>, and a second consecutive fail of
+    /// the same playbook, with no pass or answer in between, moves nothing and
+    /// asks a person instead. See <see cref="VerdictStreak"/> for the count.
+    /// </summary>
+    /// <remarks>
+    /// Takes no claim of its own: <paramref name="heldToken"/> already names
+    /// the live claim this call is made under, compared once rather than
+    /// through <see cref="IssueClaimController.Why"/>'s quiet/live
+    /// distinction - a retried call against an already-applied token 404s on
+    /// the verdict row's own unique index rather than re-applying. Every
+    /// branch writes unconditionally, with no gate, matching
+    /// <see cref="HopWork"/> and <see cref="MergedWork"/> - no session is
+    /// dispatched.
+    /// </remarks>
+    [HttpPost("{key}/verdict")]
+    public async Task<ActionResult<IssueDto>> VerdictWork(
+        string key,
+        [FromQuery] Guid heldToken,
+        [FromQuery] List<string>? remote = null,
+        [FromQuery] bool? standing = null,
+        [FromQuery] bool? clones = null,
+        CancellationToken ct = default)
+    {
+        if (!IssueKey.TryParse(key, out var projectKey, out var number)) return NotFound();
+
+        var issue = await db.Issues.Include(i => i.Project).ThenInclude(p => p!.Repositories)
+            .WithKey(projectKey, number).FirstOrDefaultAsync(ct);
+        if (issue is null) return NotFound();
+
+        if (issue.ClaimToken is null)
+            return Conflict($"{key} holds no live claim, so there is nothing for this token to match");
+        if (issue.ClaimToken != heldToken)
+            return Conflict($"{key}'s live claim does not match this token");
+
+        var verdict = await db.Verdicts.FirstOrDefaultAsync(
+            v => v.IssueId == issue.Id && v.ClaimToken == heldToken && v.AppliedAt == null, ct);
+        if (verdict is null) return NotFound("no verdict was recorded under this claim");
+
+        var statuses = await _dispatch.OrderedStatusesAsync(ct);
+        var from = statuses.First(s => s.Id == issue.StatusId);
+        var playbookId = verdict.PlaybookId;
+
+        var priorFails = await VerdictStreak.ForIssueAsync(db, issue.Id, playbookId, ct);
+        var actor = await caller.ActorNameAsync(ct);
+        var now = time.GetUtcNow();
+
+        if (verdict.Verdict == CheckVerdicts.Pass)
+        {
+            var target = Columns.Target(statuses, from)!;
+            issue.Events.Add(new EfHatchIssueEvent
+            {
+                Actor = actor,
+                Kind = EfHatchIssueEvent.StatusChanged,
+                Payload = JsonSerializer.Serialize(new { from = from.Name, to = target.Name, verdict = CheckVerdicts.Pass, playbookId }),
+                At = now,
+            });
+            issue.Rank = await ranks.BottomAsync(target.Id, ct);
+            issue.StatusId = target.Id;
+        }
+        else if (priorFails == 0)
+        {
+            var target = Columns.Implementation(statuses)!;
+            issue.Events.Add(new EfHatchIssueEvent
+            {
+                Actor = actor,
+                Kind = EfHatchIssueEvent.StatusChanged,
+                Payload = JsonSerializer.Serialize(new { from = from.Name, to = target.Name, verdict = CheckVerdicts.Fail, playbookId }),
+                At = now,
+            });
+            issue.Rank = await ranks.BottomAsync(target.Id, ct);
+            issue.StatusId = target.Id;
+        }
+        else
+        {
+            var previousFindings = await db.Comments.AsNoTracking()
+                .Where(c => c.IssueId == issue.Id && c.Kind == EfHatchComment.Verdict)
+                .OrderByDescending(c => c.CreatedAt).ThenByDescending(c => c.Id)
+                .Select(c => c.Body)
+                .FirstOrDefaultAsync(ct);
+
+            issue.Events.Add(new EfHatchIssueEvent
+            {
+                Actor = actor,
+                Kind = EfHatchIssueEvent.VerdictHeld,
+                Payload = JsonSerializer.Serialize(new { verdict = CheckVerdicts.Fail, playbookId }),
+                At = now,
+            });
+
+            db.Comments.Add(new EfHatchComment
+            {
+                IssueId = issue.Id,
+                Author = actor,
+                Kind = EfHatchComment.Question,
+                Body = $"This check has failed twice in a row with nothing passing in between. " +
+                    $"First: \"{previousFindings}\" Second: \"{verdict.Findings}\" - how should {key} proceed?",
+                Options = null,
+                CreatedAt = now,
+            });
+
+            issue.Events.Add(new EfHatchIssueEvent
+            {
+                Actor = actor,
+                Kind = EfHatchIssueEvent.Asked,
+                At = now,
+            });
+        }
+
+        db.Comments.Add(new EfHatchComment
+        {
+            IssueId = issue.Id,
+            Author = verdict.Author,
+            Kind = EfHatchComment.Verdict,
+            Body = verdict.Findings ?? "(no findings)",
+            CreatedAt = now,
+        });
+
+        verdict.AppliedAt = now;
+        issue.UpdatedAt = now;
+        await db.SaveChangesAsync(ct);
+
+        return await IssueProjection.ToDtoAsync(db, actors, issue, claims, now, ct);
+    }
+
+    /// <summary>
     /// Advances an issue waiting in review whose pull request has merged - the
     /// one path that may move work into a terminal column without the operator
     /// pressing it there themselves, because a merge on the forge <em>is</em>
