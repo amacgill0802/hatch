@@ -12,6 +12,7 @@
    Pure functions taking `now` rather than reading it, so a page judges every
    row against one instant. */
 
+import { resetClockWords } from './attention';
 import type { Runner, RunnerPatchRequest } from '../types';
 
 /** The six states a row can be in, in the order they are decided. */
@@ -26,10 +27,13 @@ export type RunnerActivity = 'gone' | 'exhausted' | 'paused' | 'stopping' | 'wor
  * Below that, a fact the runner reports about its own account -
  * `exhaustedUntil` - beats a request a person made of it: an operator who
  * paused a runner still sees that it is out of Claude usage, because pausing
- * it changes nothing about whether it has any usage to spend. Below that,
- * what it was asked to do beats what it is holding - a loop finishing its
- * last increment is `stopping`, and that is the thing somebody watching wants
- * to see.
+ * it changes nothing about whether it has any usage to spend. That fact is
+ * read the same way `gone`'s heartbeat is, though: a reset time only counts
+ * while it is still ahead of `now` - once it has passed, it is no longer a
+ * fact about the account, the same as a heartbeat old enough to be silence.
+ * Below that, what it was asked to do beats what it is holding - a loop
+ * finishing its last increment is `stopping`, and that is the thing somebody
+ * watching wants to see.
  */
 export function runnerActivity(runner: Runner, now: Date): RunnerActivity {
   const beat = Date.parse(runner.lastSeenAt);
@@ -38,7 +42,7 @@ export function runnerActivity(runner: Runner, now: Date): RunnerActivity {
   // answer: it is a row whose age cannot be told, not a row that is fine.
   if (Number.isNaN(beat) || now.getTime() - beat > runner.goneAfterSeconds * 1000) return 'gone';
 
-  if (runner.exhaustedUntil !== null) return 'exhausted';
+  if (runner.exhaustedUntil !== null && Date.parse(runner.exhaustedUntil) > now.getTime()) return 'exhausted';
   if (runner.state === 'paused') return 'paused';
   if (runner.state === 'stopping') return 'stopping';
 
@@ -51,8 +55,10 @@ export function activityWords(runner: Runner, now: Date): string {
   switch (activity) {
     case 'gone':
       return 'Gone';
-    case 'exhausted':
-      return `Out of usage until ${clockWords(runner.exhaustedUntil as string)}`;
+    case 'exhausted': {
+      const words = resetClockWords(new Date(runner.exhaustedUntil as string), now);
+      return `Out of usage until ${words ?? 'an unknown time'}`;
+    }
     case 'paused':
       return 'Paused';
     case 'stopping':
@@ -62,14 +68,6 @@ export function activityWords(runner: Runner, now: Date): string {
     default:
       return 'Idle';
   }
-}
-
-/** `7:40 PM`, in the viewer's own time zone - the clock a reset time is read at. */
-function clockWords(at: string): string {
-  const parsed = new Date(at);
-  return Number.isNaN(parsed.getTime())
-    ? 'an unknown time'
-    : parsed.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 }
 
 /**
