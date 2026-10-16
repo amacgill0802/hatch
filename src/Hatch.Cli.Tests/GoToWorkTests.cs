@@ -2154,7 +2154,8 @@ public sealed class GoToWorkTests
     /// </summary>
     private static void UnpublishedBoard(
         Harness h, string key = "AER-1", string endsIn = "In Review", bool endsInReview = true,
-        bool branchOnOrigin = true, string? pullRequest = null, int letGo = 0)
+        bool branchOnOrigin = true, string? pullRequest = null, int letGo = 0,
+        string? landing = null, IReadOnlyList<LandingDto>? landings = null)
     {
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row(key) });
         h.Wire.Reply("POST", $"/api/hatch/issues/{key}/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
@@ -2164,10 +2165,10 @@ public sealed class GoToWorkTests
         h.Wire.Once(
             "GET", $"/api/hatch/work/{key}", HttpStatusCode.OK,
             System.Text.Json.JsonSerializer.Serialize(
-                Fixtures.Work(key, from: "In Progress", to: "In Review", letGo: letGo), Fixtures.Json));
+                Fixtures.Work(key, from: "In Progress", to: "In Review", letGo: letGo, landing: landing), Fixtures.Json));
         h.Wire.Json("GET", $"/api/hatch/work/{key}", Fixtures.Work(key, from: endsIn, to: endsIn, inReview: endsInReview));
 
-        h.Wire.Json("GET", $"/api/hatch/issues/{key}", Fixtures.Issue(key, pullRequestUrl: pullRequest));
+        h.Wire.Json("GET", $"/api/hatch/issues/{key}", Fixtures.Issue(key, pullRequestUrl: pullRequest, landings: landings));
         h.Wire.Json("POST", $"/api/hatch/issues/{key}/work-log", Fixtures.WorkLogRow());
         h.Wire.Json("GET", $"/api/hatch/issues/{key}/questions", Array.Empty<QuestionDto>());
         h.Wire.Json("POST", $"/api/hatch/issues/{key}/comments", Fixtures.Comment());
@@ -2223,6 +2224,35 @@ public sealed class GoToWorkTests
     {
         using var h = new Harness();
         UnpublishedBoard(h, pullRequest: "https://forge.example/pulls/1");
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        Assert.Empty(UnpublishedComments(h));
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Contains("outcome=worked", released.Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_trunk_landing_ticket_with_no_landing_recorded_is_noted_once_and_released_dropped()
+    {
+        using var h = new Harness();
+        UnpublishedBoard(h, branchOnOrigin: false, landing: Landings.Trunk);
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        var written = UnpublishedComments(h);
+        Assert.Single(written);
+        Assert.DoesNotContain(written, c => c.Kind == "question");
+
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Contains("outcome=dropped", released.Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_trunk_landing_ticket_with_a_landing_recorded_means_the_guard_never_fires()
+    {
+        using var h = new Harness();
+        UnpublishedBoard(h, branchOnOrigin: false, landing: Landings.Trunk, landings: [Fixtures.Landing()]);
 
         Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
 

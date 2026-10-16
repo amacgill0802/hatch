@@ -226,6 +226,8 @@ public sealed class WorkCommand(Runtime runtime)
             work.Playbook?.DeniedTools is { Count: > 0 } denied
                 ? $"# tools: denied {string.Join(", ", denied)}"
                 : "# tools: all");
+        if (work.Playbook?.IsCheck == true)
+            runtime.Say.Line($"# check: pass -> {work.ToStatus?.Name ?? "?"}, fail -> {work.FailStatusName ?? "?"}");
         if (Prompt.OverrideLine(work, model, effort) is { } chose) runtime.Say.Line($"# {chose}");
 
         // What the branch step would do, read from the refs as they stand - so
@@ -629,7 +631,9 @@ public sealed class WorkCommand(Runtime runtime)
                 // conditions are mutually exclusive by construction.
                 if (report is not null
                     && (report.Moved || report.Resolved || report.FixPushed)
-                    && report.EndedInReview && left.BranchOnOrigin && !left.HasPullRequest)
+                    && report.EndedInReview
+                    && (left.BranchOnOrigin && !left.HasPullRequest
+                        || work.Landing == Landings.Trunk && !left.HasLanding))
                 {
                     releaseOutcome = await Unpublished.RefuseAsync(
                         runtime.Board, runtime.Say, report, entering.Entries, work.LetGo, CancellationToken.None);

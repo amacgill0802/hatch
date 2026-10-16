@@ -7283,6 +7283,87 @@ public class WorkControllerTests
         Assert.IsType<NotFoundResult>((await h.Work.VerdictWork("AER-404", Guid.NewGuid(), ct: default)).Result);
     }
 
+    // ---- Last check findings ----
+
+    [Fact]
+    public async Task LastCheckFindings_WhenTheLastCheckFailed_IsThatChecksFindings()
+    {
+        var h = await NewAsync();
+        var playbookId = await h.CheckingAsync();
+        var issue = await h.FileAsync("task", "being checked", h.Checking);
+        var token = await h.ClaimAsync(issue, playbookId: playbookId);
+        await h.RecordVerdictAsync(issue, playbookId, token, CheckVerdicts.Fail, findings: "the build broke");
+        await h.Work.VerdictWork(Key(issue), token, ct: default);
+        issue.ClaimToken = null;
+        await h.Db.SaveChangesAsync();
+
+        Assert.Equal("the build broke", Value(await h.Work.GetWork(Key(issue), null, default)).LastCheckFindings);
+        Assert.Equal("the build broke", Value(await h.Work.GetNextWork(0, null, null, default)).LastCheckFindings);
+    }
+
+    [Fact]
+    public async Task LastCheckFindings_WhenTheMostRecentMoveWasAnOrdinaryAdvance_IsNull()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "advanced normally", h.InProgress);
+        await h.SayAsync(issue, EfHatchComment.Verdict, "a stale finding from long ago");
+        await h.LogEventAsync(issue, EfHatchIssueEvent.StatusChanged, new { from = "todo", to = "in progress" }, Now);
+
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), null, default)).LastCheckFindings);
+    }
+
+    [Fact]
+    public async Task LastCheckFindings_WhenTheMostRecentCheckPassed_IsNull()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "passed its last check", h.InProgress);
+        await h.SayAsync(issue, EfHatchComment.Verdict, "looked fine");
+        await h.LogEventAsync(
+            issue, EfHatchIssueEvent.StatusChanged,
+            new { from = "checking", to = "review", verdict = CheckVerdicts.Pass }, Now);
+
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), null, default)).LastCheckFindings);
+    }
+
+    [Fact]
+    public async Task LastCheckFindings_InAnyColumnOtherThanImplementation_IsNullRegardlessOfHistory()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "not in the implementation column", h.Review);
+        await h.SayAsync(issue, EfHatchComment.Verdict, "a finding that does not count here");
+        await h.LogEventAsync(
+            issue, EfHatchIssueEvent.StatusChanged,
+            new { from = "checking", to = "in progress", verdict = CheckVerdicts.Fail }, Now);
+
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), null, default)).LastCheckFindings);
+    }
+
+    [Fact]
+    public async Task FailStatusName_IsImplementationsNameOnEveryDispatch_CheckOrNot()
+    {
+        var h = await NewAsync();
+        var playbookId = await h.CheckingAsync();
+        var issue = await h.FileAsync("task", "being checked", h.Checking);
+        var token = await h.ClaimAsync(issue, playbookId: playbookId);
+        await h.RecordVerdictAsync(issue, playbookId, token, CheckVerdicts.Fail, findings: "the build broke");
+        await h.Work.VerdictWork(Key(issue), token, ct: default);
+        issue.ClaimToken = null;
+        await h.Db.SaveChangesAsync();
+
+        Assert.Equal("in progress", Value(await h.Work.GetWork(Key(issue), null, default)).FailStatusName);
+        Assert.Equal("in progress", Value(await h.Work.GetNextWork(0, null, null, default)).FailStatusName);
+    }
+
+    [Fact]
+    public async Task FailStatusName_IsSetRegardlessOfWhetherTheLastVerdictWasAFail()
+    {
+        var h = await NewAsync();
+        await h.CheckingAsync();
+        var issue = await h.FileAsync("task", "advanced normally", h.InProgress);
+
+        Assert.Equal("in progress", Value(await h.Work.GetWork(Key(issue), null, default)).FailStatusName);
+    }
+
     // ---- The review playbook ----
 
     [Fact]

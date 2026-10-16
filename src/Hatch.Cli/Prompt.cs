@@ -68,6 +68,7 @@ public static class Prompt
         // which says what state the tree is in and does not repeat this.
         if (isConflict) lines.AddRange(Conflict(Conflicts.Facts(work, conflict), trunk));
         if (isBuild) lines.AddRange(FailingBuilds(Builds.Facts(work, build)));
+        if (work.LastCheckFindings is { Length: > 0 } findings) lines.AddRange(LastCheck(findings));
 
         var sharedStory = Branches.IsShared(work) ? work.BranchKey : null;
         if (branches is { Count: > 0 }) lines.AddRange(Branch(branches, sharedStory));
@@ -188,7 +189,13 @@ public static class Prompt
             lines.Add("");
         }
 
-        lines.AddRange(Tail(key, to, work.IssueUrl, repositories, issue.PreApproval, sharedStory, sharesPullRequest: issue.Type == "story" && issue.OnePr));
+        var trunkLanding = work.Landing == Landings.Trunk;
+
+        lines.AddRange(Tail(
+            key, to, work.IssueUrl, repositories, issue.PreApproval, sharedStory,
+            sharesPullRequest: issue.Type == "story" && issue.OnePr,
+            isCheck: work.Playbook?.IsCheck == true, failStatus: work.FailStatusName,
+            trunkLanding: trunkLanding));
         return string.Join('\n', lines);
     }
 
@@ -265,6 +272,9 @@ public static class Prompt
     /// <summary>The most bytes the whole failing-build section spends on log excerpts.</summary>
     public const int MaxBuildSectionBytes = 40 * 1024;
 
+    /// <summary>The most bytes the last-check section spends on findings.</summary>
+    public const int MaxCheckFindingsSectionBytes = 40 * 1024;
+
     /// <summary>
     /// The facts of the failing build the playbook is about: for each repository,
     /// the branch and the sha; for each failing check, its name and link, and the
@@ -335,6 +345,33 @@ public static class Prompt
             }
         }
 
+        yield return "";
+    }
+
+    /// <summary>
+    /// The findings of the last check on this issue, carried forward into a
+    /// dispatch standing in the implementation column after that check failed.
+    /// The playbook says what to do with them; this only says what they are.
+    /// </summary>
+    private static IEnumerable<string> LastCheck(string findings)
+    {
+        yield return "## The last check";
+        yield return "";
+        yield return "The last check on this issue failed. These are its findings:";
+        yield return "";
+
+        var size = System.Text.Encoding.UTF8.GetByteCount(findings);
+        if (size > MaxCheckFindingsSectionBytes)
+        {
+            yield return "_findings left out: this section is at its size cap_";
+            yield return "";
+            yield break;
+        }
+
+        var fence = new string('`', Math.Max(3, LongestBackticks(findings) + 1));
+        yield return fence;
+        foreach (var line in findings.ReplaceLineEndings("\n").Split('\n')) yield return line;
+        yield return fence;
         yield return "";
     }
 
@@ -450,7 +487,8 @@ public static class Prompt
     /// </summary>
     internal static IEnumerable<string> Tail(
         string key, string to, string? issueUrl, IReadOnlyList<Checkouts.RepositoryLine>? repositories,
-        string preApproval, string? sharedStory = null, bool sharesPullRequest = false) =>
+        string preApproval, string? sharedStory = null, bool sharesPullRequest = false,
+        bool isCheck = false, string? failStatus = null, bool trunkLanding = false) =>
     [
         "## Reaching Hatch",
         "",
@@ -459,8 +497,13 @@ public static class Prompt
         "",
         "```",
         $"hatch comments {key}          the comments alone, since the brief above is already current",
-        $"hatch start {key}             move it to in progress",
-        $"hatch move {key} <column>     move it anywhere non-terminal",
+        ..(isCheck
+            ? new[] { $"hatch verdict {key} pass|fail [\"findings\"]   record this check's own verdict" }
+            : new[]
+            {
+                $"hatch start {key}             move it to in progress",
+                $"hatch move {key} <column>     move it anywhere non-terminal",
+            }),
         $"hatch comment {key} \"...\"     write on the ticket",
         $"hatch ask {key} \"...\"         ask for a decision, and stop",
         $"hatch api GET /api/hatch/issues?parentKey={key}",
@@ -470,7 +513,9 @@ public static class Prompt
         "docs/hatch-planning.md has the shapes. Read it only if this increment",
         "files or reshapes work.",
         "",
-        ..(sharedStory is null ? PullRequest(key, issueUrl, sharesPullRequest) : SharedPullRequest(key, sharedStory, to)),
+        ..(trunkLanding ? Landing(key)
+            : sharedStory is null ? PullRequest(key, issueUrl, sharesPullRequest)
+            : SharedPullRequest(key, sharedStory, to)),
         "## When you cannot decide",
         "",
         "Some things are not yours to choose: a product call, a name that will be",
@@ -505,7 +550,9 @@ public static class Prompt
         ..PreApproval(preApproval),
         "## Where this increment ends",
         "",
-        $"{key} should be in \"{to}\" when you stop, and no further.",
+        isCheck
+            ? $"{key}'s session ends with a verdict, not a move: a pass sends it to \"{to}\", and a fail sends it to \"{failStatus}\"."
+            : $"{key} should be in \"{to}\" when you stop, and no further.",
         "Only the operator moves work into a terminal column. An increment that",
         "leaves this ticket where it found it is recorded as having done nothing -",
         "so move it, or ask, before you stop.",
@@ -625,6 +672,42 @@ public static class Prompt
         $"this ticket's - is opened for it once its tasks are all pushed. Push your commits to the",
         $"branch above, then move {key} to \"{to}\": it waits there, with nothing of its own to",
         "merge, until the story's pull request does.",
+        "",
+    ];
+
+    /// <summary>
+    /// What a session is told in place of the pull request section, on a
+    /// project that lands work straight on the trunk: never to open one, and
+    /// how the work gets there instead.
+    /// </summary>
+    private static string[] Landing(string key) =>
+    [
+        "## Landing on the trunk",
+        "",
+        $"This project lands on the trunk, so there is no pull request to open for {key}.",
+        "When the work is green:",
+        "",
+        "```",
+        "git pull --no-rebase origin <trunk>",
+        "```",
+        "",
+        "A merge, explicitly never a rebase. Run the build and tests again if that merge",
+        "brought anything in, then:",
+        "",
+        "```",
+        "git push origin <trunk>",
+        "```",
+        "",
+        "If the push is refused because somebody else landed first, pull and push again -",
+        "never force it. Once the work is on origin's trunk, for each repository:",
+        "",
+        "```",
+        $"hatch landed {key} <sha>",
+        "```",
+        "",
+        "and write the comment with the sha, the way every landed ticket does. The",
+        "increment is not finished until the landing is recorded - \"## Where this",
+        $"increment ends\" below still names review as where {key} stops.",
         "",
     ];
 

@@ -200,23 +200,24 @@ public sealed class FakeWorkspace
             return owner.AnswerFor.GetValueOrDefault(path, owner.Answer);
         }
 
-        public BranchEntry Enter(string key, string title, string? answer)
+        public BranchEntry Enter(string key, string title, string? answer, bool trunkLanding = false)
         {
             owner.Calls.Add($"enter {path}");
             owner.Answers.Add(answer);
             if (owner.EnterThrows is { } thrown) throw thrown;
-            return Answer(key, title);
+            return Answer(key, title, trunkLanding);
         }
 
-        public BranchEntry Plan(string key, string title, string? answer)
+        public BranchEntry Plan(string key, string title, string? answer, bool trunkLanding = false)
         {
             owner.Calls.Add($"plan {path}");
-            return Answer(key, title) is var entry
+            return Answer(key, title, trunkLanding) is var entry
                 ? new BranchEntry
                 {
                     Path = entry.Path, Kind = entry.Kind, Branch = entry.Branch, Sha = entry.Sha, Ahead = entry.Ahead,
                     Merge = entry.Merge, Conflicted = entry.Conflicted, Candidates = entry.Candidates,
                     Merged = entry.Merged, Cut = entry.Cut, Planned = true,
+                    Trunk = entry.Trunk, TrunkLanding = entry.TrunkLanding,
                 }
                 : entry;
         }
@@ -279,10 +280,10 @@ public sealed class FakeWorkspace
             return owner.TreeUnchangedAnswer;
         }
 
-        private BranchEntry Answer(string key, string title) =>
+        private BranchEntry Answer(string key, string title, bool trunkLanding) =>
             owner.EntryFor.TryGetValue(path, out var one) ? one
             : owner.Entry?.Invoke(path, key)
-              ?? new BranchEntry { Path = path, Kind = BranchKind.None, Cut = Branches.Cut(key, title) };
+              ?? new BranchEntry { Path = path, Kind = BranchKind.None, Cut = Branches.Cut(key, title), TrunkLanding = trunkLanding };
     }
 }
 

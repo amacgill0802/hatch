@@ -12,7 +12,7 @@ public sealed class LifecycleTests
     private const string Queue = "/api/hatch/work/queue";
 
     private static void Board(Harness h, string key = "AER-1", WorkDto? work = null, string? pullRequest = null,
-        HttpStatusCode comments = HttpStatusCode.OK, bool taken = false)
+        HttpStatusCode comments = HttpStatusCode.OK, bool taken = false, IReadOnlyList<LandingDto>? landings = null)
     {
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row(key) });
         h.Wire.Reply("POST", $"/api/hatch/issues/{key}/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
@@ -20,7 +20,7 @@ public sealed class LifecycleTests
         else h.Wire.Reply("POST", $"/api/hatch/issues/{key}/claim/heartbeat", HttpStatusCode.NoContent);
         h.Wire.Reply("DELETE", $"/api/hatch/issues/{key}/claim", HttpStatusCode.NoContent);
         h.Wire.Json("GET", $"/api/hatch/work/{key}", work ?? Fixtures.Work(key, from: "In Review"));
-        h.Wire.Json("GET", $"/api/hatch/issues/{key}", Fixtures.Issue(key, pullRequestUrl: pullRequest));
+        h.Wire.Json("GET", $"/api/hatch/issues/{key}", Fixtures.Issue(key, pullRequestUrl: pullRequest, landings: landings));
         h.Wire.Json("POST", $"/api/hatch/issues/{key}/work-log", Fixtures.WorkLogRow());
         h.Wire.Json("GET", $"/api/hatch/issues/{key}/questions", Array.Empty<QuestionDto>());
         h.Wire.Reply("POST", $"/api/hatch/issues/{key}/comments", comments, comments == HttpStatusCode.OK
@@ -496,6 +496,106 @@ public sealed class LifecycleTests
 
         Assert.False(left.HasPullRequest);
         Assert.False(left.BranchOnOrigin);
+    }
+
+    [Fact]
+    public async Task LeaveAsync_on_a_trunk_landing_project_never_asks_about_a_pull_request()
+    {
+        using var h = new Harness();
+        Board(h, pullRequest: "https://forge.example/pulls/1");
+        var chosen = new Checkouts.Choice(h.Root, [], [(h.Root, null)], []);
+
+        var left = await new Lifecycle(h.Runtime).LeaveAsync(
+            Fixtures.Work("AER-1", from: "In Review", landing: Landings.Trunk), chosen, ownsTicket: true, default);
+
+        Assert.False(left.HasPullRequest);
+        Assert.False(Assert.Single(h.Workspace.Left).Sync);
+    }
+
+    [Fact]
+    public async Task LeaveAsync_on_a_trunk_landing_project_with_no_landing_recorded_reports_it_missing()
+    {
+        using var h = new Harness();
+        Board(h, landings: []);
+        var chosen = new Checkouts.Choice(h.Root, [], [(h.Root, null)], []);
+
+        var left = await new Lifecycle(h.Runtime).LeaveAsync(
+            Fixtures.Work("AER-1", from: "In Review", landing: Landings.Trunk), chosen, ownsTicket: true, default);
+
+        Assert.False(left.HasLanding);
+    }
+
+    [Fact]
+    public async Task LeaveAsync_on_a_trunk_landing_project_with_a_landing_recorded_reports_it_present()
+    {
+        using var h = new Harness();
+        Board(h, landings: [Fixtures.Landing()]);
+        var chosen = new Checkouts.Choice(h.Root, [], [(h.Root, null)], []);
+
+        var left = await new Lifecycle(h.Runtime).LeaveAsync(
+            Fixtures.Work("AER-1", from: "In Review", landing: Landings.Trunk), chosen, ownsTicket: true, default);
+
+        Assert.True(left.HasLanding);
+    }
+
+    // ---- What EnterAsync/Plan compute for a trunk-landing project ----
+
+    [Fact]
+    public async Task EnterAsync_on_a_trunk_landing_project_enters_a_trunk_landing_branch()
+    {
+        using var h = new Harness();
+        var chosen = new Checkouts.Choice(h.Root, [], [(h.Root, null)], []);
+
+        var entering = await new Lifecycle(h.Runtime).EnterAsync(
+            Fixtures.Work("AER-1", landing: Landings.Trunk), chosen, default);
+
+        Assert.True(Assert.Single(entering.Entries).TrunkLanding);
+    }
+
+    [Fact]
+    public async Task EnterAsync_on_a_pull_request_project_enters_a_branch_that_is_not_trunk_landing()
+    {
+        using var h = new Harness();
+        var chosen = new Checkouts.Choice(h.Root, [], [(h.Root, null)], []);
+
+        var entering = await new Lifecycle(h.Runtime).EnterAsync(Fixtures.Work("AER-1"), chosen, default);
+
+        Assert.False(Assert.Single(entering.Entries).TrunkLanding);
+    }
+
+    [Fact]
+    public void Plan_on_a_trunk_landing_project_plans_a_trunk_landing_branch()
+    {
+        using var h = new Harness();
+        var chosen = new Checkouts.Choice(h.Root, [], [(h.Root, null)], []);
+
+        var plan = new Lifecycle(h.Runtime).Plan(Fixtures.Work("AER-1", landing: Landings.Trunk), chosen);
+
+        Assert.True(Assert.Single(plan).TrunkLanding);
+    }
+
+    [Fact]
+    public void Plan_on_a_pull_request_project_plans_a_branch_that_is_not_trunk_landing()
+    {
+        using var h = new Harness();
+        var chosen = new Checkouts.Choice(h.Root, [], [(h.Root, null)], []);
+
+        var plan = new Lifecycle(h.Runtime).Plan(Fixtures.Work("AER-1"), chosen);
+
+        Assert.False(Assert.Single(plan).TrunkLanding);
+    }
+
+    [Fact]
+    public async Task A_dry_run_on_a_trunk_landing_project_says_so_and_changes_nothing()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", landing: Landings.Trunk));
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["AER-1", "--dry-run"], default));
+
+        Assert.Contains(h.Say.Said, l => l.StartsWith("# would enter:", StringComparison.Ordinal)
+            && l.Contains("this project lands on the trunk", StringComparison.Ordinal));
+        Assert.Empty(h.Wire.Calls.Where(c => c.Method != "GET"));
     }
 
     [Fact]

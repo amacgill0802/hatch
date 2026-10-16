@@ -57,6 +57,14 @@ public sealed class IssueCommands(Cli cli)
         "  a commit is what makes that search short.",
     ];
 
+    public static readonly string[] VerdictUsage =
+    [
+        "usage: hatch verdict AER-12 pass|fail [\"findings\"]",
+        "",
+        "  A check session's own verdict. Refused locally - before any request -",
+        "  if the word is anything but \"pass\" or \"fail\".",
+    ];
+
     public static readonly string[] PrUsage =
     [
         "usage: hatch pr AER-12 [<url>|--clear]",
@@ -264,6 +272,24 @@ public sealed class IssueCommands(Cli cli)
 
         var written = await cli.Board.CommentAsync(args[0], args[1], ct);
         cli.Say.Line($"commented on {args[0]} as {written?.Author ?? "somebody"}");
+        return 0;
+    }
+
+    public async Task<int> VerdictAsync(string[] args, CancellationToken ct)
+    {
+        if (Usage.Wanted(args)) return Usage.Print(cli.Say, VerdictUsage);
+        if (args.Length is < 2 or > 3)
+            return Usage.Refuse(cli.Say, "verdict takes one issue key, pass or fail, and an optional findings body", VerdictUsage);
+
+        var verdict = args[1].Trim();
+        if (!CheckVerdicts.All.Contains(verdict))
+        {
+            cli.Say.Complain($"hatch: \"{verdict}\" is not a verdict - it is \"pass\" or \"fail\"");
+            return 1;
+        }
+
+        await cli.Board.RecordVerdictAsync(args[0], verdict, args.Length == 3 ? args[2] : null, ct);
+        cli.Say.Line($"recorded {verdict} on {args[0]}");
         return 0;
     }
 

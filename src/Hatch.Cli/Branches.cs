@@ -99,6 +99,12 @@ public sealed class BranchEntry
     /// <summary>The name to cut, when there is no branch to enter. Never one that exists on origin.</summary>
     public string Cut { get; init; } = "";
 
+    /// <summary>The trunk's name.</summary>
+    public string Trunk { get; init; } = "";
+
+    /// <summary>This project lands work on the trunk rather than a branch per issue.</summary>
+    public bool TrunkLanding { get; init; }
+
     /// <summary>Where the local tip was kept, when it had diverged from origin's.</summary>
     public string KeptAs { get; init; } = "";
 
@@ -129,7 +135,9 @@ public sealed class BranchEntry
         {
             BranchKind.Entered =>
                 $"{where}: {verb} {Branch} at {Sha}, {Ahead} commit(s) ahead of the trunk; {MergeWords()}",
-            BranchKind.None => $"{where}: no branch on origin for this issue; {cut} {Cut}",
+            BranchKind.None => TrunkLanding
+                ? $"{where}: {(Planned ? "would stay" : "stays")} on {Trunk} at {Sha} - this project lands on the trunk"
+                : $"{where}: no branch on origin for this issue; {cut} {Cut}",
             BranchKind.AlreadyMerged =>
                 $"{where}: {string.Join(", ", Merged)} already merged into the trunk; {cut} {Cut}",
             BranchKind.Several => $"{where}: {Candidates.Count} unmerged branches: {string.Join(", ", Candidates)}",

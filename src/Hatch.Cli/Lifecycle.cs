@@ -34,7 +34,12 @@ public sealed record HardLimitInfo(long Tokens, int? Requests, string? SessionId
 /// splices it into the report's own <c>Filed</c> list, since nothing re-reads the
 /// board afterward to pick it up on its own.
 /// </param>
-public sealed record LeaveOutcome(bool HasPullRequest, bool BranchOnOrigin, string? FiledKey = null);
+/// <param name="HasLanding">
+/// Whether a trunk-landing project's issue has a landing recorded - meaningless,
+/// and left at its default of <c>true</c>, for a project that lands by pull
+/// request instead.
+/// </param>
+public sealed record LeaveOutcome(bool HasPullRequest, bool BranchOnOrigin, string? FiledKey = null, bool HasLanding = true);
 
 /// <summary>What entering the issue's branch across every checkout came to.</summary>
 /// <param name="Entries">One per checkout the increment resets, in the project's order.</param>
@@ -111,9 +116,10 @@ public sealed class Lifecycle(Runtime runtime)
         var branchKey = Branches.KeyOf(work);
         var branchTitle = Branches.TitleOf(work);
         var answer = Answer(work);
+        var trunkLanding = work.Landing == Landings.Trunk;
 
         var entries = chosen.Resets
-            .Select(r => runtime.Workspace(r.Path, r.BaseBranch).Enter(branchKey, branchTitle, answer))
+            .Select(r => runtime.Workspace(r.Path, r.BaseBranch).Enter(branchKey, branchTitle, answer, trunkLanding))
             .ToList();
 
         // Two or more branches and nobody has said which: the runner does not
@@ -156,8 +162,9 @@ public sealed class Lifecycle(Runtime runtime)
     public IReadOnlyList<BranchEntry> Plan(WorkDto work, Checkouts.Choice chosen)
     {
         var answer = Answer(work);
+        var trunkLanding = work.Landing == Landings.Trunk;
         return chosen.Resets
-            .Select(r => runtime.Workspace(r.Path, r.BaseBranch).Plan(Branches.KeyOf(work), Branches.TitleOf(work), answer))
+            .Select(r => runtime.Workspace(r.Path, r.BaseBranch).Plan(Branches.KeyOf(work), Branches.TitleOf(work), answer, trunkLanding))
             .ToList();
     }
 
@@ -221,8 +228,12 @@ public sealed class Lifecycle(Runtime runtime)
 
             // The pull request that matters is the branch's: a task that shares
             // its story's branch has none of its own, and the story's is the one
-            // that gets the trunk merged into the branch.
-            var pullRequest = await HasPullRequestAsync(branchKey, ct);
+            // that gets the trunk merged into the branch. A trunk-landing project
+            // never has one, so there is nothing to ask the board for - and it is
+            // whether a landing is recorded that matters there instead.
+            var trunkLanding = work.Landing == Landings.Trunk;
+            var pullRequest = trunkLanding ? false : await HasPullRequestAsync(branchKey, ct);
+            var hasLanding = trunkLanding ? await HasLandingAsync(key, ct) : true;
             var branchOnOrigin = false;
 
             foreach (var (path, baseBranch) in chosen.Resets)
@@ -262,12 +273,12 @@ public sealed class Lifecycle(Runtime runtime)
             // A task on its story's branch is not owed a pull request of its own:
             // the story's closeout opens the one, so "pushed with none recorded"
             // is the design for it and not a branch nobody can find a review for.
-            if (lines.Count == 0) return new LeaveOutcome(pullRequest || shared, branchOnOrigin);
+            if (lines.Count == 0) return new LeaveOutcome(pullRequest || shared, branchOnOrigin, HasLanding: hasLanding);
 
             await runtime.Board.CommentAsync(
                 key, "The runner tidied the tree after this increment:\n\n" + string.Join('\n', lines), ct);
 
-            return new LeaveOutcome(pullRequest || shared, branchOnOrigin);
+            return new LeaveOutcome(pullRequest || shared, branchOnOrigin, HasLanding: hasLanding);
         }
         catch (Exception e)
         {
@@ -711,6 +722,19 @@ public sealed class Lifecycle(Runtime runtime)
         catch (Exception e) when (e is HatchException or OperationCanceledException)
         {
             runtime.Say.Complain($"hatch: {key} - could not read whether it has a pull request, so its branch was not brought up to date");
+            return false;
+        }
+    }
+
+    private async Task<bool> HasLandingAsync(string key, CancellationToken ct)
+    {
+        try
+        {
+            return (await runtime.Board.IssueAsync(key, ct))?.Landings is { Count: > 0 };
+        }
+        catch (Exception e) when (e is HatchException or OperationCanceledException)
+        {
+            runtime.Say.Complain($"hatch: {key} - could not read whether it has a landing recorded");
             return false;
         }
     }
