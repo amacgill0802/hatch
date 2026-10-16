@@ -834,6 +834,10 @@ up. It follows that there is no `hatch` verb that sets it — the CLI
 authenticates with a key, so the terminal shows the level (`show`, `board`,
 `next`, `queue`) and sets it nowhere.
 
+Setting a board up so a pre-approved epic runs this way end to end, with
+nobody pressing anything but the one drag [the hop](#the-hop) cannot make
+for it, is [its own walkthrough](#a-night-mode-board).
+
 #### Stories at once
 
 **One epic's own ceiling on how many of its stories run at once.** `WipLimit`
@@ -3452,6 +3456,90 @@ recorded, every child done by its own type's rule, is closed by the pass
 itself - the **close** hop - rather than waiting for it. See [the
 hop](#the-hop) for the fold it checks and the column it lands in, rather than
 re-deriving either here.
+
+Setting a board up so this whole path runs for one epic, start to finish,
+with nobody pressing anything but the one drag nothing skips, is [its own
+walkthrough](#a-night-mode-board).
+
+### A night-mode board
+
+How to set a board up so a pre-approved epic runs from `Draft` to `Done`
+with nobody touching it but the one press nothing can skip, and then what
+that run looks like, column by column. Nothing below is the only way to lay
+a board out: every column is named the way the stock board names it
+([above](#status), `:493-501`), never asserted as the one Hatch ships, and
+the GitHub side stays a link rather than a repeat.
+
+**The columns.** Start from [the stock seven](#status) and add one, then tick
+two more. Add a column ticked `Protected` then `MergesPullRequest` between
+`In Review` and `Done` - call it `Approved`, or anything else; [the approval
+column](#the-approval-column) has the mechanics bought by ticking it, not
+repeated here. Tick `ExpressSkips` on `Draft` and on `Backlog`. Leave `To
+Do` unticked - what that costs, and why, is its own sentence under the path,
+below.
+
+**The playbooks the path needs.** [Playbooks](#playbooks) seeds nine rows;
+this path only ever fires six of them, by current identity:
+
+- `Breakdown → Backlog`, `epic` and `Breakdown → Backlog`, `story` -
+  breakdown.
+- `To Do → In Progress`, `''` (blank types) - analysis.
+- `In Progress → In Review`, `''`/`Shape=leaf` - implementation.
+- `In Progress → In Review`, `''`/`Shape=parent` - closeout.
+- `In Progress → In Review`, `epic` - [the verification
+  playbook](#playbooks).
+- `Review → Review`, `''` - the review fix.
+
+Not part of this path: the ninth row, `Breakdown → Backlog`, `task,bug`, and
+the `To Do → In Progress` `epic` row - that row is retired on any
+WIP-enabled board the moment a move crosses into the WIP section, whatever
+`To Do` is ticked; see [the epic row above](#playbooks) for why the guard
+reads that way.
+
+**WIP room.** Give the [WIP section](#wip) a limit that admits at least one
+epic and at least one story at once - the epic slice and the `story,bug`
+slice both need room for this path to move at all. An epic's own
+[`WipLimit`](#stories-at-once) reads as **one** when left unset, never zero
+by default; a zero limit on either slice is only ever an operator's own
+deliberate choice - made on the Statuses page for the section, or on the
+epic's own page for its slice - not a default to warn against as an
+accident.
+
+**The GitHub side** is entirely [the approval column](#the-approval-column)'s
+own, walked through operator-side in [Letting the loop merge for
+you](../src/Hatch.Web/apps/hatch/public/hatch-at-home.md#letting-the-loop-merge-for-you);
+linked here rather than repeated.
+
+**The path.** The owner files the epic, sets it
+[`preapproved`](#pre-approval), and leaves it in `Draft`.
+
+- `Draft → Breakdown` is the express hop - no session.
+- `Breakdown → Backlog` is the breakdown playbook, which writes the epic's
+  own acceptance criteria and files its stories under it - each one
+  inheriting `preapproved` live, the way [pre-approval](#pre-approval)
+  describes.
+- `Backlog → To Do` is the express hop again, for the epic and, separately,
+  for each story as it is filed.
+- **The epic's own `To Do → In Progress` move is the one press left for a
+  person.** `To Do` is not ticked `ExpressSkips`, so the express hop never
+  fires for the epic there, and the epic-start playbook that used to cover
+  this move is retired on a WIP-enabled board regardless, per [the playbooks
+  above](#playbooks). The move has no hop and no playbook either, so it
+  folds on a missing playbook until somebody drags the epic across by hand.
+  Everything after that one press is unattended.
+- Each story's own `To Do → In Progress` is the analysis playbook; its
+  `In Progress → In Review` is implementation, or closeout once its own
+  tasks are all terminal or deferred.
+- A story standing in review with a clean, mergeable branch is carried into
+  `Approved` by the **approve** hop, where [the merge train](#the-merge-train)
+  merges it with no session.
+- Once every story is terminal or deferred, the epic's own `In Progress → In
+  Review` move is the verification playbook. A pre-approved epic with every
+  acceptance criterion met and no pull request of its own is then carried
+  straight into `Done` by the **close** hop.
+
+[The hop](#the-hop) and [running an epic](#running-an-epic) already document
+every kind of move named above - linked here rather than re-derived.
 
 ### Preemption
 
