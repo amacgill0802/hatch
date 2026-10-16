@@ -4556,6 +4556,127 @@ public class WorkControllerTests
         Assert.Null(work.Blocked);
     }
 
+    [Fact]
+    public async Task HopWork_MovesAPreApprovedReviewRowWithADoneChild_ToDone()
+    {
+        var h = await NewAsync();
+        var already = await h.FileAsync("story", "already in done", h.Done, rank: 1024);
+        var issue = await h.FileAsync("story", "ready to close", h.Review);
+        await h.PreApprovedAsync(issue);
+        await h.FileAsync("task", "the only child", h.Done, parentId: issue.Id);
+
+        var moved = Value(await h.Work.HopWork(Key(issue), null, null, null, default));
+        var row = await h.Db.Issues.FirstAsync(i => i.Id == issue.Id);
+
+        Assert.Equal(h.Done, moved.StatusId);
+        Assert.Equal(h.Done, row.StatusId);
+        Assert.True(row.Rank > already.Rank);
+    }
+
+    [Fact]
+    public async Task HopWork_OnACloseRow_WritesOneStatusChangedEventCarryingPreapprovedTrue()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "ready to close", h.Review);
+        await h.PreApprovedAsync(issue);
+        await h.FileAsync("task", "the only child", h.Done, parentId: issue.Id);
+
+        await h.Work.HopWork(Key(issue), null, null, null, default);
+
+        var row = await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id);
+        var e = Assert.Single(row.Events);
+        Assert.Equal(EfHatchIssueEvent.StatusChanged, e.Kind);
+        Assert.True(System.Text.Json.JsonDocument.Parse(e.Payload!).RootElement.GetProperty("preapproved").GetBoolean());
+    }
+
+    [Fact]
+    public async Task HopWork_OnACloseRow_WritesTheClosedCommentNamingItsOwnRow()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "ready to close", h.Review);
+        await h.PreApprovedAsync(issue);
+        await h.FileAsync("task", "the only child", h.Done, parentId: issue.Id);
+
+        await h.Work.HopWork(Key(issue), null, null, null, default);
+
+        var comment = Assert.Single(await h.Db.Comments.Where(c => c.IssueId == issue.Id).ToListAsync());
+        Assert.Equal(
+            "Closed by its pre-approval on its own row: every child is done.",
+            comment.Body);
+    }
+
+    [Fact]
+    public async Task HopWork_OnACloseRow_WritesTheClosedCommentNamingTheAncestor()
+    {
+        var h = await NewAsync();
+        var grandparent = await h.FileAsync("story", "the pre-approval's own row", h.Todo);
+        await h.PreApproveAsync(grandparent);
+        var issue = await h.FileAsync("task", "carried on its grandparent's pre-approval", h.Review, parentId: grandparent.Id);
+        await h.FileAsync("task", "the only child", h.Done, parentId: issue.Id);
+
+        await h.Work.HopWork(Key(issue), null, null, null, default);
+
+        var comment = Assert.Single(await h.Db.Comments.Where(c => c.IssueId == issue.Id).ToListAsync());
+        Assert.Equal(
+            $"Closed by its pre-approval from {Key(grandparent)}: every child is done.",
+            comment.Body);
+    }
+
+    [Fact]
+    public async Task HopWork_OnACloseRow_Is409WhenAChildHasReopened()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "ready to close", h.Review);
+        await h.PreApprovedAsync(issue);
+        var child = await h.FileAsync("task", "the only child", h.Done, parentId: issue.Id);
+        child.StatusId = h.Todo;
+        await h.Db.SaveChangesAsync();
+
+        var result = await h.Work.HopWork(Key(issue), null, null, null, default);
+
+        var response = (ObjectResult)result.Result!;
+        Assert.Equal(StatusCodes.Status409Conflict, response.StatusCode);
+        Assert.Equal("no runner has checked its branch against the trunk yet", response.Value?.ToString());
+        Assert.Empty((await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id)).Events);
+        Assert.Empty(await h.Db.Comments.Where(c => c.IssueId == issue.Id).ToListAsync());
+    }
+
+    [Fact]
+    public async Task HopWork_OnACloseRow_Is409WhenAnotherCallerAlreadyMovedIt()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "ready to close", h.Review);
+        await h.PreApprovedAsync(issue);
+        await h.FileAsync("task", "the only child", h.Done, parentId: issue.Id);
+        issue.StatusId = h.Done;
+        await h.Db.SaveChangesAsync();
+
+        var result = await h.Work.HopWork(Key(issue), null, null, null, default);
+
+        var response = (ObjectResult)result.Result!;
+        Assert.Equal(StatusCodes.Status409Conflict, response.StatusCode);
+        Assert.Equal("\"done\" is where work ends - there is nothing after it", response.Value?.ToString());
+        Assert.Empty((await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id)).Events);
+        Assert.Empty(await h.Db.Comments.Where(c => c.IssueId == issue.Id).ToListAsync());
+    }
+
+    [Fact]
+    public async Task HopWork_OnACloseRow_RefusesThroughClaimGateWhenClaimed()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "ready to close", h.Review);
+        await h.PreApprovedAsync(issue);
+        await h.FileAsync("task", "the only child", h.Done, parentId: issue.Id);
+        await h.ClaimAsync(issue, by: "Ada");
+
+        var result = await h.Work.HopWork(Key(issue), null, null, null, default);
+
+        var response = (ObjectResult)result.Result!;
+        Assert.Equal(StatusCodes.Status409Conflict, response.StatusCode);
+        Assert.Empty((await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id)).Events);
+        Assert.Empty(await h.Db.Comments.Where(c => c.IssueId == issue.Id).ToListAsync());
+    }
+
     // ---- Express is routing, never priority (HA-241) ----
     //
     // Express decides whether a column needs a session - it is in no OrderBy
