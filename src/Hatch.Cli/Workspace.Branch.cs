@@ -100,7 +100,8 @@ public sealed partial class Workspace
     /// a person named when there were several.
     /// </summary>
     private (BranchEntry? Settled, string? Branch) Settle(
-        string key, string title, string trunk, string? answer, bool planned, out List<string> open, out List<string> merged)
+        string key, string title, string trunk, string? answer, bool planned, out List<string> open, out List<string> merged,
+        bool trunkLanding = false)
     {
         (open, merged) = Branched(key, trunk);
 
@@ -113,6 +114,9 @@ public sealed partial class Workspace
                 Kind = merged.Count > 0 ? BranchKind.AlreadyMerged : BranchKind.None,
                 Merged = merged,
                 Cut = cut,
+                Trunk = trunk,
+                TrunkLanding = trunkLanding,
+                Sha = merged.Count == 0 ? Short($"refs/remotes/origin/{trunk}") : "",
                 Planned = planned,
             }, null);
         }
@@ -127,6 +131,8 @@ public sealed partial class Workspace
             Kind = BranchKind.Several,
             Candidates = open,
             Merged = merged,
+            Trunk = trunk,
+            TrunkLanding = trunkLanding,
             Decided = !string.IsNullOrWhiteSpace(answer),
             Planned = planned,
         }, null);
@@ -140,12 +146,12 @@ public sealed partial class Workspace
         return open.Count > 0 ? BranchPresence.Open : merged.Count > 0 ? BranchPresence.MergedOnly : BranchPresence.None;
     }
 
-    public BranchEntry Enter(string key, string title, string? answer)
+    public BranchEntry Enter(string key, string title, string? answer, bool trunkLanding = false)
     {
         if (BaseBranch() is not { Length: > 0 } trunk)
             return Failed("cannot tell which branch is the trunk here");
 
-        var (settled, branch) = Settle(key, title, trunk, answer, planned: false, out var open, out var merged);
+        var (settled, branch) = Settle(key, title, trunk, answer, planned: false, out var open, out var merged, trunkLanding);
         if (settled is not null)
         {
             say($"hatch:   {settled.Sentence()}");
@@ -217,6 +223,8 @@ public sealed partial class Workspace
             LocalAhead = localAhead,
             Candidates = open,
             Merged = merged,
+            Trunk = trunk,
+            TrunkLanding = trunkLanding,
         };
         say($"hatch:   {entry.Sentence()}");
         return entry;
@@ -268,12 +276,12 @@ public sealed partial class Workspace
         return (MergeOutcome.Failed, [], merge.Why);
     }
 
-    public BranchEntry Plan(string key, string title, string? answer)
+    public BranchEntry Plan(string key, string title, string? answer, bool trunkLanding = false)
     {
         if (BaseBranch() is not { Length: > 0 } trunk)
             return new BranchEntry { Path = root, Kind = BranchKind.Failed, Problem = "cannot tell which branch is the trunk here", Planned = true };
 
-        var (settled, branch) = Settle(key, title, trunk, answer, planned: true, out var open, out var merged);
+        var (settled, branch) = Settle(key, title, trunk, answer, planned: true, out var open, out var merged, trunkLanding);
         if (settled is not null) return settled;
         ArgumentNullException.ThrowIfNull(branch);
 
@@ -328,6 +336,8 @@ public sealed partial class Workspace
             LocalAhead = localAhead,
             Candidates = open,
             Merged = merged,
+            Trunk = trunk,
+            TrunkLanding = trunkLanding,
             Planned = true,
         };
     }
