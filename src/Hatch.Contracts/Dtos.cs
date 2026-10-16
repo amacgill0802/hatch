@@ -451,6 +451,7 @@ public record IssueClaimDto(
 /// anywhere else - the same judgement <see cref="ReviewCheckDto.MergeWork"/>
 /// carries for the CLI's poll.
 /// </param>
+/// <param name="Landings">What each bound repository holds for this issue's branch - see <see cref="LandingController"/>.</param>
 public record IssueDto(
     string Key,
     int ProjectId,
@@ -489,7 +490,8 @@ public record IssueDto(
     string? StalledWhy = null,
     bool Held = false,
     int StallResumeSeconds = 0,
-    MergeWorkDto? MergeWork = null);
+    MergeWorkDto? MergeWork = null,
+    IReadOnlyList<LandingDto>? Landings = null);
 
 /// <summary>Taking the lease: who is asking is the credential's to say, so the body names only where from.</summary>
 /// <param name="Runner">The checkout holding it - <c>host:/path/to/checkout</c>, as the runner names itself.</param>
@@ -2236,6 +2238,26 @@ public record MergeCheckDto(
     DateTimeOffset CheckedAt,
     string Runner,
     string CheckedBy);
+
+/// <summary>
+/// A landing write, as a session's own report or a runner's poll of a
+/// repository sends it.
+/// </summary>
+/// <param name="Remote">The repository as the caller spells it. The board keys the row on its canonical form.</param>
+/// <param name="Sha">The commit this issue's branch landed on <paramref name="Trunk"/> as, in hex.</param>
+/// <param name="Trunk">The trunk's name - required the first time this repository is recorded for the issue, optional on every write after, which may be confirming a sha already named without renaming the trunk.</param>
+/// <param name="ContainedBy">The trunk's tip, once a poll has found <paramref name="Sha"/> an ancestor of it - null on a write that is not that confirmation, and left as whatever is already stored rather than cleared.</param>
+/// <param name="Runner">The checkout that sent it - <c>host:/path/to/checkout</c>, as <see cref="ClaimRequest.Runner"/> is. Not validated or persisted; it rides the body for shape parity with the requests that do use it.</param>
+public record LandingWriteRequest(string Remote, string Sha, string? Trunk, string? ContainedBy, string? Runner);
+
+/// <summary>One stored landing: the issue's commit against one repository's trunk.</summary>
+/// <param name="Remote">The remote as it was last spelled.</param>
+/// <param name="Canonical">The remote's canonical form - the landing's identity within its issue.</param>
+/// <param name="RecordedAt">When the board last took a write for this repository.</param>
+/// <param name="CheckedAt">When a poll last confirmed <see cref="ContainedBy"/>, or null before that has happened.</param>
+public record LandingDto(
+    string Remote, string Canonical, string Trunk, string Sha,
+    string? ContainedBy, DateTimeOffset RecordedAt, DateTimeOffset? CheckedAt);
 
 /// <summary>
 /// What a build on one sha of an issue's branch came to - the four things a
