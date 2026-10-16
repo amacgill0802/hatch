@@ -427,4 +427,52 @@ public sealed class PromptTests
         Assert.DoesNotContain("hatch show AER-12", prompt, StringComparison.Ordinal);
         Assert.Contains("the brief exactly as it stands", prompt, StringComparison.Ordinal);
     }
+
+    // ---- HA-557: a check's own prompt reaches Hatch with a verdict, not a move ----
+
+    [Fact]
+    public void A_check_s_prompt_records_a_verdict_instead_of_starting_or_moving_the_issue()
+    {
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12", isCheck: true));
+
+        Assert.Contains("hatch verdict AER-12 pass|fail [\"findings\"]", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("hatch start AER-12", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("hatch move AER-12 <column>", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_check_s_ending_names_both_the_pass_and_the_fail_destination()
+    {
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12", to: "In Review", isCheck: true, failStatusName: "Implementation"));
+
+        var section = prompt[prompt.IndexOf("## Where this increment ends", StringComparison.Ordinal)..];
+        Assert.Contains("a pass sends it to \"In Review\"", section, StringComparison.Ordinal);
+        Assert.Contains("a fail sends it to \"Implementation\"", section, StringComparison.Ordinal);
+    }
+
+    // ---- HA-557: the last check's findings are carried forward after a fail ----
+
+    [Fact]
+    public void The_last_check_s_findings_are_shown_when_present_and_absent_otherwise()
+    {
+        var withFindings = Prompt.Compose(Fixtures.Work("AER-12", lastCheckFindings: "The build script hardcodes a path."));
+        Assert.Contains("## The last check", withFindings, StringComparison.Ordinal);
+        Assert.Contains("The build script hardcodes a path.", withFindings, StringComparison.Ordinal);
+
+        var withoutFindings = Prompt.Compose(Fixtures.Work("AER-12"));
+        Assert.DoesNotContain("## The last check", withoutFindings, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_last_check_section_is_capped_and_past_the_cap_the_findings_are_left_out()
+    {
+        var big = string.Join('\n', Enumerable.Range(0, 2000).Select(i => new string('x', 20) + i));
+        Assert.True(System.Text.Encoding.UTF8.GetByteCount(big) > Prompt.MaxCheckFindingsSectionBytes);
+
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12", lastCheckFindings: big));
+
+        Assert.Contains("## The last check", prompt, StringComparison.Ordinal);
+        Assert.Contains("_findings left out: this section is at its size cap_", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain(big, prompt, StringComparison.Ordinal);
+    }
 }
