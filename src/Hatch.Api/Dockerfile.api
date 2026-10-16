@@ -44,13 +44,22 @@ RUN npm --prefix src/Hatch.Web run build --workspaces --if-present
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build-env
 WORKDIR /App
 
-# Copy everything (build context is the repo root - see compose.yaml / the
-# release workflow - so Hatch.Api can reach its sibling Hatch.Web project)
-COPY . ./
-COPY --from=web-build /repo/src/Hatch.Api/wwwroot/apps ./src/Hatch.Api/wwwroot/apps
-
-# Restore as distinct layers
+# Restore from the project files alone, ahead of the sources: what restore reads
+# is the dependency graph, so an edit to code reuses this layer and only a
+# change to a project file (or what it references) pays for it again.
+COPY src/Hatch.Contracts/Hatch.Contracts.csproj src/Hatch.Contracts/
+COPY src/Hatch.Api/Hatch.Api.csproj src/Hatch.Api/
 RUN dotnet restore src/Hatch.Api/Hatch.Api.csproj
+
+# Copy what the API is built from (build context is the repo root - see
+# compose.yaml / the release workflow - so Hatch.Api can reach its sibling
+# Hatch.Web project), and not the rest of the repository: a doc, a script, a
+# test or the site is nothing the API publish reads, and copying them would
+# rerun it for every edit to one.
+COPY src/Hatch.Contracts src/Hatch.Contracts
+COPY src/Hatch.Api src/Hatch.Api
+COPY src/Hatch.Web src/Hatch.Web
+COPY --from=web-build /repo/src/Hatch.Api/wwwroot/apps ./src/Hatch.Api/wwwroot/apps
 
 # Build and publish a release. The SPAs (from Hatch.Web) were already built above, so skip
 # the MSBuild targets that would otherwise shell out to npm (unavailable here).
@@ -71,20 +80,65 @@ RUN dotnet publish src/Hatch.Api/Hatch.Api.csproj -c Release -o out -p:SkipDesig
 # which is what lets the Runner page print one revision for the image and the
 # binary it hands out alike.
 #
-# Inlined rather than `make publish-hatch`: this stage's SDK image carries no
-# `make`, and the two loops are the same lines either way. The RID list is the
-# Makefile's HATCH_RIDS - if one moves, the other moves with it. See AERIE-935.
-RUN for rid in win-x64 osx-arm64 osx-x64 linux-x64; do \
-      dotnet publish src/Hatch.Cli/Hatch.Cli.csproj \
-        --runtime $rid \
-        --configuration Release \
-        --output artifacts/hatch/$rid \
-        -p:PublishSingleFile=true \
-        -p:SelfContained=true \
-        -p:PublishTrimmed=true \
-        -p:SourceRevisionId=$HATCH_REVISION \
-      || exit 1; \
-    done
+# One stage per platform, and each copies only what the CLI is built from
+# (itself and Hatch.Contracts). Two things follow: BuildKit runs independent
+# stages at the same time, so four trimmed publishes cost about the longest of
+# them rather than the sum; and a change to the API, the web apps, a doc or a
+# script leaves all four layers as they were, where one `RUN` loop after
+# `COPY . ./` rebuilt every platform for any edit anywhere.
+#
+# Inlined rather than `make publish-hatch`: these stages' SDK image carries no
+# `make`, and the two are the same lines either way. The platform list is the
+# Makefile's HATCH_RIDS - if one moves, the stages here move with it, and so
+# does the COPY --from list in the runtime image below. See AERIE-935.
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS cli-src
+WORKDIR /App
+COPY src/Hatch.Contracts src/Hatch.Contracts
+COPY src/Hatch.Cli src/Hatch.Cli
+
+FROM cli-src AS cli-win-x64
+ARG HATCH_REVISION
+RUN dotnet publish src/Hatch.Cli/Hatch.Cli.csproj \
+      --runtime win-x64 \
+      --configuration Release \
+      --output /out \
+      -p:PublishSingleFile=true \
+      -p:SelfContained=true \
+      -p:PublishTrimmed=true \
+      -p:SourceRevisionId=$HATCH_REVISION
+
+FROM cli-src AS cli-osx-arm64
+ARG HATCH_REVISION
+RUN dotnet publish src/Hatch.Cli/Hatch.Cli.csproj \
+      --runtime osx-arm64 \
+      --configuration Release \
+      --output /out \
+      -p:PublishSingleFile=true \
+      -p:SelfContained=true \
+      -p:PublishTrimmed=true \
+      -p:SourceRevisionId=$HATCH_REVISION
+
+FROM cli-src AS cli-osx-x64
+ARG HATCH_REVISION
+RUN dotnet publish src/Hatch.Cli/Hatch.Cli.csproj \
+      --runtime osx-x64 \
+      --configuration Release \
+      --output /out \
+      -p:PublishSingleFile=true \
+      -p:SelfContained=true \
+      -p:PublishTrimmed=true \
+      -p:SourceRevisionId=$HATCH_REVISION
+
+FROM cli-src AS cli-linux-x64
+ARG HATCH_REVISION
+RUN dotnet publish src/Hatch.Cli/Hatch.Cli.csproj \
+      --runtime linux-x64 \
+      --configuration Release \
+      --output /out \
+      -p:PublishSingleFile=true \
+      -p:SelfContained=true \
+      -p:PublishTrimmed=true \
+      -p:SourceRevisionId=$HATCH_REVISION
 
 # Build runtime image
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
@@ -106,5 +160,8 @@ COPY --from=build-env /App/out .
 # wwwroot/apps at /apps and nothing else, so this directory is reachable only
 # through the controller - which is what keeps the download behind the same
 # [RequireAdmin] as the page that offers it. See AERIE-935.
-COPY --from=build-env /App/artifacts/hatch ./wwwroot/hatch-runner
+COPY --from=cli-win-x64 /out ./wwwroot/hatch-runner/win-x64
+COPY --from=cli-osx-arm64 /out ./wwwroot/hatch-runner/osx-arm64
+COPY --from=cli-osx-x64 /out ./wwwroot/hatch-runner/osx-x64
+COPY --from=cli-linux-x64 /out ./wwwroot/hatch-runner/linux-x64
 ENTRYPOINT ["dotnet", "Hatch.Api.dll"]
