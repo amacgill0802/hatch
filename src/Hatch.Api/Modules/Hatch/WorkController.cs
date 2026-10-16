@@ -476,6 +476,7 @@ public class WorkController(
                 length = issue.Description.Length, limit = playbook?.BriefLimit,
             }),
             HopKinds.Approve => JsonSerializer.Serialize(new { from = from.Name, to = target.Name, preapproved = true }),
+            HopKinds.Close => JsonSerializer.Serialize(new { from = from.Name, to = target.Name, preapproved = true }),
             _ => JsonSerializer.Serialize(new { from = from.Name, to = target.Name, express = true }),
         };
 
@@ -499,6 +500,19 @@ public class WorkController(
                 Body = preApprovalFromKey is null
                     ? $"Approved by its pre-approval on its own row: {sentence}."
                     : $"Approved by its pre-approval from {preApprovalFromKey}: {sentence}.",
+                CreatedAt = now,
+            });
+        }
+
+        if (hopKind == HopKinds.Close)
+        {
+            db.Comments.Add(new EfHatchComment
+            {
+                IssueId = issue.Id,
+                Author = actor,
+                Body = preApprovalFromKey is null
+                    ? "Closed by its pre-approval on its own row: every child is done."
+                    : $"Closed by its pre-approval from {preApprovalFromKey}: every child is done.",
                 CreatedAt = now,
             });
         }
