@@ -279,7 +279,7 @@ public sealed class WorkspaceTests : RepoFixture
 
         Assert.Equal(BranchKind.AlreadyMerged, entry.Kind);
         Assert.Equal(["ha-31-first"], entry.Merged);
-        Assert.Equal("ha-31-first_2", entry.Cut);
+        Assert.Equal("ha-31-first-2", entry.Cut);
         Assert.Equal("main", Current(_work));
     }
 

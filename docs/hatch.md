@@ -4467,8 +4467,9 @@ and before the spawn:
   again.
 - **With no branch, the tree is on the trunk** and the prompt names the branch to
   cut, `<key-lowercased>-<slug of the title>` - or, where that name is taken (by
-  a branch already merged, say), the same with `_2`, then `_3`, appended. An
-  underscore and not a hyphen, so a suffix is never read as part of a key.
+  a branch already merged, say), the same with `-2`, then `-3`, appended. The
+  match runs from the key to the branch and never back, so `ha-3-2` is `ha-3`'s
+  and not `ha-32`'s.
 - **The copy on this machine is only a copy.** Behind `origin`, it is
   fast-forwarded. Ahead, it is used as it is. Diverged, the local tip is kept
   under `<branch>-local-<short sha>`, said on the terminal and in the prompt, and

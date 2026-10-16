@@ -68,7 +68,7 @@ public sealed class Lifecycle(Runtime runtime)
     /// <para>Every branch the story has on origin is already in the trunk. The
     /// story's pull request merged early, and a task that arrives after it has no
     /// branch to join and no pull request coming to carry it, so it is cut its
-    /// own and opens its own - rather than a <c>_2</c> branch named for a story
+    /// own and opens its own - rather than a <c>-2</c> branch named for a story
     /// that is done.</para>
     ///
     /// Called with the refs current, after the reset. Nothing is changed, so the

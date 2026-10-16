@@ -167,16 +167,17 @@ public static class Branches
 
     /// <summary>
     /// Whether a branch is this issue's: the lowercased key, or that and a hyphen
-    /// or an underscore and anything. Anchored, so <c>ha-3</c> is not
-    /// <c>ha-31-x</c>. The underscore is the one <see cref="Free"/> appends to a
-    /// name that is taken - <c>ha-3_2</c> when the key is the whole name.
+    /// and anything. Hyphen-anchored, so <c>ha-3</c> is not <c>ha-31-x</c>. The
+    /// match runs from the key to the branch and never the other way, so a number
+    /// <see cref="Free"/> appends - <c>ha-3-thing-2</c>, or <c>ha-3-2</c> when the
+    /// key is the whole name - is only ever more of the name: <c>ha-3-2</c> is
+    /// <c>ha-3</c>'s, and is not, and cannot be mistaken for, <c>ha-32</c>'s.
     /// </summary>
     public static bool Names(string branch, string key)
     {
         var lower = key.ToLowerInvariant();
         return branch.Equals(lower, StringComparison.OrdinalIgnoreCase)
-            || branch.StartsWith(lower + "-", StringComparison.OrdinalIgnoreCase)
-            || branch.StartsWith(lower + "_", StringComparison.OrdinalIgnoreCase);
+            || branch.StartsWith(lower + "-", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -213,17 +214,15 @@ public static class Branches
     }
 
     /// <summary>
-    /// A name that does not exist: the wanted one, or the wanted one with an
-    /// underscore and the first free number after it - <c>_2</c>, then <c>_3</c>.
-    /// An underscore and not a hyphen, so the suffix is never read as part of an
-    /// issue key.
+    /// A name that does not exist: the wanted one, or the wanted one with a
+    /// hyphen and the first free number after it - <c>-2</c>, then <c>-3</c>.
     /// </summary>
     public static string Free(string wanted, Func<string, bool> taken)
     {
         if (!taken(wanted)) return wanted;
 
         for (var n = 2; ; n++)
-            if (!taken($"{wanted}_{n}")) return $"{wanted}_{n}";
+            if (!taken($"{wanted}-{n}")) return $"{wanted}-{n}";
     }
 
     /// <summary>
