@@ -3635,6 +3635,177 @@ input.hatch-inline-title-input {
   font-weight: 600;
 }
 
+/* The pill, on the issue page and in the summary: `PriorityControl`'s pill in
+   the same shape, opening a band of three steps instead of six - see
+   PreApprovalControl. Express takes --success, the hue `.hatch-express`
+   already spends; preapproved goes one shade stronger, the same "second
+   intensity of one hue" idiom `.hatch-priority-pill.low`/`.economy` use for
+   --muted, since there is no fourth accent token to spend on a third level. */
+.hatch-preapproval-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-1) var(--sp-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--t-label);
+  cursor: pointer;
+}
+
+.hatch-preapproval-pill:hover:not(:disabled) {
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.hatch-preapproval-pill:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.hatch-preapproval-pill.express {
+  border-color: var(--success);
+  background: var(--success);
+  color: var(--on-accent);
+}
+
+.hatch-preapproval-pill.preapproved {
+  border-color: color-mix(in srgb, var(--success) 70%, var(--ink));
+  background: color-mix(in srgb, var(--success) 70%, var(--ink));
+  color: var(--on-accent);
+}
+
+/* The pill's button chrome and caret - `.hatch-priority-pill-press`/`-caret`
+   (App.css:3380-3402) renamed, unchanged. */
+.hatch-preapproval-pill-press {
+  transition:
+    box-shadow var(--transition),
+    opacity var(--transition);
+}
+
+.hatch-preapproval-pill-press:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.hatch-preapproval-pill-press[aria-busy='true'] {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.hatch-preapproval-pill-caret {
+  transition: transform var(--transition);
+}
+
+.hatch-preapproval-pill-press[aria-expanded='true'] .hatch-preapproval-pill-caret {
+  transform: rotate(180deg);
+}
+
+/* What a reader who may not press it sees instead: the state as a word. An
+   agent holding this page is refused the write and is still entitled to know
+   why its ticket was reached first - see IssuePreApprovalController. */
+.hatch-preapproval-said {
+  color: var(--muted);
+  font-size: var(--t-label);
+}
+
+.hatch-preapproval-said.express {
+  color: var(--success-ink);
+  font-weight: 600;
+}
+
+.hatch-preapproval-said.preapproved {
+  color: color-mix(in srgb, var(--success) 70%, var(--ink));
+  font-weight: 600;
+}
+
+/* The band under the pill - `.hatch-priority-band` (App.css:3450-3493),
+   coloured by the effective level's own class. */
+.hatch-preapproval-band {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--line-strong);
+  border-radius: var(--r);
+  animation: hatch-peek-status-in var(--transition) both;
+}
+
+.hatch-preapproval-band.express {
+  background: color-mix(in srgb, var(--success) 10%, var(--card));
+  border-left-color: var(--success);
+}
+
+.hatch-preapproval-band.preapproved {
+  background: color-mix(in srgb, var(--success) 18%, var(--card));
+  border-left-color: color-mix(in srgb, var(--success) 70%, var(--ink));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hatch-preapproval-band {
+    animation: none;
+  }
+}
+
+/* One button per level - `.hatch-priority-steps`/`.hatch-priority-step`
+   (App.css:3496-3572) renamed. */
+.hatch-preapproval-steps {
+  display: flex;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.hatch-preapproval-step {
+  padding: var(--sp-1-5) var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--t-label);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.hatch-preapproval-step:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--line-strong) 18%, transparent);
+}
+
+.hatch-preapproval-step.express {
+  border-color: var(--success);
+}
+
+.hatch-preapproval-step.preapproved {
+  border-color: color-mix(in srgb, var(--success) 70%, var(--ink));
+}
+
+/* The level this issue's own row already carries. Disabled rather than merely
+   marked - pressing it would write an event saying pre-approval moved from
+   express to express. */
+.hatch-preapproval-step.here {
+  background: var(--line-strong);
+  color: var(--ink);
+  cursor: default;
+  opacity: 1;
+}
+
+.hatch-preapproval-step.express.here {
+  background: var(--success);
+  color: var(--on-accent);
+}
+
+.hatch-preapproval-step.preapproved.here {
+  background: color-mix(in srgb, var(--success) 70%, var(--ink));
+  color: var(--on-accent);
+}
+
 /* A column says in its header that it is holding a question, because the card
    that is owed an answer may be folded behind `+N waiting` or ten cards down,
    and the header is the part of a column that is always on screen. The pill
