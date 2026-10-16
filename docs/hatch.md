@@ -3215,24 +3215,16 @@ missing configuration:
     dispatch](#the-issue-in-review-whose-branch-conflicts-or-whose-build-failed-is-dispatched-to-review).
 
 …and then, if none of those, one last check before the ordinary refusal: is
-this a [hop](#the-hop)? Four things are judged the same way here. An issue
-that is [express](#express) and stands in a column marked
-[`ExpressSkips`](#status) needs no playbook at all — the pass calls the row
-clear, and the caller carries it across itself with
-`POST /api/hatch/work/{key}/hop` rather than spawning a session. So does an
-epic standing in a column outside the WIP section whose next column is
-inside it, with something filed under it — where nothing is, the row is
-folded instead with "nothing is filed under it — an epic runs its stories,
-and it has none". So does a story or bug standing in a column marked
-`ExpressSkips`, whose parent is an epic standing inside the WIP section. So
-does a child standing in a column marked [`ParentPulls`](#status), whose
-parent stands in the implementation column and none of whose siblings is
-further along — but where the column is so marked and one of those two
-conditions is not yet met, the row is folded with a sentence naming which
-one, rather than falling through to "no playbook covers this": "its parent
-has not reached the implementation column, so nothing pulls it forward yet",
-or "a sibling is already in flight, so only one child is pulled through at a
-time". Every refusal above this one still applies to every kind of hop
+this a [hop](#the-hop)? [The hop](#the-hop) names seven kinds, asked in that
+order, and this is where any of them is caught. Two fold instead of landing
+exactly: an epic that clears every other test but has nothing filed under it
+is folded with "nothing is filed under it — an epic runs its stories, and it
+has none"; a parent-pull child whose column is marked but one of its own two
+conditions is not yet met is folded with a sentence naming which one — "its
+parent has not reached the implementation column, so nothing pulls it
+forward yet", or "a sibling is already in flight, so only one child is
+pulled through at a time". Every refusal above this one still applies to
+every kind of hop
 exactly as it applies to any other issue: a hop answers only "does this
 column still need a session", and nothing about a live claim, a pause, a
 ready date, an assignee, a question, a repository or a dependency is any
@@ -3265,7 +3257,7 @@ named a ticket is owed the sentence saying why it cannot move.
 **The loop's own write, on the loop's own say-so.** Seven kinds, asked in this
 order:
 
-1. **express** — an issue that is [express](#express) and stands in a column
+1. **express** — an issue that is [express](#pre-approval) and stands in a column
    marked [`ExpressSkips`](#status), with no unanswered question.
 2. **epic** — an epic standing in a column outside the [WIP](#wip) section
    whose next column is inside it, with something filed under it — any direct
@@ -4327,7 +4319,7 @@ which one it failed is what `work/queue` reports:
     place: a type an unattended run does not pick up is a type no row names for
     that move, said in the words that name the fix.
 18. **Unless it does not need a session at all.** An issue that is
-    [express](#express) and stands in a column marked
+    [express](#pre-approval) and stands in a column marked
     [`ExpressSkips`](#status) is [a hop](#the-hop): the seventeenth condition's
     absence is answered not by a playbook but by the pass carrying the issue on
     itself, with `POST /api/hatch/work/{key}/hop`. Every condition above this
