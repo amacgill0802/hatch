@@ -1149,11 +1149,11 @@ public sealed class GoToWorkCommand(Runtime runtime)
         Asked,
 
         /// <summary>
-        /// An express issue was carried across the column it stood in - see
-        /// docs/hatch.md, "The hop". No claim, no reset, no session, and no
-        /// tally: <c>--max-runs</c> and <c>--once</c> count sessions, and a hop
-        /// is not one - so the next pass is asked for at once, the same as
-        /// <see cref="Cleared"/>.
+        /// An issue was carried across the column it stood in by a hop - see
+        /// <c>HoppedIssue</c> for which kind and why, and docs/hatch.md, "The
+        /// hop". No claim, no reset, no session, and no tally: <c>--max-runs</c>
+        /// and <c>--once</c> count sessions, and a hop is not one - so the next
+        /// pass is asked for at once, the same as <see cref="Cleared"/>.
         /// </summary>
         Hopped,
     }

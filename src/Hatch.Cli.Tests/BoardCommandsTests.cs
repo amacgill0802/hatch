@@ -726,6 +726,39 @@ public sealed class BoardCommandsTests
         Assert.Equal("AER-1  [task]  In Progress  -> In Review  (under HA-86, no session)", h.Said);
     }
 
+    [Fact]
+    public async Task The_queue_marks_an_approve_row_with_no_session()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/work/queue", new[] { Fixtures.Row("AER-1", hop: true, hopKind: HopKinds.Approve) });
+
+        await new BoardCommands(h.Cli).QueueAsync([], default);
+
+        Assert.Equal("AER-1  [task]  In Progress  -> In Review  (pre-approved, no session)", h.Said);
+    }
+
+    [Fact]
+    public async Task The_queue_marks_a_close_row_with_no_session()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/work/queue", new[] { Fixtures.Row("AER-1", hop: true, hopKind: HopKinds.Close) });
+
+        await new BoardCommands(h.Cli).QueueAsync([], default);
+
+        Assert.Equal("AER-1  [task]  In Progress  -> In Review  (pre-approved, no session)", h.Said);
+    }
+
+    [Fact]
+    public async Task The_queue_falls_back_to_the_raw_kind_rather_than_express()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/work/queue", new[] { Fixtures.Row("AER-1", hop: true, hopKind: "some-future-kind") });
+
+        await new BoardCommands(h.Cli).QueueAsync([], default);
+
+        Assert.Equal("AER-1  [task]  In Progress  -> In Review  (some-future-kind, no session)", h.Said);
+    }
+
     /// <summary>
     /// A conflict dispatch starts and ends in one column, so an arrow would read
     /// <c>In Review  -> In Review</c>. It says what it is instead, and names the
