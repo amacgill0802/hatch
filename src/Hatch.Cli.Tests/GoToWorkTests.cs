@@ -1485,8 +1485,8 @@ public sealed class GoToWorkTests
         Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync(["--interval", "1", "--max-runs", "1"], default));
 
         Assert.Single(fake.Inner.Spawned);
-        Assert.Contains(h.Say.Said, l => l.Contains(UsageLimit.Clock(correctedAt), StringComparison.Ordinal));
-        Assert.DoesNotContain(h.Say.Said, l => l.Contains(UsageLimit.Clock(carriedUntil), StringComparison.Ordinal));
+        Assert.Contains(h.Say.Said, l => l.Contains(UsageLimit.Clock(correctedAt, known: true), StringComparison.Ordinal));
+        Assert.DoesNotContain(h.Say.Said, l => l.Contains(UsageLimit.Clock(carriedUntil, known: true), StringComparison.Ordinal));
         Assert.Single(h.Say.Said, l => l.Contains("out of Claude usage until", StringComparison.Ordinal));
     }
 
@@ -1529,7 +1529,7 @@ public sealed class GoToWorkTests
         Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync(["--interval", "1", "--max-runs", "1"], default));
 
         Assert.Single(fake.Inner.Spawned);
-        Assert.Contains(h.Say.Said, l => l.Contains(UsageLimit.Clock(carriedUntil), StringComparison.Ordinal));
+        Assert.Contains(h.Say.Said, l => l.Contains(UsageLimit.Clock(carriedUntil, known: true), StringComparison.Ordinal));
     }
 
     [Fact]
