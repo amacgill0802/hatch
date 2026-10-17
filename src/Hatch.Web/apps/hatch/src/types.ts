@@ -1086,6 +1086,54 @@ export interface Plan {
   loose: Rollup;
 }
 
+// ---- Reports ----
+
+/** One active stretch of an issue in one column, clipped to the range asked
+    for. `to` is null while the stretch continues past the range's end. Mirrors
+    TimelineSegmentDto. */
+export interface TimelineSegment {
+  statusId: number;
+  from: string;
+  to: string | null;
+}
+
+/** One row of the timeline: an issue, when it was active in the range, and the
+    rows beneath it that were active too. Mirrors TimelineEntryDto. */
+export interface TimelineEntry {
+  issue: IssueCard;
+  /** The issue's creator; an empty string on the Other entry. */
+  createdBy: string;
+  /** The issue has no children in the tracker at all - the same meaning as
+      `PlanEntry.isLeaf` - whether or not any are in `children`. */
+  isLeaf: boolean;
+  /** The issue's own active stretches in the range, oldest first. May be empty
+      on a child that is present only because a descendant has activity, and on
+      no top-level epic. */
+  segments: TimelineSegment[];
+  /** In rank order, only those with activity in the range at or below them. */
+  children: TimelineEntry[];
+}
+
+/** When the work happened: every top-level epic active in a range, and the
+    work beneath each. Mirrors TimelineDto. */
+export interface Timeline {
+  from: string;
+  to: string;
+  /** Top-level epics with an active stretch of their own in the range, ordered
+      by the start of their first segment, then key. */
+  epics: TimelineEntry[];
+  /** The work under no epic as one synthetic entry (card key `other`, type
+      `epic`, title `Other`, `statusId` 0, empty `projectKey`), whose segments
+      are one hull segment. Null when nothing loose was active. */
+  other: TimelineEntry | null;
+  /** The distinct creators of the top-level rows of the answer before the
+      `createdBy` filter, sorted. */
+  creators: string[];
+  /** Stretches in the range that named a column no longer on the board and
+      were left out. */
+  unresolved: number;
+}
+
 // ---- The battery ----
 
 /** One limit window as the server describes it. Mirrors UtilizationLimit. */

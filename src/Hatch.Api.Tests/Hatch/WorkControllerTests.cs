@@ -5819,6 +5819,144 @@ public class WorkControllerTests
         Assert.Equal(WorkKinds.Advance, Value(await h.Work.GetNextWork(0, null, null, default)).Kind);
     }
 
+    // ---- A trunk-landing issue in review ----
+
+    private static readonly string Landed = new('c', 40);
+
+    [Fact]
+    public async Task Landing_NoLandingRecorded_IsFoldedAsPending()
+    {
+        var h = await NewAsync();
+        await h.SetLandingAsync(Landings.Trunk);
+        var issue = await h.FileAsync("story", "direct", h.Review);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+        Assert.Equal("no landing is recorded for it yet", entry.Blocked);
+        Assert.Equal(WorkKinds.Pending, entry.Kind);
+
+        var work = Value(await h.Work.GetWork(Key(issue), null, default));
+        Assert.Equal("no landing is recorded for it yet", work.Blocked);
+        Assert.Equal(WorkKinds.Pending, work.Kind);
+    }
+
+    [Fact]
+    public async Task Landing_OnTheTrunkWithAPassingBuild_IsFoldedAsLand()
+    {
+        var h = await NewAsync();
+        await h.SetLandingAsync(Landings.Trunk);
+        var issue = await h.FileAsync("story", "direct", h.Review);
+        await h.LandingAsync(issue, Landed, containedBy: Landed);
+        await h.TrunkBuildAsync("main", Landed, BuildVerdicts.Passed);
+
+        const string sentence = "it is on main at ccccccc and the trunk's build passes";
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+        Assert.Equal(sentence, entry.Blocked);
+        Assert.Equal(WorkKinds.Land, entry.Kind);
+
+        var work = Value(await h.Work.GetWork(Key(issue), null, default));
+        Assert.Equal(sentence, work.Blocked);
+        Assert.Equal(WorkKinds.Land, work.Kind);
+    }
+
+    [Fact]
+    public async Task Landing_OnTheTrunkWithAFailedBuild_IsFoldedAsHold()
+    {
+        var h = await NewAsync();
+        await h.SetLandingAsync(Landings.Trunk);
+        var issue = await h.FileAsync("story", "direct", h.Review);
+        await h.LandingAsync(issue, Landed, containedBy: Landed);
+        await h.TrunkBuildAsync("main", Landed, BuildVerdicts.Failed);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+        Assert.Equal("main's build on ccccccc failed after it landed", entry.Blocked);
+        Assert.Equal(WorkKinds.Hold, entry.Kind);
+
+        var work = Value(await h.Work.GetWork(Key(issue), null, default));
+        Assert.Equal("main's build on ccccccc failed after it landed", work.Blocked);
+        Assert.Equal(WorkKinds.Hold, work.Kind);
+    }
+
+    [Fact]
+    public async Task Landing_AClaimedRow_StillSaysTheJudgesSentence()
+    {
+        var h = await NewAsync();
+        await h.SetLandingAsync(Landings.Trunk);
+        var issue = await h.FileAsync("story", "direct", h.Review);
+        await h.AssignAsync(issue, personId: Guid.NewGuid());
+
+        Assert.Equal("no landing is recorded for it yet", Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Landing_ATrunkProjectIssueWithAPullRequest_KeepsTheReviewSentence()
+    {
+        var h = await NewAsync();
+        await h.SetLandingAsync(Landings.Trunk);
+        var issue = await h.FileAsync("story", "has a pr", h.Review);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+        await h.LandingAsync(issue, Landed, containedBy: Landed);
+        await h.TrunkBuildAsync("main", Landed, BuildVerdicts.Passed);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+        Assert.StartsWith("no runner has checked its branch against", entry.Blocked);
+        Assert.Equal(WorkKinds.Conflicts, entry.Kind);
+    }
+
+    [Fact]
+    public async Task Landing_APullRequestProjectIssue_KeepsTheReviewSentence()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "pr project", h.Review);
+        await h.LandingAsync(issue, Landed, containedBy: Landed);
+        await h.TrunkBuildAsync("main", Landed, BuildVerdicts.Passed);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+        Assert.StartsWith("no runner has checked its branch against", entry.Blocked);
+        Assert.Equal(WorkKinds.Conflicts, entry.Kind);
+    }
+
+    [Fact]
+    public async Task ReviewRead_ATrunkLandingRowCarriesItsLandingsAndTheJudgement()
+    {
+        var h = await NewAsync();
+        await h.SetLandingAsync(Landings.Trunk);
+        var issue = await h.FileAsync("story", "direct", h.Review);
+        await h.LandingAsync(issue, Landed, containedBy: Landed);
+        await h.TrunkBuildAsync("main", Landed, BuildVerdicts.Passed);
+
+        var row = Assert.Single(Value(await h.Work.GetReview(null, true, default)));
+        var landing = Assert.Single(row.Landings!);
+        Assert.Equal(Landed, landing.Sha);
+        Assert.Equal(Landed, landing.ContainedBy);
+        Assert.Equal(
+            new LandingWorkDto(WorkKinds.Land, "it is on main at ccccccc and the trunk's build passes"),
+            row.LandingWork);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+        Assert.Equal(entry.Kind, row.LandingWork!.Kind);
+        Assert.Equal(entry.Blocked, row.LandingWork.Sentence);
+    }
+
+    [Fact]
+    public async Task ReviewRead_APullRequestRowAndAMergesColumnRowCarryNoLanding()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        var inReview = await h.FileAsync("story", "up for review", h.Review);
+        var inMerges = await h.FileAsync("task", "ready to merge", approved.Id);
+
+        var rows = Value(await h.Work.GetReview(null, true, default));
+
+        Assert.Equal(2, rows.Count);
+        Assert.All(rows, r =>
+        {
+            Assert.Null(r.Landings);
+            Assert.Null(r.LandingWork);
+        });
+    }
+
     // ---- An issue in review whose build failed ----
 
     [Fact]
@@ -9570,6 +9708,54 @@ public class WorkControllerTests
                 Failing = EfHatchBuildCheck.WriteFailing(
                     (failing.Length == 0 && verdict == BuildVerdicts.Failed ? ["api"] : failing)
                         .Select(n => new FailingCheckDto(n)).ToList()),
+                CheckedAt = Now,
+                Runner = "host:/checkout",
+                CheckedBy = "runner",
+            });
+
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// A landing a runner or the author recorded, written straight to the
+        /// table for the same reason <see cref="VerdictAsync"/> is. Contained
+        /// by <paramref name="containedBy"/> when given - the sha a runner saw
+        /// it on the trunk at - and unseen otherwise.
+        /// </summary>
+        public async Task LandingAsync(
+            EfHatchIssue issue, string sha, string? containedBy = null,
+            string remote = "https://example.com/o/r", string trunk = "main")
+        {
+            var (canonical, _) = RemoteIdentity.Canonical(remote);
+            Db.Landings.Add(new EfHatchLanding
+            {
+                IssueId = issue.Id,
+                Remote = remote,
+                Canonical = canonical!,
+                Trunk = trunk,
+                Sha = sha,
+                ContainedBy = containedBy,
+                RecordedAt = Now,
+                CheckedAt = containedBy is null ? null : Now,
+                RecordedBy = "runner",
+            });
+
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>A runner's read of the trunk's build, written straight to the table.</summary>
+        public async Task TrunkBuildAsync(
+            string trunk, string sha, string verdict, string remote = "https://example.com/o/r")
+        {
+            var (canonical, _) = RemoteIdentity.Canonical(remote);
+            Db.TrunkBuilds.Add(new EfHatchTrunkBuild
+            {
+                Remote = remote,
+                Canonical = canonical!,
+                Trunk = trunk,
+                Sha = sha,
+                ShaSince = Now,
+                Verdict = verdict,
                 CheckedAt = Now,
                 Runner = "host:/checkout",
                 CheckedBy = "runner",
