@@ -4261,8 +4261,9 @@ button.hatch-option.chosen {
 }
 
 /* A phone keeps the key and the toggle and scrolls the chart. The header wraps
-   so the strip drops under the title instead of overflowing the document;
-   PageHeader makes its actions flex: none and does not wrap the header. */
+   so the strips drop under the title instead of overflowing the document, and
+   wrap under each other when they do not fit side by side; PageHeader makes its
+   actions flex: none and does not wrap the header. */
 @media (max-width: 40rem) {
   .hatch-timeline-title,
   .hatch-timeline-label .hatch-type-glyph {
@@ -4275,6 +4276,7 @@ button.hatch-option.chosen {
 
   .hatch-timeline-header .hatch-page-header__actions {
     flex: 1 1 auto;
+    flex-wrap: wrap;
   }
 }
 
