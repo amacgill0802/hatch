@@ -1932,6 +1932,77 @@ public record PlanEntryDto(IssueCardDto Issue, bool IsLeaf, RollupDto Rollup, IR
 /// </param>
 public record PlanDto(IReadOnlyList<PlanEntryDto> Epics, RollupDto Loose);
 
+// ---- Reports ----
+
+/// <summary>
+/// One active stretch of an issue in one column, clipped to the range asked for.
+/// </summary>
+/// <param name="StatusId">The column the issue stood in for the stretch.</param>
+/// <param name="From">When the stretch began, or the start of the range if it began before it.</param>
+/// <param name="To">
+/// When the stretch ended. Null while the stretch continues past the range's
+/// end - the issue is still in that column, or left it after the range closed.
+/// </param>
+public record TimelineSegmentDto(int StatusId, DateTimeOffset From, DateTimeOffset? To);
+
+/// <summary>
+/// One row of the timeline: an issue, when it was active in the range, and the
+/// rows beneath it that were active too.
+/// </summary>
+/// <param name="Issue">The card the row draws.</param>
+/// <param name="CreatedBy">The issue's creator; an empty string on the Other entry.</param>
+/// <param name="IsLeaf">
+/// The issue has no children in the tracker at all - the same meaning as
+/// <see cref="PlanEntryDto.IsLeaf"/> - whether or not any of them are in
+/// <paramref name="Children"/>.
+/// </param>
+/// <param name="Segments">
+/// The issue's <em>own</em> active stretches in the range, oldest first. May be
+/// empty on a child that is present only because a descendant has activity, and
+/// on no top-level epic.
+/// </param>
+/// <param name="Children">
+/// In rank order, only those with activity in the range at or below them.
+/// </param>
+public record TimelineEntryDto(
+    IssueCardDto Issue,
+    string CreatedBy,
+    bool IsLeaf,
+    IReadOnlyList<TimelineSegmentDto> Segments,
+    IReadOnlyList<TimelineEntryDto> Children);
+
+/// <summary>
+/// When the work happened: every top-level epic that was active in a range, and
+/// the work beneath each, drawn as stretches along one time axis.
+/// </summary>
+/// <param name="From">The start of the range the answer covers.</param>
+/// <param name="To">The end of the range the answer covers.</param>
+/// <param name="Epics">
+/// Top-level epics with an active stretch of their own in the range, ordered by
+/// the start of their first segment, then key.
+/// </param>
+/// <param name="Other">
+/// The work under no epic as one synthetic entry (card key <c>other</c>, type
+/// <c>epic</c>, title <c>Other</c>, <c>StatusId</c> 0, empty <c>ProjectKey</c>),
+/// whose segments are one hull segment. Null when nothing loose was active.
+/// </param>
+/// <param name="Creators">
+/// The distinct creators of the top-level rows of the answer <em>before</em> the
+/// <c>createdBy</c> filter, sorted - so the filter's own choices do not shrink as
+/// it is applied.
+/// </param>
+/// <param name="Unresolved">
+/// Stretches in the range that named a column no longer on the board and were
+/// left out.
+/// </param>
+public record TimelineDto(
+    DateTimeOffset From,
+    DateTimeOffset To,
+    IReadOnlyList<TimelineEntryDto> Epics,
+    TimelineEntryDto? Other,
+    IReadOnlyList<string> Creators,
+    int Unresolved);
+
 // ---- The work log ----
 
 /// <summary>

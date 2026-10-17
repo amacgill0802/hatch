@@ -57,6 +57,7 @@ import type {
   Status,
   StatusCreateRequest,
   StatusPatchRequest,
+  Timeline,
   TrunkBuildBugRequest,
   Utilization,
   WipSection,
@@ -594,6 +595,33 @@ export interface WorkLogHistoryQuery {
       overnight run split across UTC midnight is two half-nights nobody
       worked. */
   offsetMinutes: number;
+}
+
+/** When the work happened: the top-level epics active in a range and the work
+    beneath each, as stretches along one axis.
+
+    The server defaults `to` to now and `from` to ninety days before it.
+    `projectId` and `createdBy` narrow the top-level rows only - what stands
+    beneath a row that stays is not filtered again.
+
+    Anything null or undefined is left out rather than sent empty, as
+    `getWorkLogHistory` does, and the `?` is left off when nothing is left. */
+export const getTimeline = (query: TimelineQuery) => {
+  const params = new URLSearchParams();
+  for (const [name, value] of Object.entries(query)) {
+    if (value !== null && value !== undefined) params.set(name, String(value));
+  }
+  const qs = params.toString();
+  return fetchJson<Timeline>('/api/hatch/reports/timeline' + (qs ? '?' + qs : ''));
+};
+
+/** The timeline route's query string; it has no DTO. An unset field is left out
+    of the URL, not sent empty. */
+export interface TimelineQuery {
+  from?: string | null;
+  to?: string | null;
+  projectId?: number | null;
+  createdBy?: string | null;
 }
 
 export interface WorkLogSessionQuery {
