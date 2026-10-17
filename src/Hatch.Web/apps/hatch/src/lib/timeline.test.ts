@@ -393,6 +393,38 @@ describe('foldRows', () => {
     expect(rows[0].entry.segments).toEqual(own);
     expect(rows[1].entry).toBe(child);
   });
+
+  it('leaves a hidden epic out', () => {
+    expect(keys(foldRows(tree, new Set(), new Set(['E-2'])))).toEqual(['E-1', OTHER_KEY]);
+  });
+
+  it('leaves a hidden Other out', () => {
+    expect(keys(foldRows(tree, new Set(), new Set([OTHER_KEY])))).toEqual(['E-2', 'E-1']);
+  });
+
+  it('leaves a hidden epic\'s expanded children out with it', () => {
+    const open = new Set(['E-2', 'S-1', OTHER_KEY]);
+
+    expect(keys(foldRows(tree, open, new Set(['E-2'])))).toEqual(['E-1', OTHER_KEY, 'L-1']);
+  });
+
+  it('changes nothing for a hidden key that names no top-level entry', () => {
+    const open = new Set(['E-2']);
+
+    expect(foldRows(tree, open, new Set(['nope', 'S-2']))).toEqual(foldRows(tree, open));
+  });
+
+  it('never touches the answer it folds', () => {
+    const before = structuredClone(tree);
+
+    foldRows(tree, new Set(['E-2', OTHER_KEY]), new Set(['E-2', OTHER_KEY]));
+
+    expect(tree).toEqual(before);
+  });
+
+  it('hides nothing by default', () => {
+    expect(foldRows(tree, new Set(['E-2']))).toEqual(foldRows(tree, new Set(['E-2']), new Set()));
+  });
 });
 
 describe('toggled', () => {

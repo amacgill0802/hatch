@@ -30,7 +30,7 @@ const answer = (over: Partial<Timeline> = {}): Timeline => ({
   ...over,
 });
 
-const render = (timeline: Timeline): string =>
+const render = (timeline: Timeline, hidden: string[] = []): string =>
   renderToStaticMarkup(
     <MemoryRouter>
       <TimelineBody
@@ -40,6 +40,8 @@ const render = (timeline: Timeline): string =>
         now={NOW}
         expanded={new Set()}
         onToggle={() => {}}
+        hidden={new Set(hidden)}
+        onHide={() => {}}
       />
     </MemoryRouter>,
   );
@@ -76,6 +78,23 @@ describe('TimelineBody', () => {
     expect(html).toContain(EMPTY);
     expect(html).not.toContain('hatch-timeline"');
     expect(html).not.toContain(FOOTNOTE);
+  });
+
+  it('says every epic is hidden, and draws no chart, when each top-level row is', () => {
+    const html = render(answer({ epics: [entry('HA-1')], other: entry('other') }), ['HA-1', 'other']);
+
+    expect(html).toContain('Every epic in this range is hidden.');
+    expect(html).not.toContain('class="hatch-timeline"');
+    expect(html).not.toContain(EMPTY);
+  });
+
+  it('still draws the chart, without the hidden rows, when only some are hidden', () => {
+    const html = render(answer({ epics: [entry('HA-1'), entry('HA-2')] }), ['HA-1']);
+
+    expect(html).toContain('class="hatch-timeline"');
+    expect(html).not.toContain('Every epic');
+    expect(html).not.toContain('title HA-1');
+    expect(html).toContain('title HA-2');
   });
 
   it('footnotes one unplaced column change in the singular', () => {

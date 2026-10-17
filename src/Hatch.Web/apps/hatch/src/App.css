@@ -4167,7 +4167,8 @@ button.hatch-option.chosen {
 
 /* A bare <button> carries the browser's own face. Native, so it is in the tab
    order and answers Enter and Space; the focus ring is the chip link's. */
-.hatch-timeline-toggle {
+.hatch-timeline-toggle,
+.hatch-timeline-hide {
   appearance: none;
   flex: none;
   margin-left: auto;
@@ -4183,9 +4184,17 @@ button.hatch-option.chosen {
 }
 
 .hatch-timeline-toggle:hover,
-.hatch-timeline-toggle:focus-visible {
+.hatch-timeline-toggle:focus-visible,
+.hatch-timeline-hide:hover,
+.hatch-timeline-hide:focus-visible {
   border-color: var(--primary);
   color: var(--primary);
+}
+
+/* Both push right, which would split the free space and leave the toggle
+   mid-label; the Hide button that follows a toggle sits against it instead. */
+.hatch-timeline-toggle + .hatch-timeline-hide {
+  margin-left: 0;
 }
 
 .hatch-timeline-pane {
