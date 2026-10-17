@@ -4964,6 +4964,23 @@ and before the spawn:
   a branch already merged, say), the same with `-2`, then `-3`, appended. The
   match runs from the key to the branch and never back, so `ha-3-2` is `ha-3`'s
   and not `ha-32`'s.
+- **In a project that [lands on the trunk](#landing-on-the-trunk), a branch is
+  not where the work is meant to end.** With no branch, the tree stays on
+  `<trunk>` at `origin`'s tip and the prompt says to commit there and cut nothing
+  (`Prompt.cs`, `BranchKind.None` with `TrunkLanding`; `Branches.Sentence` says
+  the same on the terminal). With one unmerged branch - a usage-limit push, since
+  `PushForLimit` cuts one from the trunk when it finds work there, or an earlier
+  increment's - it is entered as above, and the prompt adds that the session
+  finishes on it, merges it into `<trunk>`, pushes `<trunk>`, deletes the branch
+  on `origin` and records the landing. Such an increment has no pull request to
+  open, and `## Landing on the trunk` stands in place of `## Opening a pull
+  request`, as a task on its story's branch is told not to open one. It says to
+  `git pull --no-rebase origin <trunk>` (a merge, never a rebase), run the build
+  and tests again if that brought anything in, `git push origin <trunk>` (pull
+  and push again if somebody landed first, never force), then `hatch landed <key>
+  <sha>` for each repository and a comment with the sha. The increment is not
+  finished until the landing is recorded, and `## Where this increment ends`
+  still names review.
 - **The copy on this machine is only a copy.** Behind `origin`, it is
   fast-forwarded. Ahead, it is used as it is. Diverged, the local tip is kept
   under `<branch>-local-<short sha>`, said on the terminal and in the prompt, and
