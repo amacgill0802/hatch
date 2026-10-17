@@ -386,7 +386,7 @@ public sealed class ForgeTests
         Assert.Equal("abc123", answer.HeadSha);
         Assert.Null(answer.Why);
         var call = Assert.Single(runs.Calls);
-        Assert.Equal(["pr", "view", "https://forge.example/owner/repo/pull/7", "--json", "state,headRefOid,number"], call.Args);
+        Assert.Equal(["pr", "view", "https://forge.example/owner/repo/pull/7", "--json", "state,headRefOid,number,mergeStateStatus,reviewDecision,isDraft"], call.Args);
         Assert.DoesNotContain("--hostname", call.Args);
         Assert.Equal("forge.example/owner/repo", call.Env["GH_REPO"]);
     }
@@ -581,6 +581,94 @@ public sealed class ForgeTests
 
         Assert.Equal(42, answer.Number);
         var call = Assert.Single(runs.Calls);
-        Assert.Equal(["pr", "view", "https://forge.example/owner/repo/pull/42", "--json", "state,headRefOid,number"], call.Args);
+        Assert.Equal(["pr", "view", "https://forge.example/owner/repo/pull/42", "--json", "state,headRefOid,number,mergeStateStatus,reviewDecision,isDraft"], call.Args);
+    }
+
+    // ---- ReadPullRequestAsync's merge state and review decision ----
+
+    [Theory]
+    [InlineData("CLEAN", MergeStates.Clean)]
+    [InlineData("HAS_HOOKS", MergeStates.Clean)]
+    [InlineData("BLOCKED", MergeStates.Blocked)]
+    [InlineData("BEHIND", MergeStates.Behind)]
+    [InlineData("DIRTY", MergeStates.Dirty)]
+    [InlineData("UNSTABLE", MergeStates.Unstable)]
+    [InlineData("DRAFT", MergeStates.Draft)]
+    [InlineData("UNKNOWN", MergeStates.Unknown)]
+    [InlineData("clean", MergeStates.Clean)]
+    [InlineData("blocked", MergeStates.Blocked)]
+    [InlineData(null, MergeStates.Unknown)]
+    [InlineData("", MergeStates.Unknown)]
+    [InlineData("SOMETHING_NEW", MergeStates.Unknown)]
+    public void A_merge_state_status_gh_prints_reads_as_the_matching_merge_state(string? printed, string expected)
+    {
+        Assert.Equal(expected, GhForge.ClassifyMergeState(printed, isDraft: false));
+    }
+
+    [Theory]
+    [InlineData("CLEAN")]
+    [InlineData("DIRTY")]
+    [InlineData(null)]
+    public void A_draft_reads_draft_whatever_the_status_says(string? printed)
+    {
+        Assert.Equal(MergeStates.Draft, GhForge.ClassifyMergeState(printed, isDraft: true));
+    }
+
+    [Theory]
+    [InlineData("APPROVED", ReviewDecisions.Approved)]
+    [InlineData("CHANGES_REQUESTED", ReviewDecisions.ChangesRequested)]
+    [InlineData("REVIEW_REQUIRED", ReviewDecisions.ReviewRequired)]
+    [InlineData("approved", ReviewDecisions.Approved)]
+    [InlineData(null, ReviewDecisions.None)]
+    [InlineData("", ReviewDecisions.None)]
+    [InlineData("SOMETHING_NEW", ReviewDecisions.None)]
+    public void A_review_decision_gh_prints_reads_as_the_matching_decision(string? printed, string expected)
+    {
+        Assert.Equal(expected, GhForge.ClassifyReviewDecision(printed));
+    }
+
+    [Fact]
+    public async Task A_pull_request_read_carries_its_merge_state_and_review_decision_in_hatchs_words()
+    {
+        var runs = new Runs { Answer = _ => new GhForge.Ran(0, """{"state":"OPEN","headRefOid":"abc","number":7,"mergeStateStatus":"BLOCKED","reviewDecision":"REVIEW_REQUIRED","isDraft":false}""", "") };
+
+        var answer = await runs.Forge().ReadPullRequestAsync("https://forge.example/owner/repo/pull/7", default);
+
+        Assert.Equal(MergeStates.Blocked, answer.MergeState);
+        Assert.Equal(ReviewDecisions.ReviewRequired, answer.ReviewDecision);
+        Assert.Single(runs.Calls);
+    }
+
+    [Fact]
+    public async Task A_draft_pull_request_reads_draft_even_where_gh_says_clean()
+    {
+        var runs = new Runs { Answer = _ => new GhForge.Ran(0, """{"state":"OPEN","headRefOid":"abc","number":7,"mergeStateStatus":"CLEAN","reviewDecision":"","isDraft":true}""", "") };
+
+        var answer = await runs.Forge().ReadPullRequestAsync("https://forge.example/owner/repo/pull/7", default);
+
+        Assert.Equal(MergeStates.Draft, answer.MergeState);
+        Assert.Equal(ReviewDecisions.None, answer.ReviewDecision);
+    }
+
+    [Fact]
+    public async Task A_pull_request_read_without_the_new_fields_reads_unknown_and_none_not_null()
+    {
+        var runs = new Runs { Answer = _ => new GhForge.Ran(0, """{"state":"OPEN","headRefOid":"abc","number":7}""", "") };
+
+        var answer = await runs.Forge().ReadPullRequestAsync("https://forge.example/owner/repo/pull/7", default);
+
+        Assert.Equal(MergeStates.Unknown, answer.MergeState);
+        Assert.Equal(ReviewDecisions.None, answer.ReviewDecision);
+    }
+
+    [Fact]
+    public async Task A_failed_pull_request_read_leaves_the_merge_state_and_review_decision_null()
+    {
+        var runs = new Runs { Answer = _ => new GhForge.Ran(1, "", "boom") };
+
+        var answer = await runs.Forge().ReadPullRequestAsync("https://forge.example/owner/repo/pull/7", default);
+
+        Assert.Null(answer.MergeState);
+        Assert.Null(answer.ReviewDecision);
     }
 }
