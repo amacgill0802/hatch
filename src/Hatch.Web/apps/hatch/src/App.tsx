@@ -25,6 +25,7 @@ import { RunnersPage } from './pages/RunnersPage';
 import { BulkPage } from './pages/BulkPage';
 import { HistoryPage } from './pages/HistoryPage';
 import { ImportPage } from './pages/ImportPage';
+import { DocsPage } from './pages/DocsPage';
 import { RunnerPage } from './pages/RunnerPage';
 import { OvernightPage } from './pages/OvernightPage';
 import { ApiKeysPage } from './pages/ApiKeysPage';
@@ -96,6 +97,11 @@ function AppShell() {
                 <div className="hatch-phone-menu">
                   {navRows(isAdmin).map((row, index, rows) => (
                     <Fragment key={row.to}>
+                      {/* A top-level row after a group's rows (Docs) has no
+                          heading to set it apart, so it gets a rule. */}
+                      {index > 0 && row.groupLabel === null && rows[index - 1].groupLabel !== null ? (
+                        <hr className="hatch-menu__divider" />
+                      ) : null}
                       {row.groupLabel !== null && row.groupLabel !== rows[index - 1]?.groupLabel ? (
                         <div className="hatch-menu__row">
                           <span className="hatch-menu__row-label">{row.groupLabel}</span>
@@ -109,11 +115,10 @@ function AppShell() {
                 </div>
               )}
               <Menu.Item as={NavLink} to="/settings">Settings</Menu.Item>
-              {/* A static file shipped beside this bundle rather than a route,
-                  so a plain anchor and a real page navigation - a NavLink
-                  would hand the path to this app's router, which owns none
-                  of it. */}
-              <Menu.Item as="a" href="/apps/hatch/hatch-at-home.md">Docs</Menu.Item>
+              {/* Docs is a page of this app. On the phone it is already in the
+                  panel above, from navRows, so it is drawn here only on the
+                  desk, where the primary nav has no room for it behind a menu. */}
+              {!isPhone && <Menu.Item as={NavLink} to="/docs">Docs</Menu.Item>}
               {me ? (
                 <>
                   <hr className="hatch-menu__divider" />
@@ -147,6 +152,8 @@ function AppShell() {
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/users" element={<UsersPage />} />
             <Route path="/api-keys" element={<ApiKeysPage />} />
+            <Route path="/docs" element={<DocsPage />} />
+            <Route path="/docs/*" element={<DocsPage />} />
             {/* An unknown deep link lands on the board rather than on nothing -
                 the board is the app, and there is no page worth writing that
                 says "that URL was wrong". */}
