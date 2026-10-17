@@ -12,10 +12,11 @@ where work is described, and it is reachable programmatically — so a link to a
 ticket is a complete instruction, and the ticket is where the answer goes back.
 
 `hatch` is the calls a working session actually makes — `board`, `next`,
-`queue`, `show`, `comments`, `start`, `move`, `comment`, `pr`, `depends`, `one-pr`, `ask`,
-`questions`, `answer`, `config`, `work`, `go-to-work`, `do-my-work`, and `api`
-for everything else. It finds a column by name rather than by id, on the
-letters and digits alone, so `todo` reaches the column the board calls `To Do`.
+`queue`, `show`, `comments`, `start`, `move`, `comment`, `pr`, `landed`,
+`depends`, `one-pr`, `ask`, `questions`, `answer`, `config`, `work`,
+`go-to-work`, `do-my-work`, and `api` for everything else. It finds a column
+by name rather than by id, on the letters and digits alone, so `todo` reaches
+the column the board calls `To Do`.
 Prefer it to raw `curl`; the raw calls below are what it is doing. `hatch
 --help` lists the surface, and every subcommand takes `-h` for its own.
 
@@ -71,7 +72,10 @@ below is what the prompt does not carry.
 
 - **The tree's state is the prompt's `## The branch` section**, not this
   one — it overrides any branching instruction in the playbook, including
-  cutting a branch it did not name.
+  cutting a branch it did not name. It is also where a trunk-landing
+  increment learns it has no pull request to open: the section says the
+  project lands on the trunk and to cut nothing, and the prompt's `## Landing
+  on the trunk` then stands in for `## Opening a pull request`.
 - **A hop may have carried the ticket here unread** — express, a sub-epic or
   child whose epic is already running (`docs/hatch.md#the-hop`). A top-level
   epic is never carried this way.
@@ -152,9 +156,11 @@ one loads on every increment. Two rules from it matter enough to repeat:
   the ticket is where somebody looks in six months.
 - Record a pull request with `./scripts/hatch.sh pr AER-12 <url>`, named the
   way the prompt's `## Opening a pull request` section says.
-  `./scripts/hatch.sh landed AER-12 [<sha>]` is the other half, once the work
-  is there: it records the sha AER-12's work reached the trunk at, in this
-  checkout's own origin remote.
+  In a project that lands on the trunk there is no pull request to record:
+  `./scripts/hatch.sh landed AER-12 [<sha>]` records the sha AER-12's work
+  reached the trunk at, per repository (in this checkout's own origin remote
+  unless `--repo` names another), and the prompt's `## Landing on the trunk`
+  says when to run it.
 - **Never move a ticket to a terminal or deferred status** — only the
   operator does, or the board itself, carrying a pre-approved parent
   through with no session (the close hop); a deferred status stays the
