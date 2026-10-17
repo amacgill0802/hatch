@@ -93,14 +93,16 @@ absence starts to hurt:
 - **No swimlanes or sprints.**
 - **No GitHub integration beyond one read and two writes.** A commit sha in a
   comment is the link, and it is written by whoever did the work. What is read
-  is the build on the tip of a branch in review; what is written, once a pull
-  request stands approved in a protected column, is the merge itself and the
-  branch update that keeps it current with the trunk while it waits. All three
-  are the runner's own `gh`, never the server — see [the build half of checking
-  the branches in review](#checking-the-branches-in-review). What is still not
-  read: whether a pull request is approved on the forge, whether it merges
-  (that is git's answer), and anything at all from the server. Nothing in
-  Hatch names a forge or inspects a host.
+  is the build on the tip of a branch in review, and with it the pull request's
+  merge state and review decision — the forge's own answer to whether it can
+  merge and whether it is approved. Those two are stored on the issue, with the
+  head sha they were read at and when, and drawn; nothing on the server acts on
+  them yet. What is written, once a pull request stands approved in a protected
+  column, is the merge itself and the branch update that keeps it current with
+  the trunk while it waits. All three are the runner's own `gh`, never the
+  server — see [the build half of checking the branches in
+  review](#checking-the-branches-in-review). What is still not read: anything
+  at all from the server. Nothing in Hatch names a forge or inspects a host.
 - **No websockets.** The board refetches on action and on focus, and every 30
   seconds while it is on screen, and at once when it returns to the screen. It
   was once refetched on action and focus alone, on the premise that whoever
@@ -6305,14 +6307,16 @@ code already settles is a round trip through a person for nothing.
   answers the question that was actually being asked.
 - **GitHub integration, beyond one read and two writes.** A branch and a PR
   are named in a comment by whoever made them. The one thing read from a forge
-  is the build on an in-review branch's tip; the two writes are the merge of a
-  pull request the board has already gated behind a protected column, and the
-  branch update that keeps it current with the trunk while it waits — all
-  three through the runner's own `gh`
-  ([checking the branches in review](#checking-the-branches-in-review)). Review
-  state, mergeability, webhooks and anything else the server would ask a forge
-  itself are deferred: each is a credential on the server, which is what the
-  runner asking `gh` as whoever it is signed in as avoids.
+  is the build on an in-review branch's tip, with the pull request's merge
+  state and review decision beside it, stored on the issue and drawn; the two
+  writes are the merge of a pull request the board has already gated behind a
+  protected column, and the branch update that keeps it current with the trunk
+  while it waits — all three through the runner's own `gh`
+  ([checking the branches in review](#checking-the-branches-in-review)).
+  Acting on the merge state and review decision (nothing on the server does
+  yet), webhooks and anything else the server would ask a forge itself are
+  deferred: each is a credential on the server, which is what the runner asking
+  `gh` as whoever it is signed in as avoids.
 - **A deleted issue takes its events with it.** Hard delete, confirmed in the
   UI, and an accepted gap.
 - **Pushed updates.** The board polls (see above); a server-sent signal would
