@@ -842,6 +842,30 @@ public class TimelineReportControllerTests
         return issue;
     }
 
+    private static async Task<EfHatchIssue> AddIssueAsync(Harness h, string type, int statusId, long? parentId = null)
+    {
+        var issue = new EfHatchIssue
+        {
+            ProjectId = h.ProjectId,
+            Number = await h.Db.Issues.CountAsync(i => i.ProjectId == h.ProjectId) + 1,
+            Type = type, Title = type, Description = "", StatusId = statusId, Rank = 1024, ParentId = parentId,
+            CreatedBy = "ann", CreatedAt = Now.AddDays(-20), UpdatedAt = Now.AddDays(-20),
+        };
+        h.Db.Issues.Add(issue);
+        await h.Db.SaveChangesAsync();
+        return issue;
+    }
+
+    private static async Task MoveAsync(Harness h, long issueId, string payload, int daysAgo)
+    {
+        h.Db.IssueEvents.Add(new EfHatchIssueEvent
+        {
+            IssueId = issueId, Actor = "ann", Kind = EfHatchIssueEvent.StatusChanged,
+            Payload = payload, At = Now.AddDays(-daysAgo),
+        });
+        await h.Db.SaveChangesAsync();
+    }
+
     [Fact]
     public async Task NoRange_IsTheNinetyDaysEndingNow()
     {
@@ -977,5 +1001,95 @@ public class TimelineReportControllerTests
         Assert.Equal("AER-1", top.Issue.Key);
         Assert.Equal("AER-2", Assert.Single(top.Children).Issue.Key);
         Assert.DoesNotContain(timeline.Epics, e => e.Issue.Key == "AER-2");
+    }
+
+    [Fact]
+    public async Task AnEpicWithAStoryAndATask_IsReturnedWithItsCardsParentsLeavesAndSegments()
+    {
+        var h = await NewAsync();
+        var epic = await AddIssueAsync(h, "epic", 4);
+        var story = await AddIssueAsync(h, "story", 1, epic.Id);
+        var task = await AddIssueAsync(h, "task", 3, story.Id);
+        await MoveAsync(h, epic.Id, "{\"from\":\"backlog\",\"to\":\"todo\",\"fromId\":1,\"toId\":2}", 12);
+        await MoveAsync(h, epic.Id, "{\"from\":\"todo\",\"to\":\"doing\",\"fromId\":2,\"toId\":3}", 8);
+        await MoveAsync(h, epic.Id, "{\"from\":\"doing\",\"to\":\"done\",\"fromId\":3,\"toId\":4}", 3);
+        await MoveAsync(h, task.Id, "{\"from\":\"backlog\",\"to\":\"doing\",\"fromId\":1,\"toId\":3}", 6);
+
+        var timeline = Value(await h.Reports.GetTimeline(null, null, null, null, default));
+
+        var top = Assert.Single(timeline.Epics);
+        Assert.Equal("AER-1", top.Issue.Key);
+        Assert.Null(top.Issue.ParentKey);
+        Assert.False(top.IsLeaf);
+        Assert.Equal(
+            [new TimelineSegmentDto(2, Now.AddDays(-12), Now.AddDays(-8)), new TimelineSegmentDto(3, Now.AddDays(-8), Now.AddDays(-3))],
+            top.Segments);
+
+        var middle = Assert.Single(top.Children);
+        Assert.Equal("AER-2", middle.Issue.Key);
+        Assert.Equal("AER-1", middle.Issue.ParentKey);
+        Assert.False(middle.IsLeaf);
+        Assert.Empty(middle.Segments);
+
+        var leaf = Assert.Single(middle.Children);
+        Assert.Equal("AER-3", leaf.Issue.Key);
+        Assert.Equal("AER-2", leaf.Issue.ParentKey);
+        Assert.True(leaf.IsLeaf);
+        Assert.Equal([new TimelineSegmentDto(3, Now.AddDays(-6), null)], leaf.Segments);
+    }
+
+    [Fact]
+    public async Task LooseWork_IsReturnedUnderTheOtherEntry()
+    {
+        var h = await NewAsync();
+        var story = await AddIssueAsync(h, "story", 1);
+        var task = await AddIssueAsync(h, "task", 3, story.Id);
+        await MoveAsync(h, task.Id, "{\"from\":\"backlog\",\"to\":\"doing\",\"fromId\":1,\"toId\":3}", 6);
+
+        var timeline = Value(await h.Reports.GetTimeline(null, null, null, null, default));
+
+        Assert.Empty(timeline.Epics);
+        var other = Assert.IsType<TimelineEntryDto>(timeline.Other);
+        Assert.Equal("other", other.Issue.Key);
+        Assert.Equal("epic", other.Issue.Type);
+        Assert.Equal("Other", other.Issue.Title);
+        Assert.Equal(0, other.Issue.StatusId);
+        Assert.Equal("", other.Issue.ProjectKey);
+        Assert.Equal("", other.CreatedBy);
+        Assert.False(other.IsLeaf);
+        Assert.Equal([new TimelineSegmentDto(3, Now.AddDays(-6), null)], other.Segments);
+
+        var loose = Assert.Single(other.Children);
+        Assert.Equal("AER-1", loose.Issue.Key);
+        var leaf = Assert.Single(loose.Children);
+        Assert.Equal("AER-2", leaf.Issue.Key);
+        Assert.True(leaf.IsLeaf);
+    }
+
+    [Fact]
+    public async Task AChangeNamingADeletedColumn_IsCountedUnresolved_AndDrawsNothing()
+    {
+        var h = await NewAsync();
+        var epic = await AddIssueAsync(h, "epic", 3);
+        await MoveAsync(h, epic.Id, "{\"from\":\"backlog\",\"to\":\"gone\"}", 10);
+
+        var timeline = Value(await h.Reports.GetTimeline(null, null, null, null, default));
+
+        Assert.Equal(1, timeline.Unresolved);
+        Assert.Empty(timeline.Epics);
+    }
+
+    [Fact]
+    public async Task TheSameChangeCarryingAToId_Draws()
+    {
+        var h = await NewAsync();
+        var epic = await AddIssueAsync(h, "epic", 3);
+        await MoveAsync(h, epic.Id, "{\"to\":\"x\",\"toId\":3}", 10);
+
+        var timeline = Value(await h.Reports.GetTimeline(null, null, null, null, default));
+
+        Assert.Equal(0, timeline.Unresolved);
+        var top = Assert.Single(timeline.Epics);
+        Assert.Equal([new TimelineSegmentDto(3, Now.AddDays(-10), null)], top.Segments);
     }
 }
