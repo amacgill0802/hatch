@@ -310,6 +310,14 @@ headline and dollars sit beside them. It ranks the most expensive runs first,
 because a leaderboard is how it gets read, and it is exactly right because it
 is also how you find the playbook that is spending too much.
 
+The **Reports** page is a link in the bar between Plan and Agents, and its
+**Timeline** answers when each epic was in flight and how long its work sat in
+each column, drawn in your own column colours. A ticket counts as in flight
+while it sits in any column after the first that is neither done nor parked, so
+it reads off your board and not off any column's name. You open it to see where
+the time went, and you can change the window, the project and the creator; an
+epic you are tired of seeing can be hidden for this browser only.
+
 The **battery** on the bar is optional and separate: paste a token from
 `claude setup-token` into Settings and Hatch shows how much headroom the
 account has left. Without one there is simply no battery.
