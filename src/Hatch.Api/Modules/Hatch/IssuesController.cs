@@ -817,6 +817,10 @@ public class IssuesController(
 
             issue.PullRequestUrl = edit.PullRequestUrl;
             issue.PullRequestClosedAt = null;
+            issue.PullRequestMergeState = null;
+            issue.PullRequestReviewDecision = null;
+            issue.PullRequestHeadSha = null;
+            issue.PullRequestReadAt = null;
         }
 
         if (parentKey is not null && parent.Issue?.Id != issue.ParentId)

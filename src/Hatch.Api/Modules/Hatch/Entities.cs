@@ -681,6 +681,39 @@ public class EfHatchIssue
     public DateTimeOffset? PullRequestClosedAt { get; set; }
 
     /// <summary>
+    /// What the forge last said about whether the pull request recorded on this
+    /// issue can merge, in Hatch's words (<see cref="MergeStates"/>) - or null
+    /// until a runner has read an open pull request. Cleared with the url: what
+    /// was read from one pull request says nothing about another.
+    /// </summary>
+    [MaxLength(16)]
+    public string? PullRequestMergeState { get; set; }
+
+    /// <summary>
+    /// What the forge last said about reviews of the pull request recorded on
+    /// this issue, in Hatch's words (<see cref="ReviewDecisions"/>) - or null
+    /// until a runner has read an open pull request.
+    /// </summary>
+    [MaxLength(24)]
+    public string? PullRequestReviewDecision { get; set; }
+
+    /// <summary>
+    /// The commit the pull request's branch stood at when it was last read, or
+    /// null until a runner has read an open pull request. Says which commit the
+    /// merge state and review decision are about.
+    /// </summary>
+    [MaxLength(EfHatchMergeCheck.MaxShaLength)]
+    public string? PullRequestHeadSha { get; set; }
+
+    /// <summary>
+    /// When the pull request recorded on this issue was last read, or null until
+    /// a runner has read an open pull request. Refreshed on a repeat, so a
+    /// reader can tell a state that is current from one nobody has looked at
+    /// since.
+    /// </summary>
+    public DateTimeOffset? PullRequestReadAt { get; set; }
+
+    /// <summary>
     /// The model every agent increment dispatched for this issue runs on,
     /// whichever playbook speaks for the move - or null, which is every issue
     /// on a stock board and means "whatever the playbook says".
