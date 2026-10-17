@@ -485,6 +485,15 @@ inside the session, how to ask when it cannot decide, where the increment
 ends, and the instruction to finish with a `work-log` block. `hatch work
 --dry-run` prints the whole thing.
 
+On a check's column the tail differs in two places: `hatch verdict` stands
+where `hatch start` and `hatch move` would, and the closing section names a
+pass destination and a fail destination rather than one column to stop in. A
+build session that a failed check has sent back also gets a `## The last
+check` section, after the repositories, holding that check's findings in a
+fenced block. It appears only while the ticket stands in the *Code written
+here* column and the newest event on it is a failed verdict. Findings over 40
+KiB are replaced by one line saying they were left out.
+
 The session runs the `claude` CLI in print mode with permission prompts
 bypassed, because nothing is there to answer one. The runner puts its own
 directory at the front of the session's `PATH`, so `hatch` inside the session
