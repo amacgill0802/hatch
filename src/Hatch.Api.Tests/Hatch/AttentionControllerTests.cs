@@ -779,6 +779,63 @@ public class AttentionControllerTests
     }
 
     [Fact]
+    public async Task Attention_WaitsOnAnApprovedIssuePastTheSettleWindowWhenNoChecksAreRequired()
+    {
+        var h = await NewAsync();
+        await h.SetLandingAsync(checksRequired: false);
+        var merges = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(merges);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("task", "nothing required", merges.Id, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.CheckAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.None);
+        h.Time.Advance(TimeSpan.FromMinutes(11));
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        var row = Assert.Single(attention.ApprovedWaiting!);
+        Assert.Equal(Key(issue), row.Key);
+        Assert.Equal("merge", row.Kind);
+        Assert.Equal("its branch holds main; this project requires no checks", row.Sentence);
+        Assert.Empty(attention.ApprovedHeld!);
+    }
+
+    [Fact]
+    public async Task Attention_DropsAPreApprovedReviewRowTheJudgeMergesForWantOfRequiredChecks()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "nothing required", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        issue.PreApproval = PreApprovalLevels.PreApproved;
+        await h.Db.SaveChangesAsync();
+        await h.CheckAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.None);
+        h.Time.Advance(TimeSpan.FromMinutes(11));
+
+        var held = Assert.Single(Value(await h.Attention.GetAttention(default)).Reviews);
+        Assert.Equal("its branch holds main and no checks ran on it", held.HeldSentence);
+
+        await h.SetLandingAsync(checksRequired: false);
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).Reviews);
+    }
+
+    [Fact]
+    public async Task Attention_DropsAPreApprovedReviewRowTheForgeCallsCleanAtTheCheckedSha()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "forge clean", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        issue.PreApproval = PreApprovalLevels.PreApproved;
+        issue.PullRequestMergeState = MergeStates.Clean;
+        issue.PullRequestHeadSha = new string('2', 40);
+        await h.Db.SaveChangesAsync();
+        await h.CheckAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.None);
+        h.Time.Advance(TimeSpan.FromMinutes(11));
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).Reviews);
+    }
+
+    [Fact]
     public async Task Attention_LeavesAnApprovedIssueWithNoChecksPendingInsideTheSettleWindow()
     {
         var h = await NewAsync();
