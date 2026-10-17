@@ -1,26 +1,33 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { EmptyState, PageHeader } from '@hatch/ui';
-import { getStatuses, getTimeline } from '../api/client';
+import { getProjects, getStatuses, getTimeline } from '../api/client';
 import { TimelineChart } from '../components/TimelineChart';
 import { TimelineControls } from '../components/TimelineControls';
+import { TimelineFilters } from '../components/TimelineFilters';
 import {
+  CREATOR,
+  PROJECT,
   makeScale,
+  resolveCreator,
+  resolveProject,
   resolveWindow,
   sameWindow,
   toggled,
   unresolvedPhrase,
+  withFilter,
   withWindow,
   type TimelineWindow,
 } from '../lib/timeline';
 import { useLoaded } from '../lib/useLoaded';
-import type { Status, Timeline } from '../types';
+import type { Project, Status, Timeline } from '../types';
 
-/** The two reads this page is made of, arriving together so a chart is never
-    drawn with its colours still to come. */
+/** The reads this page is made of, arriving together so a chart is never drawn
+    with its colours still to come, nor a filter with its choices. */
 interface TimelineView {
   timeline: Timeline;
   statuses: Status[];
+  projects: Project[];
 }
 
 interface BodyProps {
@@ -73,9 +80,11 @@ export function TimelineBody({ timeline, statuses, offsetMinutes, now, expanded,
  * column it sat in, with its children a click away.
  *
  * The window comes off the URL's `from` and `to`, or a `range` shorthand, and
- * falls back to the last ninety days; the controls write `from` and `to`. Which
- * rows are open is page state and never the URL, since a pasted link should
- * open the same range and not somebody's half-unfolded view.
+ * falls back to the last ninety days; the controls write `from` and `to`. The
+ * URL also carries `project` (a key) and `creator` (a name), which the filters
+ * write and the read is scoped by. Which rows are open is page state and never
+ * the URL, since a pasted link should open the same range and not somebody's
+ * half-unfolded view.
  */
 export function TimelinePage() {
   const [params, setParams] = useSearchParams();
@@ -89,17 +98,30 @@ export function TimelinePage() {
      and refetch forever. `now` is read in here too, so it is fixed for as long
      as the window is and the today marker does not drift under a refetch. */
   const search = params.toString();
-  const { from, to, now } = useMemo(() => {
+  const { from, to, now, projectKey, creator } = useMemo(() => {
     const now = new Date();
+    const url = new URLSearchParams(search);
 
-    return { ...resolveWindow(new URLSearchParams(search), now, offsetMinutes), now };
+    return {
+      ...resolveWindow(url, now, offsetMinutes),
+      now,
+      projectKey: url.get(PROJECT) ?? '',
+      creator: resolveCreator(url),
+    };
   }, [search, offsetMinutes]);
 
   const load = useCallback(async (): Promise<TimelineView> => {
-    const [statuses, timeline] = await Promise.all([getStatuses(), getTimeline({ from, to })]);
+    const [statuses, projects] = await Promise.all([getStatuses(), getProjects()]);
 
-    return { timeline, statuses };
-  }, [from, to]);
+    /* The read waits on the project list rather than going out beside it,
+       because the URL holds a key - the thing a person would type or paste -
+       and the API takes an id. A key naming no project falls back to every
+       project, which is what the picker will be showing anyway. */
+    const chosen = resolveProject(new URLSearchParams({ [PROJECT]: projectKey }), projects);
+    const timeline = await getTimeline({ from, to, projectId: chosen?.id, createdBy: creator || null });
+
+    return { timeline, statuses, projects };
+  }, [from, to, projectKey, creator]);
 
   const { data, error } = useLoaded<TimelineView>(load);
 
@@ -113,10 +135,22 @@ export function TimelinePage() {
     setParams(withWindow(params, next), { replace: true });
   }
 
+  /* Replace rather than push, as `move` does: flipping a filter is not a place
+     somebody wants Back to walk them through. The window is left as it is. */
+  function chooseProject(key: string) {
+    setParams(withFilter(params, PROJECT, key), { replace: true });
+  }
+
+  function chooseCreator(name: string) {
+    setParams(withFilter(params, CREATOR, name), { replace: true });
+  }
+
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
 
   if (error && !data) return <p className="text-danger">{error}</p>;
   if (!data) return <p className="text-muted">Loading…</p>;
+
+  const chosen = resolveProject(params, data.projects);
 
   return (
     <div className="hatch-page">
@@ -128,12 +162,22 @@ export function TimelinePage() {
            refetch is in flight. `now` is fresh rather than the memoised one so a
            tab left open past midnight moves on the next press of Today. */
         actions={
-          <TimelineControls
-            window={{ from, to }}
-            now={new Date()}
-            offsetMinutes={offsetMinutes}
-            onMove={move}
-          />
+          <>
+            <TimelineControls
+              window={{ from, to }}
+              now={new Date()}
+              offsetMinutes={offsetMinutes}
+              onMove={move}
+            />
+            <TimelineFilters
+              projects={data.projects}
+              project={chosen?.key ?? ''}
+              creators={data.timeline.creators}
+              creator={creator}
+              onProject={chooseProject}
+              onCreator={chooseCreator}
+            />
+          </>
         }
       />
 
