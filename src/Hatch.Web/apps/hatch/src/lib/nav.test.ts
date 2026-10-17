@@ -49,6 +49,8 @@ describe('activeGroup', () => {
   it('is null for a top-level link and for a page with no group', () => {
     expect(activeGroup('/')).toBeNull();
     expect(activeGroup('/plan')).toBeNull();
+    expect(activeGroup('/reports')).toBeNull();
+    expect(activeGroup('/reports/timeline')).toBeNull();
     expect(activeGroup('/issues/HA-1')).toBeNull();
   });
 
@@ -81,11 +83,12 @@ describe('navRows', () => {
     return entries.reduce((sum, entry) => sum + (entry.kind === 'link' ? 1 : entry.rows.length), 0);
   }
 
-  it('puts Board and Plan first, with no group label', () => {
-    const rows = navRows(false).slice(0, 2);
+  it('puts Board, Plan and Reports first, with no group label', () => {
+    const rows = navRows(false).slice(0, 3);
     expect(rows).toEqual([
       { to: '/', label: 'Board', end: true, groupLabel: null },
       { to: '/plan', label: 'Plan', groupLabel: null },
+      { to: '/reports', label: 'Reports', groupLabel: null },
     ]);
   });
 
