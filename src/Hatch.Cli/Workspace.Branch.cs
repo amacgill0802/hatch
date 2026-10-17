@@ -116,7 +116,7 @@ public sealed partial class Workspace
                 Cut = cut,
                 Trunk = trunk,
                 TrunkLanding = trunkLanding,
-                Sha = merged.Count == 0 ? Short($"refs/remotes/origin/{trunk}") : "",
+                Sha = merged.Count == 0 || trunkLanding ? Short($"refs/remotes/origin/{trunk}") : "",
                 Planned = planned,
             }, null);
         }
