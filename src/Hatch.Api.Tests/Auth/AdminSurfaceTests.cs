@@ -262,6 +262,12 @@ public class AdminSurfaceTests
         "PlanController.GetIssuePlan",
         "PlanController.GetPlan",
 
+        // When the work happened, read off the status history: the epics active
+        // in a range and the stretches beneath them. Hatch-scoped and open to a
+        // person like WorkLogController's reads - it says what the trail
+        // already says, folded into one answer.
+        "ReportsController.GetTimeline",
+
         // My own Claude headroom, off my own runners' heartbeats. Hatch-scoped
         // like the rest of the module and guarded for the same reason the
         // board is: what it says is how much room is left to work tonight,
