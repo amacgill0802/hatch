@@ -1739,6 +1739,60 @@ wall up, which this guide did not set up. Stop, and say so.
 that it is already in use, ask the person for another key and have them try
 again.
 
+### 14. The proof
+
+**What this is.** The runner asks the board what is waiting, from inside the
+checkout agents will work in. If it answers, the runner, the address from step
+12 and the board all agree. This proves the runner reaches the board from that
+folder. It does not prove that a ticket will run, and it does not check the
+folder itself.
+
+**Tell the person.** "Now one last check that the pieces talk to each other.
+I am going to ask your board, from your repository folder, what is waiting to
+be worked. A new board has nothing waiting, so a short sentence saying so is
+the answer I am hoping for."
+
+**Do it.** From the repository folder from step 10, use the path that step
+printed in place of `<folder>`. Where a bare `hatch` was not found in step
+11's fifth part, use that step's path form in its place, as step 12 does:
+`"$HOME/.local/bin/hatch"` on macOS and Linux, and
+`& "$env:USERPROFILE\.local\bin\hatch.exe"` on Windows PowerShell.
+
+macOS and Linux:
+
+```
+cd <folder> && hatch queue
+```
+
+Windows PowerShell:
+
+```
+Set-Location <folder>; hatch queue
+```
+
+**Check.** The command exited 0 and printed one of two things. Either a list
+of lines like `HOME-1  [task]  Breakdown  ...`, one for each ticket the runner
+would look at, or exactly `hatch: nothing on the board is on the dispatcher's
+path`. A fresh board with a project and no tickets prints that sentence, and
+that is a pass. Quote only the first line of a list, or the sentence, to the
+person. Any other line that starts `hatch:`, or a non-zero exit, is a stop.
+
+**If you see** `hatch: not configured - it needs an origin.`, step 12 was not
+done, or this shell has no settings. Go back to step 12 and stop there.
+
+**If you see** `hatch: ` followed by the address and `is not answering -
+waiting up to 90s before giving up`, and then a connection error, the board is
+down. Go back to step 5's poll and stop there.
+
+**If you see** that `hatch` is not found, this shell predates the install in
+step 11 that changed the PATH. Use the path form above, and if that fails too,
+stop and say what you saw.
+
+**If you see** `cd` or `Set-Location` say it cannot find the folder, the path
+from step 10 was mistyped. Copy it again from what step 10 printed.
+
+Reference: `hatch queue -h` lists what the command can narrow to.
+
 ## Where this guide stops for now
 
 The steps above are all that is published so far. Tell the person what is now
