@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { marked } from 'marked';
 import source from '../../public/hatch-at-home.md?raw';
-import { createSlugger, docLinkTarget, hashId, isPlainPrimaryClick, renderDocs } from './docs';
+import { createSlugger, docLinkTarget, hashId, isPlainPrimaryClick, parseDocPage, renderDocs } from './docs';
 
 /** The document's lines outside fenced blocks, which is where its headings are. */
 function proseLines(): string[] {
@@ -175,5 +175,91 @@ describe('isPlainPrimaryClick', () => {
     { defaultPrevented: true },
   ])('leaves %o to the browser', (change) => {
     expect(isPlainPrimaryClick({ ...click, ...change })).toBe(false);
+  });
+});
+
+/** A page's raw text; a field set to `undefined` is left out. */
+function page(fields: Record<string, string | undefined> = {}, body = 'Body.\n'): string {
+  const all = { title: 'T', section: 'Concepts', order: '1', summary: 'S', ...fields };
+  const lines = Object.entries(all)
+    .filter(([, v]) => v !== undefined)
+    .map(([k, v]) => `${k}: ${v}`);
+  return ['---', ...lines, '---', body].join('\n');
+}
+
+describe('parseDocPage', () => {
+  const path = '../../docs/x.md';
+
+  it('reads the fields, and the slug from a glob key', () => {
+    const raw = page({ title: 'Board and columns', section: 'Concepts', order: '2', summary: 'How it is laid out' });
+    expect(parseDocPage('../../docs/board-and-columns.md', raw)).toEqual({
+      slug: 'board-and-columns',
+      title: 'Board and columns',
+      section: 'Concepts',
+      order: 2,
+      summary: 'How it is laid out',
+      body: 'Body.\n',
+    });
+  });
+
+  it('accepts CRLF', () => {
+    const raw = page();
+    const crlf = parseDocPage(path, raw.replace(/\n/g, '\r\n'));
+    expect(crlf).toEqual(parseDocPage(path, raw));
+    expect(crlf.body).not.toContain('\r');
+  });
+
+  it('keeps a colon in the summary', () => {
+    expect(parseDocPage(path, page({ summary: 'Use it: or not' })).summary).toBe('Use it: or not');
+  });
+
+  it('starts the body after the closing fence, dropping leading blank lines', () => {
+    const { body } = parseDocPage(path, page({}, '\n\n# Heading\n\ntext\n'));
+    expect(body).toBe('# Heading\n\ntext\n');
+    expect(body).not.toContain('title:');
+    expect(body).not.toContain('---');
+  });
+
+  it.each(['title', 'section', 'order', 'summary'])('throws, naming the file, when %s is missing', (key) => {
+    expect(() => parseDocPage(path, page({ [key]: undefined }))).toThrow('x.md');
+    expect(() => parseDocPage(path, page({ [key]: undefined }))).toThrow(`\`${key}\``);
+  });
+
+  it('throws on an unknown key', () => {
+    expect(() => parseDocPage(path, page({ author: 'me' }))).toThrow('x.md');
+  });
+
+  it('throws on a repeated key', () => {
+    const raw = page().replace('---\n', '---\ntitle: Again\n');
+    expect(() => parseDocPage(path, raw)).toThrow('x.md');
+  });
+
+  it('throws on an empty value', () => {
+    expect(() => parseDocPage(path, page({ summary: '' }))).toThrow('x.md');
+  });
+
+  it('throws on a line without a colon', () => {
+    const raw = page().replace('---\n', '---\nnot a field\n');
+    expect(() => parseDocPage(path, raw)).toThrow('x.md');
+  });
+
+  it.each(['0', '1.5', '-1', 'x'])('throws on order %s', (order) => {
+    expect(() => parseDocPage(path, page({ order }))).toThrow('x.md');
+  });
+
+  it('throws without an opening fence', () => {
+    expect(() => parseDocPage(path, '# Just a heading\n')).toThrow('x.md');
+  });
+
+  it('throws without a closing fence', () => {
+    expect(() => parseDocPage(path, '---\ntitle: T\nsection: C\norder: 1\nsummary: S\n')).toThrow('x.md');
+  });
+
+  it.each(['Board.md', 'a b.md'])('throws on the slug in %s', (file) => {
+    expect(() => parseDocPage(`../../docs/${file}`, page())).toThrow(file);
+  });
+
+  it('throws on a path that is not .md', () => {
+    expect(() => parseDocPage('../../docs/x.txt', page())).toThrow('x.txt');
   });
 });
