@@ -748,3 +748,83 @@ Set-Location $env:USERPROFILE\hatch; $env:HATCH_PORT=8081; docker compose up -d
 Those two are shown for what they are and are not to be run now. This part
 ends with one number, the port, which you use for every later command and
 address on this page, and with `docker compose up -d` not yet run.
+
+Now start it. The first run builds Hatch's database and its web server from
+source, and that takes several minutes, so the agent's own command timeout is
+the trap here: a shell tool call in Claude Code stops after 2 minutes unless
+it is given more, and 10 minutes is the most it can be given. Run the start
+with the longest timeout your tool allows, or in the background, and do not
+treat a timeout as a failed start. If the command was cut off, run it again:
+it is safe to repeat, and Docker reuses what it has already built.
+
+macOS and Linux:
+
+```
+cd "$HOME/hatch" && docker compose up -d
+```
+
+Windows PowerShell:
+
+```
+Set-Location $env:USERPROFILE\hatch; docker compose up -d
+```
+
+If the command has returned, the containers have been created, but the board
+is not necessarily answering yet. The database starts, then a one-off step
+sets it up and exits by design, then the web server starts. Wait for the board itself to answer, in slices rather than one long
+loop, so that no single command outruns your timeout. Each slice below tries
+up to 18 times, 5 seconds apart (about 90 seconds), and prints `up` the first
+time the board answers with HTTP 200, and `waiting` if it never did. In each,
+`<port>` is the port chosen above, such as 8080.
+
+macOS and Linux, and Git Bash on Windows:
+
+```
+up=0; for i in $(seq 1 18); do code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:<port>/apps/hatch/); [ "$code" = 200 ] && { up=1; break; }; sleep 5; done; [ "$up" = 1 ] && echo up || echo waiting
+```
+
+Windows PowerShell:
+
+```
+$up = $false; for ($i = 0; $i -lt 18; $i++) { $c = try { (Invoke-WebRequest -UseBasicParsing -TimeoutSec 5 http://localhost:<port>/apps/hatch/).StatusCode } catch { 0 }; if ($c -eq 200) { $up = $true; break }; Start-Sleep 5 }; if ($up) { 'up' } else { 'waiting' }
+```
+
+If a slice prints `waiting`, run another, until ten minutes have passed in
+all. Between slices, about once a minute and in one sentence, tell the person
+what it is waiting for: first the database image downloading, then the web
+server image downloading and building, then the database being set up, and
+last the web server starting. Do not say more than that, and do not guess at
+how long is left.
+
+**Check.** The poll printed `up`. That is the evidence. If the person asks
+for more, `docker compose ps` run in the `hatch` folder lists `db` and `api`
+as running and `migrate` as exited, which is right: it sets the database up
+and then stops. Tell the person the board is running and give them the
+address, `http://localhost:` followed by the port, and say that the next step
+opens it.
+
+If ten minutes have passed and no slice printed `up`, stop. Run
+`docker compose ps` and `docker compose logs --tail 100` from the `hatch`
+folder, say in plain words what they showed, and stop there. Do not start it
+again, and do not edit `compose.yaml` or any other file in the folder.
+
+**If you see** `port is already allocated`, `address already in use`, or
+`bind` followed by `5432`, a database is already running on this computer and
+holds the port Hatch's own database needs. Unlike the board's port, this one
+cannot be moved: `compose.yaml` has no setting for it. Stop. Find what holds
+5432 with the same kind of check as for 8080 above, with `5432` in place of
+`8080`, tell the person what it is, and ask them to stop that service or to
+ask whoever looks after their computer. Never edit `compose.yaml`. Say plainly
+that this guide has no fix for this yet. That is a gap in Hatch, not in what
+the person did.
+
+**If you see** `Cannot connect to the Docker daemon` or `error during
+connect`, Docker is not running. Go back to step 3 and run its check, then
+start this step again from the start command.
+
+**If you see** `no matching manifest` or `exec format error`, the images do
+not suit this machine's processor. Stop and say what the machine is, from
+step 1.
+
+Reference: [docker compose up](https://docs.docker.com/reference/cli/docker/compose/up/)
+and [variable interpolation in Compose](https://docs.docker.com/compose/how-tos/environment-variables/variable-interpolation/).
