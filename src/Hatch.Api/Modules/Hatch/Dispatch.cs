@@ -137,6 +137,9 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             .Select(i => i.Id).ToList();
         var verdicts = checkedIds.Count > 0 ? await MergeChecksAsync(checkedIds, ct) : [];
         var builds = checkedIds.Count > 0 ? await BuildChecksAsync(checkedIds, ct) : [];
+        var landed = review is not null && byColumn.TryGetValue(review.Id, out var inReviewRows)
+            ? await LandedAsync(inReviewRows, now, ct)
+            : [];
 
         // Blocked is static and has no db, so the assignees are resolved here
         // and handed in, the way `open` and `gate` already are. One memoized
@@ -247,11 +250,13 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                     var rowTo = hopKind == HopKinds.Approve ? Columns.Advance(statuses, status)
                         : hopKind == HopKinds.Close ? Columns.Closes(statuses, status)
                         : to;
+                    MergeWork.Judgement? landing = landed.TryGetValue(issue.Id, out var landedJudgement) ? landedJudgement : null;
                     var letGo = issue.StalledAt is not null ? letGoCounts?.GetValueOrDefault(issue.Id, 0) ?? 0 : 0;
                     var blocked = Blocked(
                         issue, status, rowTo, playbook, waiting, letGo, sendBackStreak, loop, pace, gate, family, claimed,
                         implementation, assignees[issue.Id], repos, merged, built, hopKind, statuses, wip, epics,
-                        trainSlots.GetValueOrDefault(issue.Id));
+                        trainSlots.GetValueOrDefault(issue.Id),
+                        landing);
 
                     var sentence = blocked;
 
@@ -272,7 +277,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
 
                     rows.Add(new ScanRow(
                         issue, status, rowTo, sentence,
-                        KindOf(issue, status, rowTo, merged, built, claimed.Now),
+                        KindOf(issue, status, rowTo, merged, built, claimed.Now, landing),
                         hop && sentence is null,
                         sentence is null ? hopKind : null,
                         sentence is null ? hopUnder : null,
@@ -539,6 +544,48 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         .GroupBy(b => b.IssueId)
         .ToDictionary(g => g.Key, g => (IReadOnlyList<EfHatchBuildCheck>)g.ToList());
 
+    /// <summary>The landings recorded for these issues, grouped by issue - one query, ordered by repository as the checks are.</summary>
+    public async Task<Dictionary<long, IReadOnlyList<EfHatchLanding>>> LandingsAsync(
+        List<long> issueIds, CancellationToken ct) =>
+        (await db.Landings.AsNoTracking()
+            .Where(l => issueIds.Contains(l.IssueId))
+            .OrderBy(l => l.Canonical)
+            .ToListAsync(ct))
+        .GroupBy(l => l.IssueId)
+        .ToDictionary(g => g.Key, g => (IReadOnlyList<EfHatchLanding>)g.ToList());
+
+    /// <summary>The trunk builds the board holds for these repositories - one query.</summary>
+    public async Task<IReadOnlyList<EfHatchTrunkBuild>> TrunkBuildsAsync(
+        IEnumerable<string> canonicals, CancellationToken ct)
+    {
+        var wanted = canonicals.Distinct().ToList();
+        return await db.TrunkBuilds.AsNoTracking()
+            .Where(t => wanted.Contains(t.Canonical))
+            .ToListAsync(ct);
+    }
+
+    /// <summary>
+    /// What <see cref="LandingWork"/> makes of each of these review rows, for
+    /// the ones it applies to - a trunk-landing issue with no pull request - and
+    /// nothing for the rest. Landings and trunk builds are read once however
+    /// many rows there are, and not at all when none applies.
+    /// </summary>
+    public async Task<Dictionary<long, MergeWork.Judgement>> LandedAsync(
+        IEnumerable<EfHatchIssue> reviewIssues, DateTimeOffset now, CancellationToken ct)
+    {
+        var landing = reviewIssues.Where(LandingWork.Applies).ToList();
+        if (landing.Count == 0) return [];
+
+        var landings = await LandingsAsync(landing.Select(i => i.Id).ToList(), ct);
+        var trunkBuilds = await TrunkBuildsAsync(
+            landings.Values.SelectMany(l => l).Select(l => l.Canonical), ct);
+
+        return landing.ToDictionary(i => i.Id, i => LandingWork.Judge(
+            i.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
+            landings.TryGetValue(i.Id, out var l) ? l : [],
+            trunkBuilds, i.Project.ChecksRequired, now));
+    }
+
     /// <summary>
     /// What a move is for. Derived rather than stored: a review dispatch is
     /// exactly the one that starts and ends in the same column, and nothing
@@ -547,17 +594,21 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// reported about the branch, and <see cref="ReviewWork"/> says. A column
     /// ticked <see cref="EfHatchStatus.MergesPullRequest"/> is asked the same
     /// way, of <see cref="MergeWork"/> instead - it is never itself a review
-    /// dispatch, since nothing claims or works an issue sitting there.
+    /// dispatch, since nothing claims or works an issue sitting there. A
+    /// trunk-landing issue in review has no branch to conflict or fail, so
+    /// <paramref name="landing"/>, when <see cref="LandingWork"/> judged it,
+    /// names the kind instead.
     /// </summary>
     public static string KindOf(
         EfHatchIssue issue, EfHatchStatus from, EfHatchStatus? to,
-        IReadOnlyList<EfHatchMergeCheck> merges, IReadOnlyList<EfHatchBuildCheck> builds, DateTimeOffset now) =>
+        IReadOnlyList<EfHatchMergeCheck> merges, IReadOnlyList<EfHatchBuildCheck> builds, DateTimeOffset now,
+        MergeWork.Judgement? landing = null) =>
         from.MergesPullRequest
             ? MergeWork.Judge(
                 issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
                 merges, builds, issue.PullRequestClosedAt, now).Kind
             : to is not null && to.Id == from.Id
-                ? ReviewWork.Judge(issue, merges, builds).Kind
+                ? landing?.Kind ?? ReviewWork.Judge(issue, merges, builds).Kind
                 : WorkKinds.Advance;
 
     /// <summary>
@@ -730,6 +781,12 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// never a hop or a session target. Only <see cref="ScanAsync"/>'s own
     /// call passes it.
     /// </param>
+    /// <param name="landing">
+    /// What <see cref="LandingWork"/> makes of this row, or null where it does
+    /// not apply - see <see cref="LandedAsync"/>. Handed in, as the verdicts
+    /// are, because this has no db. When set, and the move is the review
+    /// column's own, its sentence is the fold.
+    /// </param>
     public static string? Blocked(
         EfHatchIssue issue,
         EfHatchStatus from,
@@ -752,7 +809,8 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         List<EfHatchStatus> statuses,
         WipSection? wip,
         IReadOnlyDictionary<long, EpicLimit> epics,
-        TrainSlot? train = null)
+        TrainSlot? train = null,
+        MergeWork.Judgement? landing = null)
     {
         var hop = hopKind is not null;
 
@@ -796,6 +854,14 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
 
             return judgement.Sentence;
         }
+
+        // A trunk-landing review row has no branch, so it is never conflict or
+        // build work for a session, and like a merge-column row it is never an
+        // agent's: the sentence is the judge's, whatever else (a claim, an
+        // assignee) would also fold it. Only the review self-move reaches this -
+        // a hop out of the column carries another column as its target.
+        if (landing is { } landed && to.Id == from.Id)
+            return landed.Sentence;
 
         if (to.IsTerminal && hopKind != HopKinds.Close)
             return $"the next column is \"{to.Name}\", and only the operator moves work there";
