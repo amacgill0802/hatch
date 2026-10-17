@@ -188,7 +188,7 @@ public static class IssueProjection
                     bound.TryGetValue(issue.ProjectId, out var repos) ? repos : [],
                     mergeChecksByIssue.TryGetValue(issue.Id, out var mv) ? mv : [],
                     buildChecksByIssue.TryGetValue(issue.Id, out var bv) ? bv : [],
-                    issue.PullRequestClosedAt, now, reviewName);
+                    issue.PullRequestClosedAt, true, null, null, now, reviewName);
                 mergeWork = new MergeWorkDto(j.Kind, j.Sentence);
             }
 
