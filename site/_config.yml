@@ -39,6 +39,8 @@ exclude:
 nav:
   - title: Quick start
     url: /
+  - title: Set up with an agent
+    url: /setup/
   - title: How to Hatch
     url: /how-to-hatch/
   - title: Running the agent
