@@ -14,6 +14,7 @@ import { PrimaryNav } from './components/PrimaryNav';
 import { PullToRefresh } from './components/PullToRefresh';
 import { BoardPage } from './pages/BoardPage';
 import { PlanPage } from './pages/PlanPage';
+import { ReportsPage } from './pages/ReportsPage';
 import { LeaderboardPage } from './pages/LeaderboardPage';
 import { IssuePage } from './pages/IssuePage';
 import { ProjectsPage } from './pages/ProjectsPage';
@@ -129,6 +130,7 @@ function AppShell() {
           <Routes>
             <Route path="/" element={<BoardPage />} />
             <Route path="/plan" element={<PlanPage />} />
+            <Route path="/reports" element={<ReportsPage />} />
             <Route path="/leaderboard" element={<LeaderboardPage />} />
             <Route path="/bulk" element={<BulkPage />} />
             <Route path="/projects" element={<ProjectsPage />} />
