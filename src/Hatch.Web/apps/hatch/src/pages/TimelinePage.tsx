@@ -5,6 +5,7 @@ import { getProjects, getStatuses, getTimeline } from '../api/client';
 import { TimelineChart } from '../components/TimelineChart';
 import { TimelineControls } from '../components/TimelineControls';
 import { TimelineFilters } from '../components/TimelineFilters';
+import { TimelineHidden } from '../components/TimelineHidden';
 import {
   CREATOR,
   PROJECT,
@@ -20,7 +21,7 @@ import {
   withWindow,
   type TimelineWindow,
 } from '../lib/timeline';
-import { readHidden, toggleHidden } from '../lib/timelineHidden';
+import { hiddenEntries, readHidden, toggleHidden, writeHidden } from '../lib/timelineHidden';
 import { useLoaded } from '../lib/useLoaded';
 import type { Project, Status, Timeline } from '../types';
 
@@ -185,6 +186,14 @@ export function TimelinePage() {
               creator={creator}
               onProject={chooseProject}
               onCreator={chooseCreator}
+            />
+            <TimelineHidden
+              entries={hiddenEntries(data.timeline, [...hidden])}
+              onShow={(key) => setHidden(new Set(toggleHidden(key)))}
+              onShowAll={() => {
+                writeHidden([]);
+                setHidden(new Set(readHidden()));
+              }}
             />
           </>
         }
