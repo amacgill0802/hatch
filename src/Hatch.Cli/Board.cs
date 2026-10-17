@@ -66,6 +66,16 @@ public sealed class Board(HatchClient client)
         Client.WriteAsync<MergeCheckDto>(HttpMethod.Put, $"/api/hatch/issues/{key}/merge-check", request, ct);
 
     /// <summary>
+    /// What the forge says of an issue's still-open pull request - see
+    /// <see cref="PullRequestStateRequest"/>. The route answers <c>204</c>, so
+    /// there is nothing to read back; a non-2xx throws <see cref="HatchException"/>
+    /// carrying the status, for the caller to tell a board that does not know the
+    /// route from one that refused this write.
+    /// </summary>
+    public Task PullRequestStateAsync(string key, PullRequestStateRequest request, CancellationToken ct) =>
+        Client.WriteAsync<IssueDto>(HttpMethod.Put, $"/api/hatch/issues/{key}/pull-request-state", request, ct);
+
+    /// <summary>
     /// What the build on the tip of one issue's branch came to in one repository -
     /// see <see cref="BuildCheckRequest"/>. The remote is spelled the way this
     /// runner has it; the board canonicalises it.

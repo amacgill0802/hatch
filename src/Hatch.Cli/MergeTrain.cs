@@ -1,3 +1,5 @@
+using System.Net;
+
 namespace Hatch.Cli;
 
 /// <summary>
@@ -137,9 +139,11 @@ public sealed class MergeTrain : IAsyncDisposable
     /// <summary>
     /// The pull request half: for every issue in review that carries a
     /// <c>pullRequestUrl</c>, ask <c>gh</c> what it reads and, on <c>merged</c>,
-    /// advance the issue. There is no stored verdict and no window logic like
-    /// <see cref="Poll.NoneWindow"/> - an open pull request is asked about every
-    /// interval by design, and a merged one stops appearing in
+    /// advance the issue; on <c>open</c>, put the forge's head, merge state and
+    /// review decision on the board where they differ from what it holds (see
+    /// <see cref="PutPullRequestStateAsync"/>). There is no stored verdict and no
+    /// window logic like <see cref="Poll.NoneWindow"/> - an open pull request is
+    /// asked about every interval by design, and a merged one stops appearing in
     /// <c>/api/hatch/work/review</c> at all, so nothing asks again.
     /// </summary>
     /// <remarks>
@@ -203,6 +207,12 @@ public sealed class MergeTrain : IAsyncDisposable
                     continue;
                 }
 
+                if (state == PullRequestStates.Open)
+                {
+                    await PutPullRequestStateAsync(runtime, complain, issue, url, answer, ct);
+                    continue;
+                }
+
                 if (state != PullRequestStates.Merged) continue;
 
                 (IssueDto? Issue, string? WalkOn) result;
@@ -226,6 +236,50 @@ public sealed class MergeTrain : IAsyncDisposable
         catch (Exception e) when (e is not OperationCanceledException)
         {
             complain($"hatch: could not read pull requests - {e.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Tell the board what the forge says of an open pull request, when that is
+    /// news: all three of the answer's head, merge state and review decision
+    /// read, and any of them different from what <paramref name="issue"/> holds.
+    /// An answer that did not read all three (a failed read, a fake that says
+    /// nothing) writes nothing, and an identical one writes nothing either, so a
+    /// quiet pull request costs no call after the first.
+    /// </summary>
+    /// <remarks>
+    /// A <c>404</c> is a board that predates the route: said once (the caller
+    /// de-duplicates across ticks) and asked again next tick. A <c>409</c> is
+    /// the row having moved between the read and the write, and is walked on
+    /// silently the way <see cref="Board.MergedAsync"/> treats it.
+    /// </remarks>
+    private static async Task PutPullRequestStateAsync(
+        Runtime runtime, Action<string> complain, ReviewCheckDto issue, string url, PullRequestAnswer answer,
+        CancellationToken ct)
+    {
+        if (answer.HeadSha is not { } sha || answer.MergeState is not { } merge
+            || answer.ReviewDecision is not { } review) return;
+
+        if (string.Equals(sha, issue.PullRequestHeadSha, StringComparison.Ordinal)
+            && string.Equals(merge, issue.PullRequestMergeState, StringComparison.Ordinal)
+            && string.Equals(review, issue.PullRequestReviewDecision, StringComparison.Ordinal)) return;
+
+        try
+        {
+            await runtime.QuietBoard.PullRequestStateAsync(
+                issue.Key, new PullRequestStateRequest(url, sha, merge, review, runtime.RunnerName), ct);
+        }
+        catch (HatchException e) when (e.Status == HttpStatusCode.NotFound)
+        {
+            complain($"hatch: {issue.Key} - the board does not know pull request state yet - it will be asked again next tick");
+        }
+        catch (HatchException e) when (e.Status == HttpStatusCode.Conflict)
+        {
+            // The row changed between the read and the write.
+        }
+        catch (HatchException e)
+        {
+            complain($"hatch: {issue.Key} - the board would not take the pull request's state - {e.Message}");
         }
     }
 
