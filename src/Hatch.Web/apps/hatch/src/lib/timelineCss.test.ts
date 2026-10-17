@@ -68,6 +68,13 @@ describe('the timeline styles', () => {
     expect(declarationsIn(mediaBlock(), '.hatch-timeline-hide')['display']).toBeUndefined();
   });
 
+  it('makes Show the same pill as Hide, and keeps its title on a phone', () => {
+    expect(declarationsIn(css, '.hatch-timeline-show')['margin-left']).toBe(
+      declarationsIn(css, '.hatch-timeline-hide')['margin-left'],
+    );
+    expect(declarationsIn(mediaBlock(), '.hatch-timeline-hidden__title')['display']).toBeUndefined();
+  });
+
   it('wraps the header on a phone, so the controls drop under the title', () => {
     expect(declarationsIn(mediaBlock(), '.hatch-timeline-header')['flex-wrap']).toBe('wrap');
   });

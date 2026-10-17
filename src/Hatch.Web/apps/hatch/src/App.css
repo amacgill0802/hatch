@@ -4168,7 +4168,8 @@ button.hatch-option.chosen {
 /* A bare <button> carries the browser's own face. Native, so it is in the tab
    order and answers Enter and Space; the focus ring is the chip link's. */
 .hatch-timeline-toggle,
-.hatch-timeline-hide {
+.hatch-timeline-hide,
+.hatch-timeline-show {
   appearance: none;
   flex: none;
   margin-left: auto;
@@ -4186,7 +4187,9 @@ button.hatch-option.chosen {
 .hatch-timeline-toggle:hover,
 .hatch-timeline-toggle:focus-visible,
 .hatch-timeline-hide:hover,
-.hatch-timeline-hide:focus-visible {
+.hatch-timeline-hide:focus-visible,
+.hatch-timeline-show:hover,
+.hatch-timeline-show:focus-visible {
   border-color: var(--primary);
   color: var(--primary);
 }
@@ -4262,6 +4265,35 @@ button.hatch-option.chosen {
   display: flex;
   flex-wrap: wrap;
   gap: var(--sp-2);
+}
+
+/* The rows put away, and the way back. In flow rather than a popover: the
+   header already wraps on a phone. The title has its own class because the
+   chart's is hidden on a phone, and here it is the only name a row has. */
+.hatch-timeline-hidden summary {
+  cursor: pointer;
+}
+
+.hatch-timeline-hidden ul {
+  list-style: none;
+  margin: var(--sp-2) 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1-5);
+}
+
+.hatch-timeline-hidden li {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.hatch-timeline-hidden__title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* What the server could not place, said once under the chart. */
