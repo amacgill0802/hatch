@@ -1,0 +1,53 @@
+import { describe, expect, it } from 'vitest';
+import { renderToStaticMarkup } from 'react-dom/server';
+import type { TimelineWindow } from '../lib/timeline';
+import { TimelineControls } from './TimelineControls';
+
+const TO = '2026-10-18T00:00:00.000Z';
+const DAY_MS = 86_400_000;
+
+const windowOf = (days: number): TimelineWindow => ({
+  from: new Date(Date.parse(TO) - days * DAY_MS).toISOString(),
+  to: TO,
+});
+
+function render(days: number) {
+  return renderToStaticMarkup(
+    <TimelineControls window={windowOf(days)} now={new Date(TO)} offsetMinutes={0} onMove={() => {}} />,
+  );
+}
+
+const shown = (html: string) =>
+  [...html.matchAll(/<span class="hatch-facet__option hatch-facet__option--shown">([^<]*)</g)].map((m) => m[1]);
+
+describe('TimelineControls', () => {
+  it('is a group named Window', () => {
+    expect(render(90)).toContain('role="group" aria-label="Window"');
+  });
+
+  it('puts Earlier, Today and Later first, in that order', () => {
+    const labels = [...render(90).matchAll(/<button[^>]*>([^<]*)</g)].map((m) => m[1]);
+
+    expect(labels).toEqual(['Earlier', 'Today', 'Later']);
+  });
+
+  it('offers the five presets for a preset length, showing the one it is', () => {
+    const html = render(90);
+
+    expect([...html.matchAll(/<option /g)]).toHaveLength(5);
+    expect(html).not.toContain('Custom');
+    expect(shown(html)).toEqual(['3 months']);
+  });
+
+  it('adds a shown Custom option for a length that is no preset', () => {
+    const html = render(45);
+
+    expect([...html.matchAll(/<option /g)]).toHaveLength(6);
+    expect(shown(html)).toEqual(['Custom']);
+  });
+
+  it('lights the length only when it is not the default', () => {
+    expect(render(90)).not.toContain('hatch-facet--lit');
+    expect(render(365)).toContain('hatch-facet--lit');
+  });
+});
