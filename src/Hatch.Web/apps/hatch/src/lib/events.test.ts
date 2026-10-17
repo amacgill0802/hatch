@@ -97,6 +97,14 @@ describe('describe', () => {
     );
   });
 
+  it('describes a status_changed carrying column ids the same as one with names only', () => {
+    expect(
+      describeEvent(
+        event({ kind: 'status_changed', payload: { from: 'Backlog', to: 'To Do', fromId: 7, toId: 2 } }),
+      ),
+    ).toBe('Backlog → To Do');
+  });
+
   it('leaves a plain created unchanged', () => {
     expect(describeEvent(event({ kind: 'created', payload: { type: 'story', title: 'A story' } }))).toBe('');
   });
