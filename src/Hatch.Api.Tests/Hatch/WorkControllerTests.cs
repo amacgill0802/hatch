@@ -6548,6 +6548,172 @@ public class WorkControllerTests
             rows.Single(r => r.Key == Key(inMerges)).MergeWork);
     }
 
+    // ---- A no-checks tip, judged by what its project and its forge say (HA-730) ----
+    //
+    // The merge column, the approve hop and the review read all ask
+    // MergeWork.Judge, so each passes it the project's ChecksRequired and the
+    // issue's pull-request state: a tip nobody ran checks on past the window
+    // reads hold until one of them says it may merge.
+
+    private const string NoChecksHold = "its branch holds main and no checks ran on it";
+    private const string NoChecksNotRequired = "its branch holds main; this project requires no checks";
+    private const string NoChecksForgeClean = "its branch holds main, no checks ran on it, and nothing is required of it";
+
+    private static string CheckedSha => new('b', 40);
+
+    private static async Task<EfHatchIssue> NoChecksMergeRowAsync(Harness h, int statusId)
+    {
+        var issue = await h.FileAsync("story", "no checks ran", statusId);
+        await h.VerdictAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.None);
+        h.Time.Advance(MergeWork.SettleWindow + TimeSpan.FromMinutes(1));
+        return issue;
+    }
+
+    private static async Task<int> AddMergeColumnAsync(Harness h)
+    {
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        return approved.Id;
+    }
+
+    private static async Task<(string Kind, string Sentence)> MergeWorkOfAsync(Harness h, EfHatchIssue issue)
+    {
+        var work = Value(await h.Work.GetReview(null, true, default)).Single(r => r.Key == Key(issue)).MergeWork!;
+        return (work.Kind, work.Sentence);
+    }
+
+    [Fact]
+    public async Task NoChecks_AMergeColumnRowHoldsUntilTheProjectRequiresNoChecks()
+    {
+        var h = await NewAsync();
+        var issue = await NoChecksMergeRowAsync(h, await AddMergeColumnAsync(h));
+
+        Assert.Equal((WorkKinds.Hold, NoChecksHold), await MergeWorkOfAsync(h, issue));
+
+        await h.SetLandingAsync(checksRequired: false);
+
+        Assert.Equal((WorkKinds.Merge, NoChecksNotRequired), await MergeWorkOfAsync(h, issue));
+    }
+
+    [Fact]
+    public async Task NoChecks_AMergeColumnRowMergesWhenTheForgeCalledItCleanAtTheCheckedSha()
+    {
+        var h = await NewAsync();
+        var issue = await NoChecksMergeRowAsync(h, await AddMergeColumnAsync(h));
+        await h.SetPullRequestStateAsync(issue, MergeStates.Clean, CheckedSha);
+
+        Assert.Equal((WorkKinds.Merge, NoChecksForgeClean), await MergeWorkOfAsync(h, issue));
+    }
+
+    [Fact]
+    public async Task NoChecks_AMergeColumnRowNamesABlockedPullRequest()
+    {
+        var h = await NewAsync();
+        var issue = await NoChecksMergeRowAsync(h, await AddMergeColumnAsync(h));
+        await h.SetPullRequestStateAsync(issue, MergeStates.Blocked, CheckedSha);
+
+        Assert.Equal(
+            (WorkKinds.Hold, NoChecksHold + " - its pull request is blocked by the repository's rules"),
+            await MergeWorkOfAsync(h, issue));
+    }
+
+    [Fact]
+    public async Task NoChecks_AForgeStateAboutAnotherShaChangesNothing()
+    {
+        var h = await NewAsync();
+        var issue = await NoChecksMergeRowAsync(h, await AddMergeColumnAsync(h));
+        await h.SetPullRequestStateAsync(issue, MergeStates.Clean, new string('f', 40));
+
+        Assert.Equal((WorkKinds.Hold, NoChecksHold), await MergeWorkOfAsync(h, issue));
+    }
+
+    [Fact]
+    public async Task NoChecks_AnApproveHopNeedsNoChecksRequiredOrAForgeCleanAtTheCheckedSha()
+    {
+        var h = await NewAsync();
+        var approved = await AddMergeColumnAsync(h);
+        var issue = await NoChecksMergeRowAsync(h, h.Review);
+        await h.PreApprovedAsync(issue);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+
+        var held = Only(await h.Work.GetQueue(0, null, default));
+        Assert.False(held.Hop);
+        Assert.Contains("no checks ran on it", held.Blocked);
+
+        await h.SetLandingAsync(checksRequired: false);
+        var notRequired = Only(await h.Work.GetQueue(0, null, default));
+        Assert.True(notRequired.Hop);
+        Assert.Equal(HopKinds.Approve, notRequired.HopKind);
+        Assert.Equal(approved, notRequired.ToStatus!.Id);
+        Assert.Equal(NoChecksNotRequired, notRequired.ClearNote);
+
+        await h.SetLandingAsync(checksRequired: true);
+        await h.SetPullRequestStateAsync(issue, MergeStates.Clean, CheckedSha);
+        var clean = Only(await h.Work.GetQueue(0, null, default));
+        Assert.True(clean.Hop);
+        Assert.Equal(HopKinds.Approve, clean.HopKind);
+        Assert.Equal(NoChecksForgeClean, clean.ClearNote);
+    }
+
+    [Fact]
+    public async Task NoChecks_ADraftPullRequestIsNeverAnApproveHop()
+    {
+        var h = await NewAsync();
+        await AddMergeColumnAsync(h);
+        var issue = await NoChecksMergeRowAsync(h, h.Review);
+        await h.PreApprovedAsync(issue);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+        await h.SetLandingAsync(checksRequired: false);
+        await h.SetPullRequestStateAsync(issue, MergeStates.Draft, CheckedSha);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.False(entry.Hop);
+        Assert.NotNull(entry.Blocked);
+    }
+
+    [Fact]
+    public async Task NoChecks_ABlockedRowIsNotPushedBack()
+    {
+        var h = await NewAsync();
+        var issue = await NoChecksMergeRowAsync(h, await AddMergeColumnAsync(h));
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+        await h.SetPullRequestStateAsync(issue, MergeStates.Blocked, CheckedSha);
+
+        var result = await h.Work.PushbackWork(
+            Key(issue), new PullRequestPushbackRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default);
+
+        Assert.Equal(NoChecksHold + " - its pull request is blocked by the repository's rules", Assert.IsType<ConflictObjectResult>(result.Result).Value);
+    }
+
+    [Fact]
+    public async Task NoChecks_TheIssueProjectionJudgesAMergeColumnRowByItsProjectAndItsForgeState()
+    {
+        var h = await NewAsync();
+        var issue = await NoChecksMergeRowAsync(h, await AddMergeColumnAsync(h));
+
+        async Task<(string Kind, string Sentence)> ProjectedAsync()
+        {
+            h.Db.ChangeTracker.Clear();
+            var rows = await h.Db.Issues.Where(i => i.Id == issue.Id).ToListAsync();
+            var dtos = await IssueProjection.ToDtosAsync(h.Db, h.Actors, rows, TestClaims.With(), h.Time.GetUtcNow(), default);
+            var work = dtos[issue.Id].MergeWork!;
+            return (work.Kind, work.Sentence);
+        }
+
+        Assert.Equal((WorkKinds.Hold, NoChecksHold), await ProjectedAsync());
+
+        await h.SetLandingAsync(checksRequired: false);
+        Assert.Equal((WorkKinds.Merge, NoChecksNotRequired), await ProjectedAsync());
+
+        await h.SetLandingAsync(checksRequired: true);
+        await h.SetPullRequestStateAsync(
+            await h.Db.Issues.SingleAsync(i => i.Id == issue.Id), MergeStates.Clean, CheckedSha);
+        Assert.Equal((WorkKinds.Merge, NoChecksForgeClean), await ProjectedAsync());
+    }
+
     [Fact]
     public async Task ReviewRead_ARowCarriesItsOwnProjectKey()
     {
@@ -9428,6 +9594,18 @@ public class WorkControllerTests
         public async Task SetPullRequestAsync(EfHatchIssue issue, string url)
         {
             issue.PullRequestUrl = url;
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// The forge's report on an issue's pull request - the merge state and
+        /// the head sha it was read at - written straight onto the row, for the
+        /// same reason <see cref="SetPullRequestAsync"/> is.
+        /// </summary>
+        public async Task SetPullRequestStateAsync(EfHatchIssue issue, string? mergeState, string? headSha)
+        {
+            issue.PullRequestMergeState = mergeState;
+            issue.PullRequestHeadSha = headSha;
             await Db.SaveChangesAsync();
         }
 
