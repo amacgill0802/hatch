@@ -7882,6 +7882,39 @@ public class WorkControllerTests
     }
 
     [Fact]
+    public async Task LastCheckFindings_SurvivesTheLoopsOwnClaimTakenAfterTheFail()
+    {
+        var h = await NewAsync();
+        var playbookId = await h.CheckingAsync();
+        var issue = await h.FileAsync("task", "being checked", h.Checking);
+        var firstToken = await h.ClaimAsync(issue, playbookId: playbookId);
+        await h.RecordVerdictAsync(issue, playbookId, firstToken, CheckVerdicts.Fail, findings: "the build broke");
+        await h.Work.VerdictWork(Key(issue), firstToken, ct: default);
+        var token = await h.ClaimAsync(issue);
+        await h.LogEventAsync(issue, EfHatchIssueEvent.ClaimTaken, new { from = "somewhere", to = "hatch" }, Now);
+
+        Assert.Equal("the build broke", Value(await h.Work.GetWork(Key(issue), token, default)).LastCheckFindings);
+    }
+
+    [Fact]
+    public async Task LastCheckFindings_SurvivesTheCheckSessionsOwnClaimReleased_TheShapeEveryReaderMeets()
+    {
+        var h = await NewAsync();
+        var playbookId = await h.CheckingAsync();
+        var issue = await h.FileAsync("task", "being checked", h.Checking);
+        var token = await h.ClaimAsync(issue, playbookId: playbookId);
+        await h.RecordVerdictAsync(issue, playbookId, token, CheckVerdicts.Fail, findings: "the build broke");
+        await h.Work.VerdictWork(Key(issue), token, ct: default);
+        await h.LogEventAsync(
+            issue, EfHatchIssueEvent.ClaimReleased,
+            new { from = "checking", to = "in progress", outcome = ClaimOutcomes.Worked }, Now);
+        issue.ClaimToken = null;
+        await h.Db.SaveChangesAsync();
+
+        Assert.Equal("the build broke", Value(await h.Work.GetWork(Key(issue), null, default)).LastCheckFindings);
+    }
+
+    [Fact]
     public async Task FailStatusName_IsImplementationsNameOnEveryDispatch_CheckOrNot()
     {
         var h = await NewAsync();
