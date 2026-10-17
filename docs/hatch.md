@@ -62,7 +62,7 @@ absence starts to hurt:
   case a dispatch *does* land an issue in a protected column, because a
   pre-approval is that owner's or approver's permission already given in
   advance rather than a program's own judgement call (see [the hop](#the-hop)
-  and [the three paths past the terminal guard](#the-three-paths-past-the-terminal-guard))
+  and [the four paths past the terminal guard](#the-four-paths-past-the-terminal-guard))
   — and refused a third time, client-side, in `hatch move`'s speed bump
   (`IssueCommands.cs:256`). Moving *out* of a protected column, and
   reordering within one, need no membership — the check only fires when the
@@ -2454,9 +2454,10 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/work/{key}` | GET | See [the dispatcher](#the-dispatcher). Same `?heldToken=`, `?remote=`, `?standing=` and `?clones=` as `/work/next`. `?mine=` is ignored — somebody who names a ticket has already chosen it. Carries `letGo` the same way |
 | `/work/queue` | GET | The same walk `next` takes, reported rather than acted on, and the same three repository flags — see [what a pass skipped](#what-a-pass-skipped). Same `?mine=true`, folding every ticket that is not the caller's own with a sentence naming whose it is. `?asRunner=<name>` answers off that runner's own row instead of the query string — `remote`, `standing`, `clones`, `mine` and `ancestorKey` come from it and may not be given alongside it; a name no live row answers to is a `400` naming it. `clearNote` names a row that is clear only because a stall mark's resume window passed, e.g. `"it stalled 18 minutes ago and resumes itself after 15 minutes"` — null on every ordinary clear row |
 | `/work/{key}/hop` | POST | Carries one of seven kinds one column right with no session — see [the hop](#the-hop): an issue [pre-approved](#pre-approval) at `express` or above standing in a column marked `ExpressSkips`; an epic entering the WIP section; a story or bug under a running epic; a child its parent pulls; a childless issue over its playbook's `BriefLimit`, sent back; a pre-approved issue in review whose branch merges cleanly or needs only bringing current; or a pre-approved parent in review with no pull request and every child done, carried past review into the first terminal column. Takes the same query parameters as `GET /work/{key}` and no `heldToken`: a hop takes no claim. `409` carrying the fold's sentence where the issue is blocked, and `409` where it is clear but not a hop |
-| `/work/{key}/merged` | POST | Advances an issue in the review column whose pull request has merged, one column right, with no claim and no session. `{ url, runner }` — `runner` rides the body unused, for shape parity with the requests that do read it. `409` for a column other than review, for no pull request recorded, for a `url` that does not match the one recorded (trimmed, ordinal), for no column after review, and for a claimed issue; `404` on an unknown key. See [the three paths past the terminal guard](#the-three-paths-past-the-terminal-guard) |
+| `/work/{key}/merged` | POST | Advances an issue in the review column whose pull request has merged, one column right, with no claim and no session. `{ url, runner }` — `runner` rides the body unused, for shape parity with the requests that do read it. `409` for a column other than review, for no pull request recorded, for a `url` that does not match the one recorded (trimmed, ordinal), for no column after review, and for a claimed issue; `404` on an unknown key. See [the four paths past the terminal guard](#the-four-paths-past-the-terminal-guard) |
 | `/work/{key}/closed` | POST | Records that an issue's pull request was closed without merging (`PullRequestClosedAt`) — a runner's poll calls it once, on the first read, and does nothing further; `MergeWork.Judge` holds an approval on this until a person acts. `{ url, runner }`, the same shape parity as `/merged`. `409` for a column that does not merge the pull request, for no pull request recorded, and for a `url` that does not match the one recorded; `404` on an unknown key |
 | `/work/{key}/pushback` | POST | Carries an issue in the merge column back to the review column, with no claim and no session — judged by `MergeWork` itself, off the issue's own stored merge and build checks, not by the caller. `{ url, runner }` — `runner` rides the body unused, for shape parity. `409` for a column that does not merge the pull request, for no pull request recorded, for a `url` that does not match the one recorded (trimmed, ordinal), for a judged kind other than `pushback` (carrying the judge's own sentence), for no review column on the board or one that is the merge column itself, and for a claimed issue; `404` on an unknown key |
+| `/work/{key}/landed` | POST | Carries a trunk-landing issue in the review column to the first terminal column after it, with no claim and no session — judged by `LandingWork` itself, off the issue's own stored [landings](#landing) and [trunk builds](#trunk-build), not by the caller. No body. `409` for a column other than review, for a project that lands by pull request (*"this project lands by pull request, so there is no landing to confirm"*), for an issue with a pull request recorded (*"a pull request is recorded on this issue, so it lands by merge and not by landing"*), for no terminal column after review, for a judged kind other than `land` (carrying the judge's own sentence), and for a claimed issue; `404` on an unknown key. See [landing on the trunk](#landing-on-the-trunk) and [the four paths past the terminal guard](#the-four-paths-past-the-terminal-guard) |
 | `/issues/{key}/build-check` | PUT | Keeps a runner's [build verdict](#build-check) for one repository. `{ remote, branch, sha, verdict, failing?, runner, pushedByIncrement? }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an unknown verdict, no branch or sha, and `failed` with no failing checks; a link that is not `http(s)` is stored as null; `404` on an unknown key. The column is not checked. A verdict that repeats the stored one writes no event, and one that moves the row into failed-and-flagged marks the issue stalled with it |
 | `/trunk-builds` | PUT | Keeps a runner's [trunk build verdict](#trunk-build) for one repository's trunk. `{ remote, trunk, sha, verdict, failing?, runner }`; answers with what it now holds. The same refusals the build check's write takes, naming the trunk rather than the branch. No event and no question — there is no issue to write either on. `passed` lets an attached bug go |
 | `/trunk-builds` | GET | Every stored [trunk verdict](#trunk-build), ordered by canonical then trunk — what a runner's poll reads once a poll, since a trunk carries no issue for the verdict to ride in on |
@@ -2747,6 +2748,11 @@ answer worth having, and it is the one it gives most of the time.
     { "key": "AER-16", "title": "A story about to merge", "type": "story",
       "pullRequestUrl": "https://forge.example/pulls/16",
       "kind": "merge", "sentence": "merging now" }
+  ],
+  "landingHeld": [
+    { "key": "AER-17", "title": "A story landed on the trunk",
+      "type": "story",
+      "sentence": "main's build on 1a2b3c4 failed after it landed" }
   ]
 }
 ```
@@ -2761,6 +2767,18 @@ nothing is held, reads *Nothing approved has stopped merging.* The issue
 page's own chip draws only for a **hold** verdict, never a **pushback**
 one, even though this panel counts both the same way.
 
+`landingHeld` is the same list for a project that [lands on its
+trunk](#landing-on-the-trunk): every issue in review with no pull request
+whose `LandingWork.Judge` says **hold** — the trunk's build failed after the
+commit landed, or no checks ran there on a project that requires them. Only
+the holds: a landing still waiting on a runner to see it or read its build
+(**pending**), or one good to go (**land**), is the loop's and not a person's,
+and the list leaves it out the way `approvedWaiting` is left out of the badge.
+The row carries no pull request url, since it has none; `sentence` is the
+judge's own. `attentionCount` counts it, for `approvedHeld`'s reason: nothing
+in the loop will fix a trunk that is red. The empty state reads *Nothing landed
+has stopped short of done.*
+
 Pre-approval reaches this panel's review half too, the same way it already
 reaches the merge column's. A row in `reviews` that is
 [pre-approved](#pre-approval) and whose branch the judge would merge, bring
@@ -2774,7 +2792,10 @@ a pre-approved row that reaches this list for any other reason, since neither
 case is held. `inReviewWithoutPullRequest` carries the same carve-out forward:
 a pre-approved parent with no pull request and every child done - the close
 hop's own row - is not counted either, exactly as it is not a row in
-`reviews`.
+`reviews`. A trunk-landing issue is carved out the same way once its landing is
+recorded: it was never going to have a pull request, and where it stands from
+there is `LandingWork`'s to say, in `landingHeld` above or in the loop's
+hands.
 
 One endpoint rather than two, and that is the design rather than a convenience.
 The control's loudness is a single number; two polls can be a poll interval
@@ -3609,7 +3630,11 @@ stands after it — is dispatched to itself. A move is a *review move* exactly
 when its two ends are the same column, and `WorkDto.Kind` and
 `QueueEntryDto.Kind` say which of two it is (`conflicts` or `build`; `advance`
 for every other move) — derived, stored nowhere, and nothing compares a column's
-name. What decides between the two is what runners have reported about the
+name. A trunk-landing issue in review has no branch to conflict or fail, so its
+review move reads `land` instead, `pending` or `hold` where the board is still
+waiting or a person is — `Dispatch.KindOf` takes `LandingWork`'s kind for it,
+and `Dispatch.Blocked` makes its sentence the row's, as the merge column's is
+([landing on the trunk](#landing-on-the-trunk)). What decides between the two is what runners have reported about the
 branch, and `ReviewWork.Judge` says, returning the kind and the fold together so
 the two cannot disagree.
 
@@ -3832,8 +3857,8 @@ The election rides the heartbeat: `Drives` on `RunnerDto`/`RunnerInstructionDto`
 (`Dtos.cs:2318-2343, 2452-2463`) carries the elected project keys back, and
 the CLI learns them into `ReadoutState.SetDrives`/`Drives`
 (`Readout.cs:95-104`, folded on every real heartbeat at `GoToWork.cs:889`),
-which gates every one of `MergeTrain`'s four halves (`MergeTrain.cs:161, 258,
-370, 470`): a runner acts only on a project it was elected to drive.
+which gates every one of `MergeTrain`'s five halves (`MergeTrain.cs:161, 258,
+370, 470, 520`): a runner acts only on a project it was elected to drive.
 
 **Its own interval, beside the poll's.** `MergeTrain.Start(runtime,
 TimeSpan.FromSeconds(mergeInterval))` (`GoToWork.cs:812`) runs `TickAsync`
@@ -3845,14 +3870,106 @@ already says the pull-request, merge and update halves "run on their own
 clock... rather than this poll's" (`:4358-4361`) without naming the clock —
 this new section is that explanation.
 
-### The three paths past the terminal guard
+#### Landing on the trunk
+
+A project whose `Landing` is `trunk` (see [Project](#project)) has no pull
+request to merge, so nothing above applies to its issues; the column that does
+the same job for them is review itself, and `LandingWork`
+(`LandingWork.cs`) is its judge, decided the way `MergeWork` decides the merge
+column's — from what runners have reported, and never by a prompt. The question
+is not whether a branch is clean but whether the commit is **on the trunk and
+the trunk's build passes there**. It reuses `MergeWork.Judgement` and
+`MergeWork.SettleWindow`, so its kinds are the merge column's own, plus one:
+`land`.
+
+**When it applies.** `LandingWork.Applies` (`:14`): the project's `Landing` is
+`trunk` and the issue has no pull request recorded. A pull request recorded on
+an issue in such a project puts it back under the merge column's rules, and a
+project that lands by pull request never meets this judge.
+
+**The judge.** `LandingWork.Judge` reads the issue's [landings](#landing) —
+only those for repositories the project still binds, or every one if it binds
+none — and the [trunk builds](#trunk-build) for them, in canonical order. In
+the order it checks them:
+
+1. No counted landing: **pending**, *"no landing is recorded for it yet"*.
+2. A landing no runner has confirmed on the trunk — `ContainedBy` still null:
+   **pending**, *"no runner has seen `<sha>` on `<trunk>` yet"*.
+3. No trunk build read at the sha that contains it, or one read at a different
+   sha: **pending**, *"no runner has read `<trunk>`'s build on `<sha>` yet"*.
+4. Any such build `failed`: **hold**, *"`<trunk>`'s build on `<sha>` failed
+   after it landed"*.
+5. Any such build `pending`: **pending**, *"`<trunk>`'s build on `<sha>` is
+   still running"*.
+6. Every build `passed`: **land**, *"it is on `<trunk>` at `<sha>` and the
+   trunk's build passes"*.
+7. What is left is a build that read no checks at all, alongside any that
+   passed. Past `MergeWork.SettleWindow` (ten minutes from when the board first
+   heard of the sha, the settling the merge column gives it) every such build
+   settles: **hold**, *"it is on `<trunk>` at `<sha>` and no checks ran
+   there"*, where the project's `checksRequired` is set, and **land**, *"it is
+   on `<trunk>` at `<sha>`, and this project requires no checks"*, where it is
+   not.
+8. Inside the window: **pending**, *"no checks have run on `<trunk>` at `<sha>`
+   yet"*.
+
+**Trunk green, not trunk reached.** `ContainedBy` is not the commit's first
+appearance on the trunk but the trunk's tip *now*: the poll rewrites it as the
+trunk moves, so the build judged is the build on the latest tip that holds the
+commit. A commit that landed green and was followed by a red one is **hold**
+until the trunk is green again, and the judge neither knows nor says which
+commit broke it.
+
+**Who does what.** Three parties, none of them trusting the others:
+
+- **The poll confirms.** `Poll.ConfirmLandingsAsync` asks git whether the
+  landing's sha is in origin's trunk and puts the answer to the board as
+  `ContainedBy` — see [Checking the branches in
+  review](#checking-the-branches-in-review). It writes no verdict and moves no
+  ticket. The trunk's build is read by the poll's trunk half, off the tip,
+  whether or not anything is in review.
+- **The server judges.** `LandingWork.Judge` is called wherever the answer is
+  wanted — the review read, the queue, the attention panel, and the route — each
+  asking again, so that none of them can hold a verdict the others have not.
+- **The merge train calls the route.** `MergeTrain.CarryLandedAsync` calls
+  `POST /work/{key}/landed` for every review row whose judged kind is `land`,
+  on a project this runner is elected to drive, once per `--merge-interval`.
+  The route is also what an operator or a script would call by hand; it takes
+  no body and trusts no kind from its caller, so a stale read costs a `409`
+  and nothing more.
+
+**The route.** `POST /work/{key}/landed` (`WorkController.cs:893-952`,
+`WorkController.LandedWork`) re-reads the landings and the trunk builds,
+judges them, and only on `land` moves the issue from the review column to
+`Columns.Closes` — the first terminal column after it — with a
+`status_changed` event marked `landed: true`, a ticket comment (*"Landed on
+`<trunk>` at `<sha>`; the trunk's build passes."*, or *"...; this project
+requires no checks."* where it settled on no checks), and a rank at the bottom
+of that column. It takes no claim and refuses a claimed issue, and it has no
+WIP gate; unlike `/merged` it carries no story's waiting tasks, since that is
+for a pull request several of them share and a landing has none. Its `409`s
+are the ones the [API table](#api-surface) lists, and the sentence on a judged kind
+other than `land` is the judge's own — the same one `hatch queue` prints.
+See [the four paths past the terminal
+guard](#the-four-paths-past-the-terminal-guard) for why a program may take
+this step.
+
+**The queue row.** `Dispatch.KindOf` takes `LandingWork`'s kind for a
+trunk-landing review row, where a pull-request row would have `conflicts`,
+`build` or `advance`, and `Dispatch.Blocked` makes the judge's sentence the
+row's `Blocked`: nothing in the review column is ever an agent's to do for a
+landing, so the sentence is reported and no session is spawned. The panel
+lists only the **hold**s, as `landingHeld` — see [what is waiting on
+you](#what-is-waiting-on-you).
+
+### The four paths past the terminal guard
 
 Nothing above ever lands an issue in a terminal column, and nothing above
 ever lands one in a protected column either — that is what `Columns.Target`
 is for, dispatching review to itself rather than past either, and what
 `Dispatch.Blocked` refuses in every other case with *"the next column is
 \<name\>, and only the operator moves work there"* or *"...and only its
-approvers move work there"*. Three routes cross one of the two guards
+approvers move work there"*. Four routes cross one of the two guards
 anyway, each for its own reason, and none of them is a program's own
 judgement call.
 
@@ -3888,6 +4005,22 @@ review, with nobody pressing anything on the board. The reason is the same
 as the approve hop's: the move is a decision an owner or approver already
 made in advance, carried out the moment the board can see it is true,
 rather than the operator's own press on a forge or a card.
+
+`POST /work/{key}/landed` is the fourth, and it crosses the terminal fold the
+way `/merged` does, for a project that has no pull request to merge: an
+owner's choice, on the project, to land on the trunk **is** the decision to
+ship, so an issue that has [landed there and whose build passes](#landing-on-the-trunk)
+needs nobody to press anything. It takes no body and trusts no verdict from its
+caller — it re-reads the issue's landings and the trunk builds, calls
+`LandingWork.Judge` itself, and acts only when the kind comes back `land`. Its
+refusals are its own, as `/merged`'s are: the issue must be standing in
+whichever column is measured as review right now, the project must land on its
+trunk and the issue must have no pull request recorded, there must be a
+terminal column after review, and the issue must not be claimed. The column it
+moves into is `Columns.Closes`, the first terminal column after review — not
+`Columns.Advance`'s next column, since a merge column may stand between, and a
+landing does not go through one. No ready date, no assignee, no WIP section and
+no dependency gate it, for `/merged`'s reason.
 
 ### One more, on `next` alone
 
@@ -4239,7 +4372,7 @@ which one it failed is what `work/queue` reports:
    may pass*. The close hop crosses the terminal fold anyway, and the
    approve hop the protected one, because a pre-approval already given is
    that decision, made in advance (`Dispatch.cs:800`, `:803`) — see [the
-   three paths past the terminal guard](#the-three-paths-past-the-terminal-guard).
+   four paths past the terminal guard](#the-four-paths-past-the-terminal-guard).
    The review column is dispatched to itself instead of either (see the
    twelfth condition), and never into the column after it.
 2. **No live [claim](#claim) is held by somebody else.** It is the only fold
@@ -4990,12 +5123,41 @@ for that pair is known. The terminal hears about a change the same way —
 `hatch: main build on 1a2b3c4 failed (api, CI)` — naming the trunk rather than
 an issue.
 
+**The landing half, asked of git and keyed on the checkout.** A trunk-landing
+issue in review has no branch to merge-check and no pull request to ask `gh`
+about; what it has is a [landing](#landing), the sha a session recorded and the
+trunk it was landing on. Its targets come from the same
+`/api/hatch/work/review` answer, and for each checkout that holds one the poll
+(`Poll.ConfirmLandingsAsync`) reuses the `ls-remote` heads the merge half took,
+so it costs no second one:
+
+- **Skipped where nothing moved.** A landing is left alone when the trunk's tip
+  on origin is the sha the board already holds as its `ContainedBy`, or the tip
+  this runner last looked at it under. A sha that is *not* on the trunk is
+  remembered too, so an idle loop does not fetch all night for a commit that
+  has not landed.
+- **One fetch, however many are due.** If any landing in the checkout is due,
+  the checkout fetches once, and `ResolveOnTrunk` asks git whether each sha is
+  in the trunk's history. The tree is never touched, as above.
+- **A landing that is there is put to the board** with `PUT
+  /issues/{key}/landing`, naming the trunk tip that now contains it as
+  `ContainedBy`. That is the whole of the poll's part: it never moves a
+  ticket, and it never reads a build for one — the trunk's own build is read by
+  [the trunk half](#checking-the-branches-in-review) below, off the tip, whether
+  or not anything is in review. A write the board refuses is not remembered,
+  and is asked again next interval.
+- **Failures are one line.** An origin with no such trunk, or a fetch that
+  fails, is one line naming the checkout, and the checkout's landings are left
+  for the next interval. The terminal hears about a landing only the first time
+  it is confirmed — `hatch: HA-12 is on main at 1a2b3c4` — and a quiet interval
+  says nothing.
+
 **The pull request half, asked of `gh` and keyed on the issue.** This half, and
-the two after it, run on their own clock — `MergeTrain`'s, independent of
+the ones after it, run on their own clock — `MergeTrain`'s, independent of
 `--interval` — rather than this poll's, which is why their code lives apart
-from it; the shape this paragraph describes still holds for all three. See
+from it; the shape this paragraph describes still holds for all of them. See
 [The merge train](#the-merge-train) for that clock itself. The
-three halves above are keyed on `(path, baseBranch)`, because a merge verdict
+halves above are keyed on `(path, baseBranch)`, because a merge verdict
 and a build verdict are per repository. A pull request is not: `PullRequestUrl`
 is one field on one issue however many repositories its project binds, so this
 half iterates the `/api/hatch/work/review` answer itself rather than the
@@ -5043,8 +5205,8 @@ a fresh verdict says it is clean again." - and skipped until a fresh verdict
 agrees it is still clean. Otherwise it runs `gh pr merge <url> --merge --admin
 --match-head-commit <sha>`; a refusal is reported the same way, once per sha -
 "gh would not merge its pull request - {why}". A merge that goes through calls
-`/work/{key}/merged`, the same route [the three paths past the terminal
-guard](#the-three-paths-past-the-terminal-guard) already documents an operator's
+`/work/{key}/merged`, the same route [the four paths past the terminal
+guard](#the-four-paths-past-the-terminal-guard) already documents an operator's
 own report of a merge taking, comments "Merged its pull request at {sha}, as
 {runner}.", and prints the same `hatch: HA-12 pull request merged -> Done`
 line the half above prints for its own advance.
@@ -5071,10 +5233,22 @@ unreachable, the account refused - is one `complain` line on the terminal
 only, said again next interval the way a transient failure is, and nothing on
 the ticket.
 
-The merge-column exception just above, and both halves after it, run only
+**The landing half, on the train's clock.** `MergeTrain.CarryLandedAsync` is
+the fifth half, and the shortest: for every row the review poll returns whose
+`landingWork` the judge marked **land**, it calls `POST /work/{key}/landed`.
+It asks nothing of git or `gh` and keeps nothing across ticks — the route
+re-judges the row itself and writes the ticket's comment, so this half writes
+none. A `409` is the row having moved under the call, and is walked past
+silently; any other refusal is one line, kept from repeating verbatim, and the
+next tick tries again. A landing that goes through prints `hatch: HA-12 landed
+on main -> Done`. It is the one half here that acts on a *review* row rather
+than a merge-column row, and the election below gates it all the same.
+
+The merge-column exception just above, and every half after it, run only
 where this runner is the one a heartbeat answer elected to drive this
 project's merge train: a choice made for a runner, never by it, and not this
-section's to explain further.
+section's to explain further. The landing confirmation above is not among
+them: it is the poll's, and every runner that holds the checkout makes it.
 
 ### When an increment does nothing
 
