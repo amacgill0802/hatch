@@ -9,7 +9,7 @@ const navLinkClass = ({ isActive }: { isActive: boolean }) =>
 
 /**
  * The app's nav: Board, Plan and Reports as links, Agents and Manage as
- * menus. `lib/nav.ts` is the one place to change what it shows or where a
+ * menus, and Docs as a last link. `lib/nav.ts` is the one place to change what it shows or where a
  * page lives; this component only draws whatever that file returns.
  *
  * Rides in the gradient bar's `leading` slot with `tone="accent"` - the

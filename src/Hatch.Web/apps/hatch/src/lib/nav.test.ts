@@ -4,9 +4,10 @@ import { NAV, activeGroup, navFor, navRows } from './nav';
 import type { NavEntry } from './nav';
 
 // Excluded on purpose: /issues/:key is reached from a card, and
-// /reports/timeline from the Reports index, never the nav; /settings and *
+// /reports/timeline from the Reports index, never the nav; /docs/* is the
+// same page as /docs, for any path under it; /settings and *
 // (the unknown-route fallback) are not pages a menu lists.
-const EXCLUDED_ROUTES = new Set(['/issues/:key', '/reports/timeline', '/settings', '*']);
+const EXCLUDED_ROUTES = new Set(['/issues/:key', '/reports/timeline', '/docs/*', '/settings', '*']);
 
 function routesInApp(): string[] {
   const matches = appSource.matchAll(/<Route path="([^"]+)"/g);
@@ -36,6 +37,21 @@ describe('NAV', () => {
   });
 });
 
+describe('Docs', () => {
+  it('is the last NAV entry, a top-level link after the Manage group', () => {
+    const last = NAV[NAV.length - 1];
+    expect(last).toEqual({ kind: 'link', to: '/docs', label: 'Docs' });
+    expect(NAV[NAV.length - 2]).toMatchObject({ kind: 'group', label: 'Manage' });
+  });
+
+  it('is the last row of the phone list, with no group label, for anybody', () => {
+    for (const isAdmin of [false, true]) {
+      const rows = navRows(isAdmin);
+      expect(rows[rows.length - 1]).toEqual({ to: '/docs', label: 'Docs', end: undefined, groupLabel: null });
+    }
+  });
+});
+
 describe('activeGroup', () => {
   it('finds Agents from any of its rows', () => {
     expect(activeGroup('/runners')?.label).toBe('Agents');
@@ -53,6 +69,8 @@ describe('activeGroup', () => {
     expect(activeGroup('/reports')).toBeNull();
     expect(activeGroup('/reports/timeline')).toBeNull();
     expect(activeGroup('/issues/HA-1')).toBeNull();
+    expect(activeGroup('/docs')).toBeNull();
+    expect(activeGroup('/docs/x')).toBeNull();
   });
 
   it('is null on a string prefix that is not a path segment', () => {

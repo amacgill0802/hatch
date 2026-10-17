@@ -55,6 +55,7 @@ export const NAV: NavEntry[] = [
       { to: '/api-keys', label: 'API keys', adminOnly: true },
     ],
   },
+  { kind: 'link', to: '/docs', label: 'Docs' },
 ];
 
 /** `NAV`, with the admin-only rows dropped for anybody else, and a group left
