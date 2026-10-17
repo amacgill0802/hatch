@@ -16,6 +16,32 @@ agent working it from your terminal. Ten minutes if the downloads are quick.
 
 </div>
 
+## Not a developer? Paste one line into Claude
+
+If you are not a developer, Claude can set Hatch up for you: you paste one line
+and it walks you through, doing the typing.
+
+**Before you paste**
+
+- **A Claude plan.** Pro, Max, Team or Enterprise, or a Console account. The
+  free claude.ai plan does not include Claude Code.
+- **Claude Code running on this machine**, either in a terminal or in the
+  Claude desktop app (its Code tab; see the
+  [desktop quickstart](https://code.claude.com/docs/en/desktop-quickstart)).
+  claude.ai in a browser cannot run commands, so it will not do. For the
+  terminal, [install Claude Code](https://code.claude.com/docs/en/setup) with
+  `curl -fsSL https://claude.ai/install.sh | bash` on macOS and Linux, or
+  `irm https://claude.ai/install.ps1 | iex` in PowerShell.
+
+Then paste this into Claude:
+
+```
+Set me up with Hatch: {{ '/setup/' | absolute_url }}
+```
+
+Claude reads the guide and takes it from there. To do it yourself, the steps
+below are the same path.
+
 <ul class="cards">
   <li><a href="{{ '/how-to-hatch/' | relative_url }}">How to Hatch</a><span>Playbooks, the order work is taken in, and where a person is the one who moves things.</span></li>
   <li><a href="{{ '/running-the-agent/' | relative_url }}">Running the agent</a><span>The runner on your machine: one increment, the loop, and what it does to a checkout.</span></li>
@@ -137,79 +163,6 @@ stack is running. They are in the order to do them in.
 That is the whole loop. [How to Hatch](how-to-hatch.md) is what to expect
 from it, and [Running the agent](running-the-agent.md) is every knob on the
 runner.
-
-## Or: let an agent do the install
-
-If you would rather not do step 1 and step 2 yourself, paste the block below
-into a coding agent running on the machine with full system access, such as
-Claude Code. It installs what is missing, brings the board up, and then hands
-you the short list of things only you can do. It stops before anything that
-needs your password and before anything that needs you to log in.
-
-````
-I want to run Hatch, a self-hosted kanban board worked by AI agents, on this
-machine. Do the installation for me, then hand back the steps only I can do.
-
-Rules:
-- Before running anything that needs an administrator password or sudo, tell
-  me what it is and wait for my go-ahead.
-- Do not log in to anything on my behalf, and do not paste any credential,
-  token or key into a file, a command or a message.
-- Check whether each tool is already installed before installing it, and use
-  this machine's own package manager where there is one (Homebrew on macOS,
-  winget on Windows, apt/dnf on Linux). Install Homebrew first on macOS if it
-  is missing.
-- Tell me what you did, briefly, at the end.
-
-Steps:
-
-1. Detect the operating system and CPU architecture.
-
-2. Make sure git is installed and `git --version` works.
-   Reference: https://git-scm.com/install/
-
-3. Make sure Docker with the compose plugin is installed and the engine is
-   running. On macOS and Windows that is Docker Desktop
-   (https://www.docker.com/products/docker-desktop/); on Linux, Docker Engine
-   plus the docker-compose-plugin. Start Docker Desktop if it is installed but
-   not running. `docker version` must print a Server section as well as a
-   Client section before you continue. If a reboot or sign-out is required,
-   stop and tell me.
-
-4. Make sure the Claude Code CLI is installed. Use the native installer
-   (macOS/Linux/WSL: `curl -fsSL https://claude.ai/install.sh | bash`;
-   Windows PowerShell: `irm https://claude.ai/install.ps1 | iex`).
-   Reference: https://code.claude.com/docs/en/setup
-   `claude --version` must work afterwards. Do not log in for me.
-
-5. Clone the Hatch repository into a directory called `hatch` under my home
-   directory, unless a checkout already exists there:
-   `git clone {{ site.github.clone_url | default: "<the repository's clone URL>" }} hatch`
-
-6. From that directory run `docker compose up -d`. The first run builds an
-   image and can take several minutes. Then poll
-   http://localhost:8080/apps/hatch/ until it answers with HTTP 200, waiting
-   up to ten minutes. If port 8080 is already in use, use a free port by
-   setting HATCH_PORT for the compose command and tell me which port.
-
-7. Stop there. Print the address of the board and this checklist for me to
-   do by hand, filling in the port you used:
-
-   - Run `claude` once in a terminal and follow the browser prompt to log in.
-   - Open the board. Settings -> Your name: set it.
-   - Manage -> Projects -> New project: give it a short key such as HOME.
-   - Agents -> Get the runner: download the binary for this machine, put it on
-     the PATH as `hatch` (chmod +x on macOS/Linux).
-   - Run `hatch config --origin http://localhost:<port>` and leave the key
-     blank.
-   - Open Docs under the gear, copy "The CLAUDE.md block" into the CLAUDE.md of
-     the repository I want the agent to work on.
-   - Write a first ticket in Draft and drag it to Breakdown.
-   - From inside that repository's checkout run `hatch queue`, then
-     `hatch go-to-work --once`.
-
-Do not run `hatch go-to-work` yourself.
-````
 
 ## What you have now
 

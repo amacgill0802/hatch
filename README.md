@@ -27,6 +27,9 @@ Change the port with `HATCH_PORT`:
 HATCH_PORT=9090 docker compose up -d
 ```
 
+Someone who is not a developer can be set up by Claude from the one line on the
+Quick start of this repository's website, linked from the repository page.
+
 Hatch has a sign-in wall, off by default, with Google as the way in. To put it
 up, follow *Putting a front door on it* in
 [hatch-at-home.md](src/Hatch.Web/apps/hatch/public/hatch-at-home.md).
