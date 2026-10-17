@@ -64,6 +64,21 @@ public sealed class MergeTrainTests
 
     private static string Merged(string key) => $"/api/hatch/work/{key}/merged";
     private static string Closed(string key) => $"/api/hatch/work/{key}/closed";
+    private static string StatePath(string key) => $"/api/hatch/issues/{key}/pull-request-state";
+
+    private static PullRequestAnswer Forged(
+        string state = PullRequestStates.Open, string? head = null, string? merge = MergeStates.Clean,
+        string? review = ReviewDecisions.Approved) =>
+        new(state, null, HeadSha: head ?? Tip, MergeState: merge, ReviewDecision: review);
+
+    /// <summary>An issue in review whose board holds the three the forge is said to answer with.</summary>
+    private static ReviewCheckDto Holding(
+        string key, string url, string? head = null, string? merge = MergeStates.Clean,
+        string? review = ReviewDecisions.Approved) =>
+        Fixtures.Review(key, pullRequestUrl: url) with
+        {
+            PullRequestHeadSha = head ?? Tip, PullRequestMergeState = merge, PullRequestReviewDecision = review,
+        };
 
     [Fact]
     public async Task A_merged_pull_request_advances_the_issue_with_the_url_that_was_read_and_is_announced()
@@ -288,6 +303,162 @@ public sealed class MergeTrainTests
         await rig.RunAsync();
 
         Assert.Empty(rig.H.Wire.To("POST", Comments("AER-1")));
+        Assert.Empty(rig.H.Say.Complained);
+    }
+
+    [Fact]
+    public async Task An_open_pull_request_the_board_holds_nothing_of_is_put_with_the_three_the_forge_said()
+    {
+        using var rig = new Rig().Board(Fixtures.Review("AER-1", pullRequestUrl: PrUrl));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip));
+        rig.H.Forge.PullRequestAnswer = Forged();
+        rig.H.Wire.Reply("PUT", StatePath("AER-1"), HttpStatusCode.NoContent);
+
+        await rig.RunAsync();
+
+        var put = Assert.Single(rig.H.Wire.To("PUT", StatePath("AER-1"))).Read<PullRequestStateRequest>();
+        Assert.Equal(
+            new PullRequestStateRequest(PrUrl, Tip, MergeStates.Clean, ReviewDecisions.Approved, put.Runner), put);
+        Assert.False(string.IsNullOrEmpty(put.Runner));
+        Assert.Empty(rig.H.Say.Complained);
+    }
+
+    [Fact]
+    public async Task An_open_pull_request_the_board_already_holds_the_same_three_of_is_never_put_on_any_tick()
+    {
+        using var rig = new Rig().Board(Holding("AER-1", PrUrl));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip));
+        rig.H.Forge.PullRequestAnswer = Forged();
+        rig.H.Wire.Reply("PUT", StatePath("AER-1"), HttpStatusCode.NoContent);
+
+        await rig.RunAsync();
+        Assert.Empty(rig.H.Wire.To("PUT", StatePath("AER-1")));
+
+        await rig.Later().RunAsync();
+        Assert.Empty(rig.H.Wire.To("PUT", StatePath("AER-1")));
+        Assert.Equal(2, rig.H.Forge.PullRequestReads.Count);
+    }
+
+    [Theory]
+    [InlineData("head")]
+    [InlineData("merge")]
+    [InlineData("review")]
+    public async Task A_change_in_only_one_of_the_three_is_put(string which)
+    {
+        using var rig = new Rig().Board(Holding(
+            "AER-1", PrUrl,
+            head: which == "head" ? Tip2 : null,
+            merge: which == "merge" ? MergeStates.Behind : MergeStates.Clean,
+            review: which == "review" ? ReviewDecisions.ReviewRequired : ReviewDecisions.Approved));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip));
+        rig.H.Forge.PullRequestAnswer = Forged();
+        rig.H.Wire.Reply("PUT", StatePath("AER-1"), HttpStatusCode.NoContent);
+
+        await rig.RunAsync();
+
+        Assert.Single(rig.H.Wire.To("PUT", StatePath("AER-1")));
+    }
+
+    [Fact]
+    public async Task A_merged_pull_request_is_posted_to_the_merged_route_and_never_put()
+    {
+        using var rig = new Rig().Board(Fixtures.Review("AER-1", pullRequestUrl: PrUrl));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip));
+        rig.H.Forge.PullRequestAnswer = Forged(PullRequestStates.Merged);
+        rig.H.Wire.Json("POST", Merged("AER-1"), Fixtures.Issue("AER-1") with { StatusId = 4 });
+        rig.H.Wire.Json("GET", Statuses, new[] { Fixtures.Status(4, "Done") });
+        rig.H.Wire.Reply("PUT", StatePath("AER-1"), HttpStatusCode.NoContent);
+
+        await rig.RunAsync();
+
+        Assert.Single(rig.H.Wire.To("POST", Merged("AER-1")));
+        Assert.Empty(rig.H.Wire.To("PUT", StatePath("AER-1")));
+    }
+
+    [Fact]
+    public async Task A_closed_pull_request_on_a_merge_row_is_posted_to_the_closed_route_and_never_put()
+    {
+        using var rig = new Rig().Board(MergeRow("AER-1", "aer-1-thing", PrUrl));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip));
+        rig.H.Forge.PullRequestAnswer = Forged(PullRequestStates.Closed);
+        rig.H.Wire.Json("POST", Closed("AER-1"), Fixtures.Issue("AER-1"));
+        rig.H.Wire.Json("POST", Comments("AER-1"), Fixtures.Comment());
+        rig.H.Wire.Reply("PUT", StatePath("AER-1"), HttpStatusCode.NoContent);
+
+        await rig.RunAsync();
+
+        Assert.Single(rig.H.Wire.To("POST", Closed("AER-1")));
+        Assert.Empty(rig.H.Wire.To("PUT", StatePath("AER-1")));
+    }
+
+    [Fact]
+    public async Task An_unknown_read_is_never_put()
+    {
+        using var rig = new Rig().Board(Fixtures.Review("AER-1", pullRequestUrl: PrUrl));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip));
+        rig.H.Forge.PullRequestAnswer = Forged(PullRequestStates.Unknown);
+        rig.H.Wire.Reply("PUT", StatePath("AER-1"), HttpStatusCode.NoContent);
+
+        await rig.RunAsync();
+
+        Assert.Empty(rig.H.Wire.To("PUT", StatePath("AER-1")));
+    }
+
+    [Theory]
+    [InlineData(null, MergeStates.Clean, ReviewDecisions.Approved)]
+    [InlineData("tip", null, ReviewDecisions.Approved)]
+    [InlineData("tip", MergeStates.Clean, null)]
+    public async Task An_answer_that_did_not_read_all_three_is_never_put(string? head, string? merge, string? review)
+    {
+        using var rig = new Rig().Board(Fixtures.Review("AER-1", pullRequestUrl: PrUrl));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip));
+        rig.H.Forge.PullRequestAnswer = new(
+            PullRequestStates.Open, null, HeadSha: head is null ? null : Tip, MergeState: merge, ReviewDecision: review);
+        rig.H.Wire.Reply("PUT", StatePath("AER-1"), HttpStatusCode.NoContent);
+
+        await rig.RunAsync();
+
+        Assert.Empty(rig.H.Wire.To("PUT", StatePath("AER-1")));
+    }
+
+    [Fact]
+    public async Task A_404_from_the_state_route_complains_once_reads_the_next_issue_and_asks_again_next_tick()
+    {
+        using var rig = new Rig().Board(
+            Fixtures.Review("AER-1", pullRequestUrl: PrUrl),
+            Fixtures.Review("AER-2", pullRequestUrl: PrUrl2));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: [("aer-1-thing", Tip), ("aer-2-other", Tip2)]);
+        rig.H.Forge.PullRequestAnswer = Forged();
+        rig.H.Wire.Reply("PUT", StatePath("AER-2"), HttpStatusCode.NoContent);
+
+        await rig.RunAsync();
+
+        Assert.Equal([$"{rig.H.Root} {PrUrl}", $"{rig.H.Root} {PrUrl2}"], rig.H.Forge.PullRequestReads);
+        Assert.Single(rig.H.Wire.To("PUT", StatePath("AER-2")));
+        Assert.Equal(
+            ["hatch: AER-1 - the board does not know pull request state yet - it will be asked again next tick"],
+            rig.H.Say.Complained);
+
+        await rig.Later().RunAsync();
+
+        Assert.Equal(2, rig.H.Wire.To("PUT", StatePath("AER-1")).Count);
+        Assert.Single(rig.H.Say.Complained);
+    }
+
+    [Fact]
+    public async Task A_409_from_the_state_route_is_not_a_fault_and_the_next_issue_is_still_put()
+    {
+        using var rig = new Rig().Board(
+            Fixtures.Review("AER-1", pullRequestUrl: PrUrl),
+            Fixtures.Review("AER-2", pullRequestUrl: PrUrl2));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: [("aer-1-thing", Tip), ("aer-2-other", Tip2)]);
+        rig.H.Forge.PullRequestAnswer = Forged();
+        rig.H.Wire.Reply("PUT", StatePath("AER-1"), HttpStatusCode.Conflict, "\"AER-1 moved\"");
+        rig.H.Wire.Reply("PUT", StatePath("AER-2"), HttpStatusCode.NoContent);
+
+        await rig.RunAsync();
+
+        Assert.Single(rig.H.Wire.To("PUT", StatePath("AER-2")));
         Assert.Empty(rig.H.Say.Complained);
     }
 
