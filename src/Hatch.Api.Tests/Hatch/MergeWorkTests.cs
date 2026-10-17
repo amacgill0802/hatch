@@ -41,7 +41,7 @@ public class MergeWorkTests
         var bound = new[] { Repo(Remote) };
         var merges = new[] { Merge(Remote, MergeVerdicts.Conflicted) };
 
-        var judgement = MergeWork.Judge(bound, merges, [], Now, Now);
+        var judgement = MergeWork.Judge(bound, merges, [], Now, true, null, null, Now);
 
         Assert.Equal(WorkKinds.Hold, judgement.Kind);
         Assert.Contains("closed without merging", judgement.Sentence);
@@ -52,7 +52,7 @@ public class MergeWorkTests
     {
         var bound = new[] { Repo(Remote) };
 
-        var judgement = MergeWork.Judge(bound, [], [], null, Now);
+        var judgement = MergeWork.Judge(bound, [], [], null, true, null, null, Now);
 
         Assert.Equal(WorkKinds.Pending, judgement.Kind);
         Assert.Contains("the trunk", judgement.Sentence);
@@ -64,7 +64,7 @@ public class MergeWorkTests
         var bound = new[] { Repo(Remote) };
         var merges = new[] { Merge(Remote, MergeVerdicts.Conflicted) };
 
-        var judgement = MergeWork.Judge(bound, merges, [], null, Now);
+        var judgement = MergeWork.Judge(bound, merges, [], null, true, null, null, Now);
 
         Assert.Equal(WorkKinds.Pushback, judgement.Kind);
         Assert.Contains("conflicts", judgement.Sentence);
@@ -77,7 +77,7 @@ public class MergeWorkTests
         var bound = new[] { Repo(Remote) };
         var merges = new[] { Merge(Remote, MergeVerdicts.Conflicted) };
 
-        var judgement = MergeWork.Judge(bound, merges, [], null, Now, reviewColumn: "code review");
+        var judgement = MergeWork.Judge(bound, merges, [], null, true, null, null, Now, reviewColumn: "code review");
 
         Assert.Equal(WorkKinds.Pushback, judgement.Kind);
         Assert.Contains("code review", judgement.Sentence);
@@ -89,7 +89,7 @@ public class MergeWorkTests
         var bound = new[] { Repo(Remote) };
         var merges = new[] { Merge(Remote, MergeVerdicts.Ambiguous) };
 
-        var judgement = MergeWork.Judge(bound, merges, [], null, Now);
+        var judgement = MergeWork.Judge(bound, merges, [], null, true, null, null, Now);
 
         Assert.Equal(WorkKinds.Hold, judgement.Kind);
         Assert.Contains("more than one branch", judgement.Sentence);
@@ -101,7 +101,7 @@ public class MergeWorkTests
         var bound = new[] { Repo(Remote) };
         var merges = new[] { Merge(Remote, MergeVerdicts.None) };
 
-        var judgement = MergeWork.Judge(bound, merges, [], null, Now);
+        var judgement = MergeWork.Judge(bound, merges, [], null, true, null, null, Now);
 
         Assert.Equal(WorkKinds.Hold, judgement.Kind);
         Assert.Contains("no branch", judgement.Sentence);
@@ -114,7 +114,7 @@ public class MergeWorkTests
         var merges = new[] { Merge(Remote, MergeVerdicts.Clean, holdsTrunk: true) };
         var builds = new[] { Build(Remote, BuildVerdicts.Failed) };
 
-        var judgement = MergeWork.Judge(bound, merges, builds, null, Now);
+        var judgement = MergeWork.Judge(bound, merges, builds, null, true, null, null, Now);
 
         Assert.Equal(WorkKinds.Pushback, judgement.Kind);
         Assert.Contains("failed", judgement.Sentence);
@@ -127,7 +127,7 @@ public class MergeWorkTests
         var bound = new[] { Repo(Remote) };
         var merges = new[] { Merge(Remote, MergeVerdicts.Clean, holdsTrunk: false) };
 
-        var judgement = MergeWork.Judge(bound, merges, [], null, Now);
+        var judgement = MergeWork.Judge(bound, merges, [], null, true, null, null, Now);
 
         Assert.Equal(WorkKinds.Update, judgement.Kind);
         Assert.Contains("bringing its branch current from", judgement.Sentence);
@@ -145,7 +145,7 @@ public class MergeWorkTests
         };
         var builds = new[] { Build(Remote, BuildVerdicts.Passed) };
 
-        var judgement = MergeWork.Judge(bound, merges, builds, null, Now);
+        var judgement = MergeWork.Judge(bound, merges, builds, null, true, null, null, Now);
 
         Assert.Equal(WorkKinds.Update, judgement.Kind);
     }
@@ -157,7 +157,7 @@ public class MergeWorkTests
         var merges = new[] { Merge(Remote, MergeVerdicts.Clean, holdsTrunk: true) };
         var builds = new[] { Build(Remote, BuildVerdicts.Pending) };
 
-        var judgement = MergeWork.Judge(bound, merges, builds, null, Now);
+        var judgement = MergeWork.Judge(bound, merges, builds, null, true, null, null, Now);
 
         Assert.Equal(WorkKinds.Pending, judgement.Kind);
         Assert.Contains("still running", judgement.Sentence);
@@ -170,7 +170,7 @@ public class MergeWorkTests
         var merges = new[] { Merge(Remote, MergeVerdicts.Clean, holdsTrunk: true) };
         var builds = new[] { Build(Remote, BuildVerdicts.Passed, sha: new string('c', 40)) };
 
-        var judgement = MergeWork.Judge(bound, merges, builds, null, Now);
+        var judgement = MergeWork.Judge(bound, merges, builds, null, true, null, null, Now);
 
         Assert.Equal(WorkKinds.Pending, judgement.Kind);
         Assert.Contains("no runner has read its build on", judgement.Sentence);
@@ -182,7 +182,7 @@ public class MergeWorkTests
         var bound = new[] { Repo(Remote) };
         var merges = new[] { Merge(Remote, MergeVerdicts.Clean, holdsTrunk: true) };
 
-        var judgement = MergeWork.Judge(bound, merges, [], null, Now);
+        var judgement = MergeWork.Judge(bound, merges, [], null, true, null, null, Now);
 
         Assert.Equal(WorkKinds.Pending, judgement.Kind);
         Assert.Contains("no checks have run on it yet", judgement.Sentence);
@@ -195,7 +195,7 @@ public class MergeWorkTests
         var merges = new[] { Merge(Remote, MergeVerdicts.Clean, holdsTrunk: true) };
         var builds = new[] { Build(Remote, BuildVerdicts.Passed) };
 
-        var judgement = MergeWork.Judge(bound, merges, builds, null, Now);
+        var judgement = MergeWork.Judge(bound, merges, builds, null, true, null, null, Now);
 
         Assert.Equal(WorkKinds.Merge, judgement.Kind);
         Assert.Contains("its build passes", judgement.Sentence);
@@ -208,7 +208,7 @@ public class MergeWorkTests
         var merges = new[] { Merge(Remote, MergeVerdicts.Clean, holdsTrunk: true) };
         var builds = new[] { Build(Remote, BuildVerdicts.None) };
 
-        var judgement = MergeWork.Judge(bound, merges, builds, null, Now.AddMinutes(10).AddSeconds(-1));
+        var judgement = MergeWork.Judge(bound, merges, builds, null, true, null, null, Now.AddMinutes(10).AddSeconds(-1));
 
         Assert.Equal(WorkKinds.Pending, judgement.Kind);
         Assert.Contains("no checks ran on it", judgement.Sentence);
@@ -221,9 +221,122 @@ public class MergeWorkTests
         var merges = new[] { Merge(Remote, MergeVerdicts.Clean, holdsTrunk: true) };
         var builds = new[] { Build(Remote, BuildVerdicts.None) };
 
-        var judgement = MergeWork.Judge(bound, merges, builds, null, Now.AddMinutes(10));
+        var judgement = MergeWork.Judge(bound, merges, builds, null, true, null, null, Now.AddMinutes(10));
 
         Assert.Equal(WorkKinds.Hold, judgement.Kind);
         Assert.Contains("no checks ran on it", judgement.Sentence);
+    }
+
+    static MergeWork.Judgement CleanNoChecksAt(TimeSpan after, bool checksRequired, string? mergeState, string? mergeStateSha)
+    {
+        var bound = new[] { Repo(Remote) };
+        var merges = new[] { Merge(Remote, MergeVerdicts.Clean, holdsTrunk: true) };
+        var builds = new[] { Build(Remote, BuildVerdicts.None) };
+
+        return MergeWork.Judge(bound, merges, builds, null, checksRequired, mergeState, mergeStateSha, Now + after);
+    }
+
+    [Fact]
+    public void DraftPullRequest_HoldsAheadOfAConflict()
+    {
+        var bound = new[] { Repo(Remote) };
+        var merges = new[] { Merge(Remote, MergeVerdicts.Conflicted) };
+
+        var judgement = MergeWork.Judge(bound, merges, [], null, true, MergeStates.Draft, null, Now);
+
+        Assert.Equal(WorkKinds.Hold, judgement.Kind);
+        Assert.Equal("its pull request is a draft", judgement.Sentence);
+    }
+
+    [Fact]
+    public void ClosedPullRequest_HoldsAheadOfADraft()
+    {
+        var bound = new[] { Repo(Remote) };
+        var merges = new[] { Merge(Remote, MergeVerdicts.Clean, holdsTrunk: true) };
+
+        var judgement = MergeWork.Judge(bound, merges, [], Now, true, MergeStates.Draft, null, Now);
+
+        Assert.Equal(WorkKinds.Hold, judgement.Kind);
+        Assert.Contains("closed without merging", judgement.Sentence);
+    }
+
+    [Fact]
+    public void NoChecksRequired_MergesAtTheSettleWindow()
+    {
+        var judgement = CleanNoChecksAt(TimeSpan.FromMinutes(10), checksRequired: false, null, null);
+
+        Assert.Equal(WorkKinds.Merge, judgement.Kind);
+        Assert.Contains("requires no checks", judgement.Sentence);
+    }
+
+    [Fact]
+    public void NoChecksRequired_PendingUnderTheSettleWindow()
+    {
+        var judgement = CleanNoChecksAt(TimeSpan.FromMinutes(9), checksRequired: false, null, null);
+
+        Assert.Equal(WorkKinds.Pending, judgement.Kind);
+    }
+
+    [Fact]
+    public void ForgeCleanAtTheJudgedSha_Merges()
+    {
+        var judgement = CleanNoChecksAt(TimeSpan.FromMinutes(10), true, MergeStates.Clean, new string('b', 40));
+
+        Assert.Equal(WorkKinds.Merge, judgement.Kind);
+        Assert.Contains("nothing is required of it", judgement.Sentence);
+    }
+
+    [Fact]
+    public void ForgeCleanAtAnotherSha_HoldsAsItAlwaysHas()
+    {
+        var judgement = CleanNoChecksAt(TimeSpan.FromMinutes(10), true, MergeStates.Clean, new string('c', 40));
+
+        Assert.Equal(WorkKinds.Hold, judgement.Kind);
+        Assert.EndsWith("no checks ran on it", judgement.Sentence);
+    }
+
+    [Fact]
+    public void ForgeBlockedAtTheJudgedSha_HoldsWithTheBlockedSentence()
+    {
+        var judgement = CleanNoChecksAt(TimeSpan.FromMinutes(10), true, MergeStates.Blocked, new string('b', 40));
+
+        Assert.Equal(WorkKinds.Hold, judgement.Kind);
+        Assert.Contains("blocked by the repository's rules", judgement.Sentence);
+    }
+
+    [Theory]
+    [InlineData(MergeStates.Unstable)]
+    [InlineData(null)]
+    public void ForgeStateThatSaysNothingUseful_HoldsAsItAlwaysHas(string? state)
+    {
+        var judgement = CleanNoChecksAt(TimeSpan.FromMinutes(10), true, state, new string('b', 40));
+
+        Assert.Equal(WorkKinds.Hold, judgement.Kind);
+        Assert.EndsWith("no checks ran on it", judgement.Sentence);
+    }
+
+    [Fact]
+    public void FailedBuild_StaysPushbackWhateverTheForgeAndTheProjectSay()
+    {
+        var bound = new[] { Repo(Remote) };
+        var merges = new[] { Merge(Remote, MergeVerdicts.Clean, holdsTrunk: true) };
+        var builds = new[] { Build(Remote, BuildVerdicts.Failed) };
+
+        var judgement = MergeWork.Judge(bound, merges, builds, null, false, MergeStates.Clean, new string('b', 40), Now);
+
+        Assert.Equal(WorkKinds.Pushback, judgement.Kind);
+    }
+
+    [Fact]
+    public void PassedBuild_MergesWithNoForgeState()
+    {
+        var bound = new[] { Repo(Remote) };
+        var merges = new[] { Merge(Remote, MergeVerdicts.Clean, holdsTrunk: true) };
+        var builds = new[] { Build(Remote, BuildVerdicts.Passed) };
+
+        var judgement = MergeWork.Judge(bound, merges, builds, null, true, null, null, Now);
+
+        Assert.Equal(WorkKinds.Merge, judgement.Kind);
+        Assert.Contains("its build passes", judgement.Sentence);
     }
 }
