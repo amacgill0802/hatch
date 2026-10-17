@@ -13,12 +13,14 @@ import {
   resolveProject,
   resolveWindow,
   sameWindow,
+  foldRows,
   toggled,
   unresolvedPhrase,
   withFilter,
   withWindow,
   type TimelineWindow,
 } from '../lib/timeline';
+import { readHidden, toggleHidden } from '../lib/timelineHidden';
 import { useLoaded } from '../lib/useLoaded';
 import type { Project, Status, Timeline } from '../types';
 
@@ -37,17 +39,19 @@ interface BodyProps {
   now: Date;
   expanded: ReadonlySet<string>;
   onToggle: (key: string) => void;
+  hidden: ReadonlySet<string>;
+  onHide: (key: string) => void;
 }
 
 /**
  * What the page shows once the answer is in: the chart, or the sentence that
- * says there is nothing to chart, and under either the footnote for column
+ * says there is nothing to chart (or that every row in it is hidden), and under either the footnote for column
  * changes the server could not place.
  *
  * Pure of the load and of the URL, so a test can render it from props - there
  * is no DOM runner to drive `useLoaded`.
  */
-export function TimelineBody({ timeline, statuses, offsetMinutes, now, expanded, onToggle }: BodyProps) {
+export function TimelineBody({ timeline, statuses, offsetMinutes, now, expanded, onToggle, hidden, onHide }: BodyProps) {
   const empty = timeline.epics.length === 0 && timeline.other === null;
   const unresolved = unresolvedPhrase(timeline.unresolved);
 
@@ -55,6 +59,8 @@ export function TimelineBody({ timeline, statuses, offsetMinutes, now, expanded,
     <>
       {empty ? (
         <EmptyState message="Nothing was active in this range." />
+      ) : foldRows(timeline, expanded, hidden).length === 0 ? (
+        <EmptyState message="Every epic in this range is hidden." />
       ) : (
         /* Scaled to the answer's own `from` and `to` - the clamps the server
            applied - not the window that was asked for, so the ticks and the
@@ -67,6 +73,8 @@ export function TimelineBody({ timeline, statuses, offsetMinutes, now, expanded,
           now={now}
           expanded={expanded}
           onToggle={onToggle}
+          hidden={hidden}
+          onHide={onHide}
         />
       )}
 
@@ -146,6 +154,7 @@ export function TimelinePage() {
   }
 
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
+  const [hidden, setHidden] = useState<ReadonlySet<string>>(() => new Set(readHidden()));
 
   if (error && !data) return <p className="text-danger">{error}</p>;
   if (!data) return <p className="text-muted">Loading…</p>;
@@ -190,6 +199,8 @@ export function TimelinePage() {
         now={now}
         expanded={expanded}
         onToggle={(key) => setExpanded((open) => toggled(open, key))}
+        hidden={hidden}
+        onHide={(key) => setHidden(new Set(toggleHidden(key)))}
       />
     </div>
   );

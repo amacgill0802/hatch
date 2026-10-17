@@ -330,10 +330,16 @@ export interface TimelineRow {
  * The answer as rows, depth first: each epic in the order answered, then Other
  * when there is one, and an entry's children straight after it - at one more
  * depth, recursively - only when its key is in `expanded`. Everything is
- * collapsed when the set is empty. A row carries its entry untouched, so its
- * `segments` are its own and never a merge of its children's.
+ * collapsed when the set is empty. A top-level entry whose key is in `hidden`
+ * is skipped, and its children with it; a hidden key naming no entry changes
+ * nothing, and `timeline` is only read. A row carries its entry untouched, so
+ * its `segments` are its own and never a merge of its children's.
  */
-export function foldRows(timeline: Timeline, expanded: ReadonlySet<string>): TimelineRow[] {
+export function foldRows(
+  timeline: Timeline,
+  expanded: ReadonlySet<string>,
+  hidden: ReadonlySet<string> = new Set(),
+): TimelineRow[] {
   const rows: TimelineRow[] = [];
 
   const visit = (entry: TimelineEntry, depth: number) => {
@@ -345,8 +351,8 @@ export function foldRows(timeline: Timeline, expanded: ReadonlySet<string>): Tim
     if (open) for (const child of entry.children) visit(child, depth + 1);
   };
 
-  for (const epic of timeline.epics) visit(epic, 0);
-  if (timeline.other) visit(timeline.other, 0);
+  for (const epic of timeline.epics) if (!hidden.has(epic.issue.key)) visit(epic, 0);
+  if (timeline.other && !hidden.has(timeline.other.issue.key)) visit(timeline.other, 0);
 
   return rows;
 }

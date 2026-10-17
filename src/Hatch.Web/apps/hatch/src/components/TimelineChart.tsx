@@ -19,6 +19,9 @@ interface Props {
   /** The keys of the rows that are open; the page owns it. */
   expanded: ReadonlySet<string>;
   onToggle: (key: string) => void;
+  /** The top-level keys left out of the chart; the page owns it. */
+  hidden: ReadonlySet<string>;
+  onHide: (key: string) => void;
   /** For the tests to pin; the page passes none and gets the reader's. */
   locale?: string;
 }
@@ -34,8 +37,8 @@ interface Props {
  * The lanes and the labels line up by sharing one row height in CSS, not by
  * measuring anything.
  */
-export function TimelineChart({ timeline, statuses, scale, offsetMinutes, now, expanded, onToggle, locale }: Props) {
-  const rows = foldRows(timeline, expanded);
+export function TimelineChart({ timeline, statuses, scale, offsetMinutes, now, expanded, onToggle, hidden, onHide, locale }: Props) {
+  const rows = foldRows(timeline, expanded, hidden);
   const today = todayX(scale, now);
   const statusName = (id: number) => statuses.find((status) => status.id === id)?.name ?? 'Unknown';
 
@@ -65,6 +68,16 @@ export function TimelineChart({ timeline, statuses, scale, offsetMinutes, now, e
                   onClick={() => onToggle(issue.key)}
                 >
                   {row.expanded ? '−' : '+'}
+                </button>
+              )}
+              {row.depth === 0 && (
+                <button
+                  type="button"
+                  className="hatch-timeline-hide"
+                  aria-label={`Hide ${name}`}
+                  onClick={() => onHide(issue.key)}
+                >
+                  Hide
                 </button>
               )}
             </div>

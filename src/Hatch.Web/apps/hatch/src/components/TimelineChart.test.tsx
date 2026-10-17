@@ -52,7 +52,7 @@ const timeline: Timeline = {
   unresolved: 0,
 };
 
-function render(over: { expanded?: string[]; now?: Date; timeline?: Timeline } = {}): string {
+function render(over: { expanded?: string[]; hidden?: string[]; now?: Date; timeline?: Timeline } = {}): string {
   return renderToStaticMarkup(
     <MemoryRouter>
       <TimelineChart
@@ -63,6 +63,8 @@ function render(over: { expanded?: string[]; now?: Date; timeline?: Timeline } =
         now={over.now ?? NOW}
         expanded={new Set(over.expanded ?? [])}
         onToggle={() => {}}
+        hidden={new Set(over.hidden ?? [])}
+        onHide={() => {}}
         locale={LOCALE}
       />
     </MemoryRouter>,
@@ -108,8 +110,32 @@ describe('TimelineChart', () => {
   it('draws a toggle only on a row with children', () => {
     const leaf = render({ timeline: { ...timeline, epics: [entry('HA-9')], other: null } });
 
-    expect(leaf).not.toContain('<button');
-    expect(render()).toContain('<button type="button"');
+    expect(count(leaf, 'hatch-timeline-toggle')).toBe(0);
+    expect(count(render(), 'hatch-timeline-toggle')).toBe(1);
+  });
+
+  it('draws a Hide button on each top-level row and on no child row', () => {
+    const html = render();
+
+    expect(html).toContain('aria-label="Hide HA-1"');
+    expect(html).toContain('aria-label="Hide Other"');
+    expect(count(html, 'hatch-timeline-hide')).toBe(2);
+
+    const open = render({ expanded: ['HA-1'] });
+
+    expect(count(open, 'hatch-timeline-label')).toBe(3);
+    expect(count(open, 'hatch-timeline-hide')).toBe(2);
+    expect(open).not.toContain('aria-label="Hide HA-2"');
+  });
+
+  it('leaves a hidden key out of the labels and the lanes', () => {
+    const html = render({ hidden: ['HA-1'] });
+
+    expect(html).not.toContain('HA-1');
+    expect(html).not.toContain('title HA-1');
+    expect(count(html, 'hatch-timeline-label')).toBe(1);
+    expect(count(html, 'hatch-timeline-lane')).toBe(1);
+    expect(html).toContain('aria-label="Hide Other"');
   });
 
   it('places each segment by xOf, and runs an unended one to the right edge', () => {
