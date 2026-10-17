@@ -828,3 +828,87 @@ step 1.
 
 Reference: [docker compose up](https://docs.docker.com/reference/cli/docker/compose/up/)
 and [variable interpolation in Compose](https://docs.docker.com/compose/how-tos/environment-variables/variable-interpolation/).
+
+### 6. Open the board
+
+**What this is.** A browser is the program the person uses to look at web
+pages, such as Safari, Chrome, Edge or Firefox. The board is a web page that
+Hatch serves from this machine, so opening it means pointing a browser at the
+address from step 5: `http://localhost:` followed by the port, then
+`/apps/hatch/`. A bookmark is a saved address, so the person can get back to
+the board without being told it again.
+
+**Tell the person.** "Hatch is running, so now I am going to open the board in
+your browser. It takes a second. It will be empty, with no project on it yet;
+that is expected, because nobody has made one. When it opens, tell me you can
+see it, and please bookmark the page so you can come back to it."
+
+**Do it.** In each command `<port>` is the port step 5 settled on, such as
+8080. Open the address in the person's default browser.
+
+macOS:
+
+```
+open http://localhost:<port>/apps/hatch/
+```
+
+Windows PowerShell:
+
+```
+Start-Process http://localhost:<port>/apps/hatch/
+```
+
+In Git Bash on Windows:
+
+```
+cmd.exe //c start "" http://localhost:<port>/apps/hatch/
+```
+
+Linux:
+
+```
+xdg-open http://localhost:<port>/apps/hatch/
+```
+
+If `xdg-open` is missing, or this machine has no desktop, do not install
+anything: give the person the address and ask them to open it in a browser on a
+machine that can reach this one.
+
+> **Hand this to the person.** "The board should now be open in your browser.
+> Please bookmark it so you can find it again. Tell me when you can see it."
+
+**Check.** Step 5's poll printed `up`, and the person says they can see the
+board. An empty board with no project on it is correct. What goes on it is
+covered by the board's own Docs page, which is linked from the gear inside the
+board.
+
+**Restarts.** If the computer restarts or Docker stops, Hatch comes back by
+itself once Docker is running again, because the database and the web server
+are set to restart. On macOS and Windows that means the person starting Docker
+Desktop, which can be set to start when they log in, in its settings; tell
+them so and do not change the setting yourself. On Linux the Docker service
+normally starts at boot; if it does not, hand the person
+`sudo systemctl enable --now docker`. Then the person opens their bookmark.
+There is nothing else to run.
+
+**Their data.** The board's data lives in a Docker volume called
+`hatch-local_pgdata`, so it survives restarts and `docker compose down`.
+`docker compose down -v` deletes it with no undo. Never run it, and never
+suggest it, unless the person asks to start again from an empty board.
+
+**If you see** the browser opens but says it cannot connect, run step 5's poll
+slice again. If it does not print `up`, go back to step 5; do not start Hatch a
+second time here.
+
+**If you see** a different page from the board, or a program that is not
+Hatch, something else is using that port. Go back to step 5 and check the port
+again.
+
+Reference: [Start-Process](https://learn.microsoft.com/powershell/module/microsoft.powershell.management/start-process).
+
+## The board is open
+
+The board is up at `http://localhost:` followed by the port, then
+`/apps/hatch/`. This page goes on with the sign-ins and the runner. Until
+they are published the guide stops here: tell the person the board is open and
+that the rest of this guide is not published yet, then stop.
