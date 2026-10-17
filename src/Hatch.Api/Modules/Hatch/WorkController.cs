@@ -677,10 +677,10 @@ public class WorkController(
     }
 
     /// <summary>
-    /// Advances an issue waiting in review whose pull request has merged - the
-    /// one path that may move work into a terminal column without the operator
-    /// pressing it there themselves, because a merge on the forge <em>is</em>
-    /// that decision. Uses <see cref="Columns.Advance"/> rather than
+    /// Advances an issue waiting in review whose pull request has merged - one
+    /// of two paths (<see cref="LandedWork"/> is the other) that may move work
+    /// into a terminal column without the operator pressing it there
+    /// themselves, because a merge on the forge <em>is</em> that decision. Uses <see cref="Columns.Advance"/> rather than
     /// <see cref="Columns.Target"/> and carries its own refusals rather than
     /// <see cref="Dispatch.Blocked"/>'s, since <c>Target</c> and <c>Blocked</c>
     /// both exist to keep an unattended pass from shipping anything itself.
@@ -866,6 +866,85 @@ public class WorkController(
 
         issue.Rank = await ranks.BottomAsync(review.Id, ct);
         issue.StatusId = review.Id;
+        issue.UpdatedAt = now;
+        await db.SaveChangesAsync(ct);
+
+        return await IssueProjection.ToDtoAsync(db, actors, issue, claims, now, ct);
+    }
+
+    /// <summary>
+    /// The trunk-landing counterpart of <see cref="MergedWork"/>: a path into a
+    /// terminal column without the operator pressing it, because the owner's
+    /// choice to land on the trunk, judged landed and green, <em>is</em> the
+    /// decision to ship. Carries a trunk-landing issue with no pull request
+    /// from the review column to the terminal column after it, only where
+    /// <see cref="LandingWork.Judge"/> reads <see cref="WorkKinds.Land"/>.
+    /// </summary>
+    /// <remarks>
+    /// Takes no body and trusts nothing from its caller: the landings and
+    /// trunk builds are read again here and judged at the moment of the call,
+    /// so a stale poll cannot land what the board no longer reads as landed.
+    ///
+    /// <para>Takes no claim, and refuses a claimed issue the same way
+    /// <see cref="MergedWork"/> does. No WIP gate, and none of
+    /// <see cref="MergedWork"/>'s carry of a story's waiting tasks - that is
+    /// for a pull request several of them share, and a landing has none.</para>
+    /// </remarks>
+    [HttpPost("{key}/landed")]
+    public async Task<ActionResult<IssueDto>> LandedWork(string key, CancellationToken ct)
+    {
+        if (!IssueKey.TryParse(key, out var projectKey, out var number)) return NotFound();
+
+        var issue = await db.Issues.Include(i => i.Project).ThenInclude(p => p!.Repositories)
+            .WithKey(projectKey, number).FirstOrDefaultAsync(ct);
+        if (issue is null) return NotFound();
+
+        var statuses = await _dispatch.OrderedStatusesAsync(ct);
+        var from = statuses.First(s => s.Id == issue.StatusId);
+
+        if (Columns.AwaitingReview(statuses)?.Id != from.Id)
+            return Conflict(
+                $"\"{from.Name}\" is not the review column - a landing only advances a ticket waiting there");
+
+        if (!LandingWork.Applies(issue))
+            return Conflict(issue.Project!.Landing != Landings.Trunk
+                ? "this project lands by pull request, so there is no landing to confirm"
+                : "a pull request is recorded on this issue, so it lands by merge and not by landing");
+
+        var to = Columns.Closes(statuses, from);
+        if (to is null)
+            return Conflict($"there is no terminal column after \"{from.Name}\", so there is nowhere for this to go");
+
+        var now = time.GetUtcNow();
+        var repositories = issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList();
+        var landings = (await _dispatch.LandingsAsync([issue.Id], ct)).GetValueOrDefault(issue.Id, []);
+        var trunkBuilds = await _dispatch.TrunkBuildsAsync(landings.Select(l => l.Canonical), ct);
+        var judgement = LandingWork.Judge(repositories, landings, trunkBuilds, issue.Project.ChecksRequired, now);
+
+        if (judgement.Kind != WorkKinds.Land) return Conflict(judgement.Sentence);
+
+        var claimed = new ClaimGate(claims, now, null, await claims.LineageAsync(db, now, ct));
+        if (claimed.Held(issue) is { } holder) return Conflict(holder);
+
+        var actor = await caller.ActorNameAsync(ct);
+        issue.Events.Add(new EfHatchIssueEvent
+        {
+            Actor = actor,
+            Kind = EfHatchIssueEvent.StatusChanged,
+            Payload = JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, to, ("landed", true))),
+            At = now,
+        });
+
+        db.Comments.Add(new EfHatchComment
+        {
+            IssueId = issue.Id,
+            Author = actor,
+            Body = LandingWork.Comment(repositories, landings, trunkBuilds),
+            CreatedAt = now,
+        });
+
+        issue.Rank = await ranks.BottomAsync(to.Id, ct);
+        issue.StatusId = to.Id;
         issue.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
 
