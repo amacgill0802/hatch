@@ -1,16 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import type { IssueCard, Status, Timeline, TimelineEntry, TimelineSegment } from '../types';
+import type { IssueCard, Project, Status, Timeline, TimelineEntry, TimelineSegment } from '../types';
 import { DEFAULT_STATUS_COLOR } from './color';
 import {
   CHART_UNITS,
+  CREATOR,
   DEFAULT_DAYS,
   OTHER_KEY,
+  PROJECT,
   WINDOW_PRESETS,
+  creatorChoices,
   foldRows,
   makeScale,
   parsePreset,
   presetOf,
   resizeWindow,
+  resolveCreator,
+  resolveProject,
   resolveWindow,
   segmentStyle,
   segmentTitle,
@@ -22,6 +27,7 @@ import {
   toggled,
   unresolvedPhrase,
   windowEndingToday,
+  withFilter,
   withWindow,
   xOf,
   type TimelineWindow,
@@ -600,6 +606,103 @@ describe('withWindow', () => {
   });
 });
 
+describe('resolveProject', () => {
+  const projects = [
+    { id: 1, key: 'HA' },
+    { id: 2, key: 'AER' },
+  ] as Project[];
+
+  it('finds the project by key', () => {
+    expect(resolveProject(params('project=AER'), projects)).toBe(projects[1]);
+  });
+
+  it('trims the key', () => {
+    expect(resolveProject(params('project=%20HA%20'), projects)).toBe(projects[0]);
+  });
+
+  it('is null when absent or empty', () => {
+    expect(resolveProject(params(''), projects)).toBeNull();
+    expect(resolveProject(params('project='), projects)).toBeNull();
+    expect(resolveProject(params('project=%20'), projects)).toBeNull();
+  });
+
+  it('is null for a key naming no project', () => {
+    expect(resolveProject(params('project=ZZ'), projects)).toBeNull();
+  });
+
+  it('never reads an id as a key', () => {
+    expect(resolveProject(params('project=1'), projects)).toBeNull();
+  });
+});
+
+describe('resolveCreator', () => {
+  it('is empty, meaning anyone, when absent', () => {
+    expect(resolveCreator(params(''))).toBe('');
+  });
+
+  it('reads a name with a space in it', () => {
+    expect(resolveCreator(params('creator=Ada%20Lovelace'))).toBe('Ada Lovelace');
+  });
+
+  it('is empty for whitespace alone', () => {
+    expect(resolveCreator(params('creator=%20%20'))).toBe('');
+  });
+});
+
+describe('creatorChoices', () => {
+  const creators = ['Zed', 'Ada', 'Mo'];
+
+  it('is unchanged for no selection or one already present', () => {
+    expect(creatorChoices(creators, '')).toEqual(creators);
+    expect(creatorChoices(creators, 'Ada')).toEqual(creators);
+  });
+
+  it('appends an absent name last', () => {
+    expect(creatorChoices(creators, 'Grace')).toEqual(['Zed', 'Ada', 'Mo', 'Grace']);
+  });
+
+  it('keeps the order given', () => {
+    expect(creatorChoices(['b', 'a'], 'c')).toEqual(['b', 'a', 'c']);
+  });
+
+  it('does not mutate its input', () => {
+    const input = ['Zed', 'Ada'];
+    creatorChoices(input, 'Grace');
+
+    expect(input).toEqual(['Zed', 'Ada']);
+  });
+});
+
+describe('withFilter', () => {
+  it('sets a filter', () => {
+    expect(withFilter(params(''), PROJECT, 'HA').get('project')).toBe('HA');
+  });
+
+  it('replaces a filter', () => {
+    expect(withFilter(params('creator=Ada'), CREATOR, 'Mo').getAll('creator')).toEqual(['Mo']);
+  });
+
+  it('deletes a filter for an empty value', () => {
+    expect(withFilter(params('project=HA'), PROJECT, '').has('project')).toBe(false);
+  });
+
+  it('keeps the window and the other filter', () => {
+    const next = withFilter(params('from=a&to=b&creator=Ada'), PROJECT, 'HA');
+
+    expect(next.get('from')).toBe('a');
+    expect(next.get('to')).toBe('b');
+    expect(next.get('creator')).toBe('Ada');
+  });
+
+  it('does not mutate its input', () => {
+    const input = params('project=HA');
+    withFilter(input, PROJECT, '');
+    withFilter(input, CREATOR, 'Ada');
+
+    expect(input.toString()).toBe('project=HA');
+  });
+});
+
 describe('as the page composes it', () => {
   /** What `move` chains: resolve the URL, step, write, and read the written URL back. */
   const roundTrip = (startQuery: string, step: (w: TimelineWindow) => TimelineWindow) => {
@@ -637,6 +740,15 @@ describe('as the page composes it', () => {
     const shown = resolveWindow(params(''), NOW, 0);
 
     expect(sameWindow(windowEndingToday(shown, NOW, 0), shown)).toBe(true);
+  });
+
+  it('writing the window after the filters keeps both filters', () => {
+    const filtered = withFilter(withFilter(params('range=1y'), PROJECT, 'HA'), CREATOR, 'Ada Lovelace');
+    const written = withWindow(filtered, ending(D, 30));
+
+    expect(written.get('project')).toBe('HA');
+    expect(written.get('creator')).toBe('Ada Lovelace');
+    expect(written.has('range')).toBe(false);
   });
 
   it('reads range=1y alone as the year ending at the next midnight', () => {
