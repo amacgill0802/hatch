@@ -3106,6 +3106,148 @@ function that could. A work log row is written by the dispatcher with an API
 key, and `POST /api/hatch/issues/{key}/work-log` refuses a person outright — see
 `IssueWorkLogController.NotAKey`.
 
+## Reports
+
+The board says what is where. The reports say **when it was** — questions about
+the board's own history, which the board as it stands cannot answer because it
+holds only the present column of every issue.
+
+Reports is a top-level area of the Hatch app: a **Reports** link in the primary
+nav between **Plan** and **Agents**, and an index at `/reports` with one card
+per report, each stating the question it answers. There is one report so far,
+the Timeline. A new report is one more entry in that index and a route; a menu
+under the nav link waits until there is a second report to put in it.
+
+### The timeline
+
+The Timeline answers **when each epic was in flight, and how long its work sat
+in each column**: one row per top-level epic, drawn as coloured stretches along
+a time axis, with the work beneath it a click away. Everything on it comes from
+two tables that already exist — the issues, and the `status_changed` events of
+the [issue event](#issue-event) trail — and nothing is stored for it. The page
+is at `/reports/timeline`.
+
+#### What "active" measures
+
+A bar is drawn for the time an issue spent in an **active** column, and active
+is measured off the board's shape rather than named: every column after the
+first that is neither terminal nor deferred (`TimelineReport.BoardIndex`). On
+the example board that is the columns from Breakdown through In Review. The
+first column is where an idea waits to be written, a terminal column is where
+work ended, and a deferred column is a siding, so a stretch in any of the three
+is a **gap in the bar**, not a segment. A deferred stretch between two active
+ones leaves them two segments.
+
+It is not a column name because the stock names are seeded by migrations and
+every column can be renamed, inserted or reordered (see [Status](#status)), so
+a rule that named one would be true of exactly one installation. Reading the
+flags and the order is true of any board.
+
+#### The rebuild, and its one hole
+
+An issue's history is rebuilt from its `status_changed` events, oldest first (by
+`At`, then by event id). The column before the first event is that event's
+`from`; each `to` holds until the next event; an issue with no such event has
+been in its current column since it was created. Consecutive stretches in one
+column are merged, and a stretch that ends no later than it starts is dropped.
+The hierarchy is not rebuilt from history: it is today's tree.
+
+An event is matched to a column in one of two ways. An event carrying
+`fromId`/`toId` is resolved **by id only**; the name is not tried, since a
+deleted column's name may have been reused. An event from before the ids were
+written has names only, matched exactly against the board's current names.
+
+That is the one hole. A stretch that matches no current column — the column was
+renamed since, and the event predates the ids — cannot be placed. It is treated
+as not active, counted in `unresolved`, and footnoted on the page ("*N* column
+changes could not be placed, because the column has since been renamed."),
+rather than drawn as a bar the report cannot stand behind. Events written since
+the ids landed are immune to renames, so the hole closes going forward and
+never reopens. An issue that is deleted takes its events with it and is absent
+from the report, as everything the trail would have said about it is (see
+[deferred on purpose](#deferred-on-purpose)).
+
+#### The answer
+
+```
+GET /api/hatch/reports/timeline?from=&to=&projectId=&createdBy=
+```
+
+`from` and `to` are **instants** (`2026-09-12T17:00:00Z`), not dates. With
+neither given the range is the 90 days ending now; with only `from` absent it is
+the 90 days before `to`. Equal bounds are accepted. The `400`s are an
+unparseable bound, an inverted one (`from` after `to`), and a `projectId` that
+names no project. The route is open to a person or to a key with the `hatch`
+scope.
+
+It answers `{ from, to, epics, other, creators, unresolved }`. `from` and `to`
+are the range as the server resolved it. Each entry in `epics` is `{ issue,
+createdBy, isLeaf, segments, children }`: `issue` is a card, each segment is
+`{ statusId, from, to }` clipped to the range with `to` null while the stretch
+carries on past its end, and `children` nest the same shape. `other` is null
+when there is no loose work. `creators` is the distinct creating names of the
+rows the filters have not yet narrowed, for the picker. `unresolved` is the
+count above.
+
+The fold is the server's for the reason `/plan` and `/work-log/history` are:
+the events table is unbounded, a browser that pulled it down would be running an
+export, and a number the browser derived would disagree with `hatch api GET`
+the first time a column was added. `TimelineReport` takes rows and changes and
+answers shapes, with no database and no clock; `ReportsController` loads them
+and decorates the result with cards.
+
+#### Who is in it
+
+- **A top-level epic** — an epic with no epic above it — is in the answer when
+  one of its **own** active stretches meets the range. Its children are listed
+  only with a stretch of their own, or descendants that have one. An issue is
+  drawn, and counted, once.
+- **A loose root** — a parentless non-epic — is in when its own stretches, or any
+  descendant's, meet the range.
+- **Other** is one row under which every loose root stands. Its `issue` is a
+  stand-in card with the key `other` and no real issue behind it, and its bar is
+  the hull of every segment beneath it: the earliest start to the latest end,
+  open if any is open. It exists so the report cannot quietly hide work filed
+  without a parent, the reason the Plan page has *Under no epic*.
+
+#### Filters, and hiding
+
+The two are different things and live in different places.
+
+**Filters belong to the server.** `projectId` and `createdBy` (an exact name)
+narrow the **top-level rows only**; children ride with their root whatever
+project they were filed in. `creators` ignores the creator filter, so the picker
+still offers the people the filter hides, but is limited to roots that made the
+answer; `unresolved` sums only the roots left after narrowing. On the page they
+are in the URL as `project` (a key) and `creator` (a name), beside the window's
+`from` and `to` and a `range` shorthand (`2w`, `1m`, `3m`, `6m`, `1y`). With
+none of them the page opens on the 90 days ending at the reader's **next
+midnight** — the server's own default ends *now*, and the page's alignment to
+the reader's day is the browser's.
+
+**Hiding belongs to the browser.** Each top-level row has a **Hide** button, and
+the hidden rows are listed in a **Hidden (n)** disclosure with **Show** beside
+each and **Show all**. The set is a list of keys in `localStorage` under
+`hatch.timeline.hidden`, per browser, and is deliberately not in the URL, so a
+pasted link never silently hides anything. Which rows are expanded is page
+state and not in the URL either. A hidden row is skipped with its children
+beneath it; the server is not asked again.
+
+#### The drawing
+
+It is hand-cut SVG and CSS in the house's own tokens, with no charting
+dependency; the geometry lives in a tested function (`lib/timeline.ts`) rather
+than in the component. Each segment is painted in its column's colour from the
+Statuses page, so a recoloured column recolours the history. The axis ticks fall
+on the reader's midnights, Mondays and month starts, and a marker shows today
+when today is inside the range.
+
+**Nothing on this page writes**, and the absence is the guarantee rather than a
+convention: there is no control that could, and the browser API client has no
+function that could. There is **no CLI subcommand** for it either; a script
+reaches the same answer with `hatch api GET /api/hatch/reports/timeline?...`,
+which is the [API surface](#api-surface)'s row for it.
+
 ## The overnight
 
 The leaderboard says what the nights cost. The overnight page says **what the
