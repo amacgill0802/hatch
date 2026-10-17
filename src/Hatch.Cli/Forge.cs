@@ -29,7 +29,9 @@ public sealed record ForgeAnswer(BuildRead? Read, string? Why);
 /// <param name="Why">One line, for a sentence. Null where <paramref name="State"/> was read.</param>
 /// <param name="HeadSha">The pull request's own head sha. Null where it was not read.</param>
 /// <param name="Number">The pull request's own number. Null where it was not read.</param>
-public sealed record PullRequestAnswer(string? State, string? Why, string? HeadSha = null, long? Number = null);
+/// <param name="MergeState">One of <see cref="MergeStates"/>. Null where it was not read - a failed read, a local path, a fake that says nothing - which is not the same as <see cref="MergeStates.Unknown"/>.</param>
+/// <param name="ReviewDecision">One of <see cref="ReviewDecisions"/>. Null where it was not read, which is not the same as <see cref="ReviewDecisions.None"/>.</param>
+public sealed record PullRequestAnswer(string? State, string? Why, string? HeadSha = null, long? Number = null, string? MergeState = null, string? ReviewDecision = null);
 
 /// <summary>What a forge answered about a merge attempt: whether it took, or why it did not.</summary>
 /// <param name="Merged">True where the merge went through.</param>
@@ -169,7 +171,7 @@ public sealed class GhForge(
         // The url names the host, the owner and the number, so gh resolves the
         // repository from it without --hostname - unlike gh api, which ignores
         // the host in GH_REPO and always needs it.
-        var ran = await _run(path, Env(), ["pr", "view", url, "--json", "state,headRefOid,number"], ct);
+        var ran = await _run(path, Env(), ["pr", "view", url, "--json", "state,headRefOid,number,mergeStateStatus,reviewDecision,isDraft"], ct);
         if (ran.Code != 0) return new PullRequestAnswer(null, Why(ran));
 
         try
@@ -177,7 +179,11 @@ public sealed class GhForge(
             using var doc = JsonDocument.Parse(ran.Out);
             var state = Text(doc.RootElement, "state");
             var number = doc.RootElement.TryGetProperty("number", out var n) && n.TryGetInt64(out var num) ? num : (long?)null;
-            return new PullRequestAnswer(ClassifyState(state), null, Text(doc.RootElement, "headRefOid"), number);
+            var isDraft = doc.RootElement.TryGetProperty("isDraft", out var d) && d.ValueKind == JsonValueKind.True;
+            return new PullRequestAnswer(
+                ClassifyState(state), null, Text(doc.RootElement, "headRefOid"), number,
+                ClassifyMergeState(Text(doc.RootElement, "mergeStateStatus"), isDraft),
+                ClassifyReviewDecision(Text(doc.RootElement, "reviewDecision")));
         }
         catch (JsonException)
         {
@@ -232,6 +238,34 @@ public sealed class GhForge(
         "OPEN" => PullRequestStates.Open,
         "CLOSED" => PullRequestStates.Closed,
         _ => PullRequestStates.Unknown,
+    };
+
+    /// <summary>
+    /// One of <see cref="MergeStates"/>, matched case-insensitively against what <c>gh</c> prints for
+    /// <c>mergeStateStatus</c>. A draft is a draft whatever the status says; <c>HAS_HOOKS</c> is mergeable, so clean.
+    /// </summary>
+    public static string ClassifyMergeState(string? status, bool isDraft) => isDraft ? MergeStates.Draft : status?.ToUpperInvariant() switch
+    {
+        "CLEAN" or "HAS_HOOKS" => MergeStates.Clean,
+        "BLOCKED" => MergeStates.Blocked,
+        "BEHIND" => MergeStates.Behind,
+        "DIRTY" => MergeStates.Dirty,
+        "UNSTABLE" => MergeStates.Unstable,
+        "DRAFT" => MergeStates.Draft,
+        _ => MergeStates.Unknown,
+    };
+
+    /// <summary>
+    /// One of <see cref="ReviewDecisions"/>, matched case-insensitively against what <c>gh</c> prints for
+    /// <c>reviewDecision</c>. It prints an empty string where the repository asks for no review, and a decision
+    /// this does not know is not a hold, so both read <see cref="ReviewDecisions.None"/>.
+    /// </summary>
+    public static string ClassifyReviewDecision(string? decision) => decision?.ToUpperInvariant() switch
+    {
+        "APPROVED" => ReviewDecisions.Approved,
+        "CHANGES_REQUESTED" => ReviewDecisions.ChangesRequested,
+        "REVIEW_REQUIRED" => ReviewDecisions.ReviewRequired,
+        _ => ReviewDecisions.None,
     };
 
     public async Task<string?> LogAsync(FailingCheck check, CancellationToken ct)
