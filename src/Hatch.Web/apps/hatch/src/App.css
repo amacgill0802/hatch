@@ -4098,6 +4098,163 @@ button.hatch-option.chosen {
 }
 
 /* ---------------------------------------------------------------------------
+   The timeline: when the work happened, one row per issue.
+
+   See components/TimelineChart.tsx. A label column beside a pane of lanes; the
+   two line up because every box in a row reads the same --hatch-timeline-row,
+   not because anything is measured. The pane is the only thing that scrolls
+   sideways, and the track inside it is as wide as the chart, so the ticks and
+   the today line resolve their `left: x%` against the chart and not against
+   whatever part of it is on screen. */
+.hatch-timeline {
+  --hatch-timeline-row: calc(var(--sp-6) + var(--sp-1));
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.hatch-timeline-labels {
+  display: flex;
+  flex-direction: column;
+  max-width: calc(var(--sp-10) * 8);
+  min-width: 0;
+}
+
+/* The ruler's height, so the first label sits level with the first lane. */
+.hatch-timeline-corner {
+  flex: none;
+  height: var(--hatch-timeline-row);
+}
+
+.hatch-timeline-label {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: var(--sp-1-5);
+  height: var(--hatch-timeline-row);
+  padding-left: calc(var(--sp-4) * var(--depth));
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* The glyph is positioned for the board card's corner; here it is one more
+   item in a line. Its size is left alone. */
+.hatch-timeline-label .hatch-type-glyph {
+  position: static;
+  flex: none;
+}
+
+.hatch-timeline-key {
+  flex: none;
+  font-family: var(--mono);
+  font-size: var(--t-label);
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.hatch-timeline-key:hover {
+  color: var(--primary);
+  text-decoration: underline;
+}
+
+.hatch-timeline-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* A bare <button> carries the browser's own face. Native, so it is in the tab
+   order and answers Enter and Space; the focus ring is the chip link's. */
+.hatch-timeline-toggle {
+  appearance: none;
+  flex: none;
+  margin-left: auto;
+  padding: 0 var(--sp-1-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: none;
+  font: inherit;
+  font-size: var(--t-label);
+  line-height: 1.4;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.hatch-timeline-toggle:hover,
+.hatch-timeline-toggle:focus-visible {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.hatch-timeline-pane {
+  overflow-x: auto;
+  min-width: 0;
+}
+
+.hatch-timeline-track {
+  position: relative;
+  min-width: calc(var(--sp-10) * 12);
+}
+
+.hatch-timeline-ruler {
+  position: relative;
+  height: var(--hatch-timeline-row);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--t-micro);
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.hatch-timeline-tick {
+  position: absolute;
+  bottom: 0;
+  padding-left: var(--sp-1);
+  border-left: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.hatch-timeline-lane {
+  height: var(--hatch-timeline-row);
+  min-width: calc(var(--sp-10) * 12);
+}
+
+.hatch-timeline-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.hatch-timeline-segment {
+  fill: var(--status-color);
+}
+
+/* Other is not a column's work but a hull of whatever was loose, so it takes
+   no status colour. */
+.hatch-timeline-segment--other {
+  fill: var(--line-strong);
+}
+
+/* Width-less, so its one pixel is a border and not a literal size. */
+.hatch-timeline-today {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1px solid var(--danger);
+  pointer-events: none;
+}
+
+/* A phone keeps the key and the toggle and scrolls the chart. */
+@media (max-width: 40rem) {
+  .hatch-timeline-title,
+  .hatch-timeline-label .hatch-type-glyph {
+    display: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
    The issue picker: a button that opens a search box and a list of rows.
 
    See components/IssuePicker.tsx. Everything here is chrome - the order, the
