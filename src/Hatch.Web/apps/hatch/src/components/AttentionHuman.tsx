@@ -5,6 +5,7 @@ import {
   approvedHeldEmptyWords,
   buildIconTone,
   buildIconWords,
+  landingHeldEmptyWords,
   questionEmptyWords,
   reviewEmptyWords,
   trunkBuildEmptyWords,
@@ -135,6 +136,7 @@ export function AttentionHuman({
   const questions = attention?.questions ?? [];
   const trunkBuilds = attention?.trunkBuilds ?? [];
   const approvedHeld = attention?.approvedHeld ?? [];
+  const landingHeld = attention?.landingHeld ?? [];
 
   return (
     <>
@@ -204,6 +206,28 @@ export function AttentionHuman({
               <li key={h.key}>
                 {/* This tab, and to the issue: the fix - moving it back to
                     review - happens there, not on the forge. */}
+                <Link className="hatch-attention-row" to={`/issues/${h.key}`}>
+                  <span className="hatch-attention-row-head">
+                    <span className="hatch-attention-key">{h.key}</span>
+                    <span className="hatch-attention-title">{h.title}</span>
+                  </span>
+                  <span className="hatch-attention-files">{h.sentence}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="hatch-attention-section">
+        <h3 className="hatch-attention-heading">Landed, not done</h3>
+
+        {landingHeld.length === 0 ? (
+          <p className="hatch-attention-empty">{landingHeldEmptyWords()}</p>
+        ) : (
+          <ul className="hatch-attention-rows">
+            {landingHeld.map((h) => (
+              <li key={h.key}>
                 <Link className="hatch-attention-row" to={`/issues/${h.key}`}>
                   <span className="hatch-attention-row-head">
                     <span className="hatch-attention-key">{h.key}</span>

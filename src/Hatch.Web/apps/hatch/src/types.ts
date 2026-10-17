@@ -1224,6 +1224,15 @@ export interface ApprovedHeld {
   sentence: string;
 }
 
+/** An issue whose work reached the trunk but which has not been finished,
+    with the judge's own sentence saying why. Mirrors LandingHeldDto. */
+export interface LandingHeld {
+  key: string;
+  title: string;
+  type: string;
+  sentence: string;
+}
+
 /** The merge column's issues the loop is still progressing on its own - about
     to merge, about to update, or waiting on its own next poll. Mirrors
     ApprovedWaitingDto. */
@@ -1280,6 +1289,10 @@ export interface Attention {
       saying why - a person's to fix, every time. Absent from a board that
       predates them. */
   approvedHeld?: ApprovedHeld[];
+  /** The issues whose work landed on the trunk but stopped short of done, with
+      the judge's own sentence saying why - a person's to fix, every time.
+      Absent from a board that predates them. */
+  landingHeld?: LandingHeld[];
   /** The merge column's issues the loop is still progressing on its own.
       Absent from a board that predates them. */
   approvedWaiting?: ApprovedWaiting[];
