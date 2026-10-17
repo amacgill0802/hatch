@@ -1396,6 +1396,218 @@ Reference: [gh repo create](https://cli.github.com/manual/gh_repo_create),
 [git remote](https://git-scm.com/docs/git-remote),
 [git push](https://git-scm.com/docs/git-push).
 
+### 11. The runner
+
+**What this is.** The runner is the program that watches the board for work
+and starts an agent on it. It is one file, `hatch`, and the person's own board
+serves it: the board lists what it has at `/api/hatch/runner` and hands over
+one build at `/api/hatch/runner/download/` followed by a platform name. That
+name is a RID (runtime identifier), which is just the operating system and
+chip joined by a hyphen, such as `osx-arm64`. The search path, or `PATH`, is
+the list of folders a terminal looks in when a command is typed by name. The
+runner goes in the same folder step 7 used for `claude`: `$HOME/.local/bin`
+on macOS and Linux, `%USERPROFILE%\.local\bin` on Windows. It is put there
+for this person only, so it needs no password.
+
+**Tell the person.** "Next I am going to download the Hatch runner from your
+own board and put it in your user folder, beside `claude`. It is one small
+file and takes a few seconds. I may also need to add that folder to your
+terminal's search path so that typing `hatch` finds it; if so I will ask
+first. At the end I will ask you to open a new terminal window and try one
+command."
+
+**Do it.** In each command `<port>` is the port step 5 settled on, and
+`<rid>` is the platform name chosen in the second part below. Do the parts in
+this order.
+
+First, is it already there? If it prints `hatch - the house tracker, from a
+terminal` as its first line, say it is already installed, never replace it,
+and go to the **PATH** part below.
+
+macOS and Linux:
+
+```
+hatch --help
+```
+
+Windows PowerShell, which first asks whether the name is found at all:
+
+```
+Get-Command hatch -ErrorAction SilentlyContinue; hatch --help
+```
+
+Second, choose the RID from what step 1 printed.
+
+- macOS: `arm64` is `osx-arm64`, and `x86_64` is `osx-x64`.
+- Windows: `AMD64` is `win-x64`.
+- Linux: `x86_64` is `linux-x64`.
+- **Linux `aarch64`**: stop. There is no build of the runner for Linux on
+  Arm. Tell the person the guide cannot finish on this machine: the board is
+  up and works, and the board's name and first project can still be set up by
+  hand in the browser, but the runner cannot be installed here.
+- **Windows `ARM64`, with a build number under 22000** (the third number of
+  the version step 1 printed, after Major and Minor): stop. Windows 10 on Arm
+  can only run 32-bit x86 programs, and the runner is 64-bit. Tell the person
+  the guide cannot finish on this machine and what is done so far.
+- **Windows `ARM64`, with a build number of 22000 or higher**: use `win-x64`.
+  Windows 11 on Arm runs x64 programs by emulation (it translates them as they
+  run) with nothing to install. Tell the person the runner will run under
+  emulation, which is fine for a command-line tool
+  ([How emulation works on Arm](https://learn.microsoft.com/windows/arm/apps-on-arm-x86-emulation)).
+
+Third, ask the board what it has. The reply is JSON, such as
+`{"revision":"dev","downloads":[{"rid":"osx-arm64",...}]}`, and the check is
+whether the chosen RID is in it. Read the output, never the exit status.
+
+macOS and Linux:
+
+```
+curl -fsS http://localhost:<port>/api/hatch/runner | grep -q '"rid":"<rid>"' && echo offered || echo missing
+```
+
+Windows PowerShell, where the RID is always `win-x64`:
+
+```
+(Invoke-RestMethod http://localhost:<port>/api/hatch/runner).downloads.rid -contains 'win-x64'
+```
+
+`offered` or `True` means go on. `missing` or `False` means stop and say "this
+board's build has no runner for your machine". If `curl` cannot connect, the
+board is not answering: go back to step 5 and check it again.
+
+Fourth, download and install. First look at what is in the way, and touch no
+other folder. On macOS and Linux, `ls -l "$HOME/.local/bin/hatch"`; on
+Windows, `Get-Item "$env:USERPROFILE\.local\bin\hatch.exe"`. A file there
+that did not answer in the first part may be replaced: say so when you do.
+The download goes to a temporary name and is moved into place only after it
+has fully arrived, so a failed download never leaves a broken `hatch` behind.
+
+macOS and Linux:
+
+```
+mkdir -p "$HOME/.local/bin" && curl -fsSL -o "$HOME/.local/bin/hatch.new" http://localhost:<port>/api/hatch/runner/download/<rid> && chmod +x "$HOME/.local/bin/hatch.new"
+```
+
+On macOS only, clear the "downloaded from the internet" mark if there is one.
+`curl` never sets it, so this changes nothing in the usual case; it is for the
+case under **If you see** below. It prints nothing either way:
+
+```
+xattr -d com.apple.quarantine "$HOME/.local/bin/hatch.new" 2>/dev/null; true
+```
+
+Then, on macOS and Linux, move it into place:
+
+```
+mv -f "$HOME/.local/bin/hatch.new" "$HOME/.local/bin/hatch"
+```
+
+Windows PowerShell:
+
+```
+$dir = "$env:USERPROFILE\.local\bin"; New-Item -ItemType Directory -Force $dir | Out-Null; Invoke-WebRequest -UseBasicParsing -OutFile "$dir\hatch.exe" http://localhost:<port>/api/hatch/runner/download/win-x64; Unblock-File "$dir\hatch.exe"
+```
+
+`Unblock-File` removes the downloaded-from-the-internet mark that would make
+SmartScreen stop the program ([Unblock-File](https://learn.microsoft.com/powershell/module/microsoft.powershell.utility/unblock-file));
+it does nothing where there is no mark. Use `curl` on macOS and never a
+browser download: a browser sets that mark, and a marked runner is killed
+without a message ([Gatekeeper and runtime protection](https://support.apple.com/guide/security/gatekeeper-and-runtime-protection-sec5599b66df/web)).
+
+Fifth, run it by its path. The shell you are running commands in started
+before the install, so it may not find a bare `hatch` yet.
+
+macOS and Linux:
+
+```
+"$HOME/.local/bin/hatch" --help
+```
+
+Windows PowerShell:
+
+```
+& "$env:USERPROFILE\.local\bin\hatch.exe" --help
+```
+
+Say once: until a new terminal is opened, steps 12 to 14 call it by that path
+if a bare `hatch` is not found.
+
+Sixth, the **PATH**: can a fresh terminal find it by name?
+
+On macOS and Linux, a login shell reads the person's profile the way a new
+terminal does, so this is the honest check. If it prints the path to `hatch`,
+the folder is already on the search path (perhaps step 7 did it): go on.
+
+```
+"$SHELL" -lic 'command -v hatch'
+```
+
+If it prints nothing, the folder is not on the search path. If step 7 already
+added the `export PATH` line for `claude`, say so, and use that step's fix
+again for the shell file the person really uses, since this shell did not read
+it. Otherwise use the fix in step 7's first **If you see**: it changes the
+person's own shell file, so say so, ask first, hand them the `echo` and
+`source` lines there, and tell them afterwards what changed. Do not retype it
+here.
+
+On Windows, the folder goes on the user's search path, which changes only this
+person's settings and needs no administrator. Say so, ask first, then:
+
+```
+$dir = "$env:USERPROFILE\.local\bin"; $u = [Environment]::GetEnvironmentVariable('Path','User'); if (($u -split ';') -notcontains $dir) { [Environment]::SetEnvironmentVariable('Path', (($u.TrimEnd(';')) + ';' + $dir).TrimStart(';'), 'User') }
+```
+
+[SetEnvironmentVariable](https://learn.microsoft.com/dotnet/api/system.environment.setenvironmentvariable)
+writes the user's settings and tells Windows they changed, but a terminal
+that is already open keeps its old search path. In Git Bash on Windows, run
+each Windows block through `powershell.exe -NoProfile -Command "..."`.
+
+Write down, for step 15: **changed the PATH: yes (a shell file, or the
+Windows user path) / no**.
+
+**Check.** All three must pass.
+
+- (a) The command in the fifth part exits 0 (`echo $?` straight after it
+  prints `0`; in PowerShell `$LASTEXITCODE` does) and its first line is
+  `hatch - the house tracker, from a terminal`.
+- (b) On macOS and Linux, the `"$SHELL" -lic 'command -v hatch'` line prints
+  the path. On Windows,
+  `[Environment]::GetEnvironmentVariable('Path','User')` contains the
+  folder.
+- (c) The person opens a **new** terminal window, runs `hatch --help`, and
+  tells you it printed a list of commands. This one is theirs alone: a
+  command you start inherits your shell's old search path, so only a new
+  window shows the truth.
+
+If (c) fails after (b) passed, their terminal is a different shell from the
+one named by `$SHELL`. Stop, and say what they saw.
+
+**If you see** `Killed`, exit 137, or "Apple could not verify" on macOS, the
+runner carries the quarantine mark. Run
+`xattr -d com.apple.quarantine "$HOME/.local/bin/hatch"` and check again.
+Never advise turning Gatekeeper off or running `spctl --master-disable`. If it
+is still killed after that, stop: the program's signature is missing.
+
+**If you see** `curl: (22)` with a `404`, that build is not on this board:
+stop. **If you see** `curl: (7)` or "connection refused", the board is not
+answering: go back to step 5's check.
+
+**If you see** `Permission denied` on macOS or Linux, the `chmod +x` did not
+take: run it again on `"$HOME/.local/bin/hatch"` and check again.
+
+**If you see** `command not found` or `is not recognized` for `hatch` in a
+new terminal, the folder is not on the search path: do the PATH part above.
+
+**If you see** SmartScreen or "blocked" on Windows, run `Unblock-File` on the
+file again. If it persists, stop and say what you saw.
+
+Reference: [curl manpage](https://curl.se/docs/manpage.html),
+[Invoke-WebRequest](https://learn.microsoft.com/powershell/module/microsoft.powershell.utility/invoke-webrequest),
+[Unblock-File](https://learn.microsoft.com/powershell/module/microsoft.powershell.utility/unblock-file),
+[SetEnvironmentVariable](https://learn.microsoft.com/dotnet/api/system.environment.setenvironmentvariable),
+[How emulation works on Arm](https://learn.microsoft.com/windows/arm/apps-on-arm-x86-emulation),
+[Gatekeeper and runtime protection](https://support.apple.com/guide/security/gatekeeper-and-runtime-protection-sec5599b66df/web).
+
 ## Where this guide stops for now
 
 The steps above are all that is published so far. Tell the person what is now
