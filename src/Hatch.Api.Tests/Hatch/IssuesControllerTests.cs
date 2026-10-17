@@ -682,12 +682,11 @@ public class IssuesControllerTests
     }
 
     /// <summary>
-    /// A status event names the columns rather than their ids. Ids stop meaning
-    /// anything the moment a column is deleted, and the trail is read long
-    /// after.
+    /// A status event names the columns and numbers them: ids alone stop meaning
+    /// anything once a column is deleted, and names alone once one is renamed.
     /// </summary>
     [Fact]
-    public async Task AStatusEvent_NamesTheColumns()
+    public async Task AStatusEvent_NamesAndNumbersTheColumns()
     {
         var h = await NewAsync();
         await h.CreateAsync("story", "the thing");
@@ -697,6 +696,24 @@ public class IssuesControllerTests
         var payload = (await h.EventsAsync("AER-1"))[0].Payload!.Value;
         Assert.Equal("inbox", payload.GetProperty("from").GetString());
         Assert.Equal("done", payload.GetProperty("to").GetString());
+        Assert.Equal(h.Inbox, payload.GetProperty("fromId").GetInt32());
+        Assert.Equal(h.Done, payload.GetProperty("toId").GetInt32());
+    }
+
+    [Fact]
+    public async Task AStatusPatch_NamesAndNumbersTheColumns()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the thing");
+
+        await h.Issues.PatchIssue("AER-1", Patch(statusId: h.Done), default);
+
+        var changed = (await h.EventsAsync("AER-1")).Single(e => e.Kind == EfHatchIssueEvent.StatusChanged);
+        var payload = changed.Payload!.Value;
+        Assert.Equal("inbox", payload.GetProperty("from").GetString());
+        Assert.Equal("done", payload.GetProperty("to").GetString());
+        Assert.Equal(h.Inbox, payload.GetProperty("fromId").GetInt32());
+        Assert.Equal(h.Done, payload.GetProperty("toId").GetInt32());
     }
 
     [Fact]

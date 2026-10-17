@@ -2007,7 +2007,13 @@ dispatch as `WorkDto.Messages`.
 Append-only, written by every mutating endpoint, never edited and never deleted
 except with its issue.
 
-Kinds: `created`, `retitled`, `redescribed`, `retyped`, `status_changed`,
+Kinds: `created`, `retitled`, `redescribed`, `retyped`, `status_changed` (payload `{ from, to, fromId, toId }` - the column
+ids written beside the names, because columns are renamed (the `TheFlow`
+migration renamed five) and a name alone cannot place a stretch of history
+after the rename; `from` and `fromId` are null where there was no previous
+column; an event written before the ids were added carries names only, so a
+reader must not assume them; the hop flags - `express`, `pulled`, `merged`,
+... - ride beside them unchanged),
 `parent_changed`, `ready_changed`, `due_changed`, `pull_request_changed`,
 `model_override_changed`, `effort_override_changed`, `assignee_changed`,
 `priority_changed`, `express_changed`, `wip_limit_changed` (an epic's [Stories

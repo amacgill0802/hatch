@@ -1220,6 +1220,7 @@ public class WorkControllerTests
         Assert.True(payload.GetProperty("sendback").GetBoolean());
         Assert.Equal(1001, payload.GetProperty("length").GetInt32());
         Assert.Equal(1000, payload.GetProperty("limit").GetInt32());
+        AssertColumns(e, h.InProgress, h.Todo);
     }
 
     [Fact]
@@ -3955,6 +3956,7 @@ public class WorkControllerTests
         Assert.Equal(EfHatchIssueEvent.StatusChanged, e.Kind);
         Assert.Equal("hatch-loop", e.Actor);
         Assert.True(System.Text.Json.JsonDocument.Parse(e.Payload!).RootElement.GetProperty("express").GetBoolean());
+        AssertColumns(e, h.Todo, h.InProgress);
     }
 
     // ---- Approve, the hop (HA-561) ----
@@ -3963,6 +3965,13 @@ public class WorkControllerTests
     // merge or bring current, is carried into the merge column with no
     // session - the hop HopKind calls Approve. Each test below cuts its own
     // merge column, since the stock harness has none.
+
+    private static void AssertColumns(EfHatchIssueEvent e, int fromId, int toId)
+    {
+        var payload = JsonDocument.Parse(e.Payload!).RootElement;
+        Assert.Equal(fromId, payload.GetProperty("fromId").GetInt32());
+        Assert.Equal(toId, payload.GetProperty("toId").GetInt32());
+    }
 
     private static async Task<(EfHatchStatus Approved, EfHatchIssue Issue)> ApproveEligibleAsync(Harness h)
     {
@@ -3998,7 +4007,7 @@ public class WorkControllerTests
     public async Task Hop_OnAnApproveRow_WritesOneStatusChangedEventCarryingPreapprovedTrue()
     {
         var h = await NewAsync();
-        var (_, issue) = await ApproveEligibleAsync(h);
+        var (approved, issue) = await ApproveEligibleAsync(h);
 
         await h.Work.HopWork(Key(issue), null, null, null, default);
 
@@ -4006,6 +4015,7 @@ public class WorkControllerTests
         var e = Assert.Single(row.Events);
         Assert.Equal(EfHatchIssueEvent.StatusChanged, e.Kind);
         Assert.True(System.Text.Json.JsonDocument.Parse(e.Payload!).RootElement.GetProperty("preapproved").GetBoolean());
+        AssertColumns(e, h.Review, approved.Id);
     }
 
     [Fact]
@@ -4587,6 +4597,7 @@ public class WorkControllerTests
         var e = Assert.Single(row.Events);
         Assert.Equal(EfHatchIssueEvent.StatusChanged, e.Kind);
         Assert.True(System.Text.Json.JsonDocument.Parse(e.Payload!).RootElement.GetProperty("preapproved").GetBoolean());
+        AssertColumns(e, h.Review, h.Done);
     }
 
     [Fact]
@@ -4823,6 +4834,7 @@ public class WorkControllerTests
         var payload = System.Text.Json.JsonDocument.Parse(e.Payload!).RootElement;
         Assert.True(payload.GetProperty("pulled").GetBoolean());
         Assert.False(payload.TryGetProperty("express", out _));
+        AssertColumns(e, h.Todo, h.InProgress);
     }
 
     [Fact]
@@ -5126,6 +5138,7 @@ public class WorkControllerTests
         var payload = System.Text.Json.JsonDocument.Parse(e.Payload!).RootElement;
         Assert.True(payload.GetProperty("epic").GetBoolean());
         Assert.False(payload.TryGetProperty("express", out _));
+        AssertColumns(e, h.Todo, h.InProgress);
     }
 
     [Fact]
@@ -5301,6 +5314,7 @@ public class WorkControllerTests
         Assert.Equal(Key(epic), payload.GetProperty("under").GetString());
         Assert.False(payload.TryGetProperty("express", out _));
         Assert.False(payload.TryGetProperty("epic", out _));
+        AssertColumns(e, h.Inbox, h.Todo);
     }
 
     [Fact]
@@ -6465,6 +6479,7 @@ public class WorkControllerTests
         Assert.Equal("done", payload.GetProperty("to").GetString());
         Assert.True(payload.GetProperty("merged").GetBoolean());
         Assert.False(payload.TryGetProperty("runner", out _));
+        AssertColumns(e, h.Review, h.Done);
     }
 
     [Fact]
@@ -6708,6 +6723,7 @@ public class WorkControllerTests
         Assert.Equal("approved", payload.GetProperty("from").GetString());
         Assert.Equal("review", payload.GetProperty("to").GetString());
         Assert.True(payload.GetProperty("pushback").GetBoolean());
+        AssertColumns(e, approved.Id, h.Review);
 
         var comment = Assert.Single(await h.Db.Comments.Where(c => c.IssueId == issue.Id).ToListAsync());
         Assert.Equal(
@@ -6742,6 +6758,7 @@ public class WorkControllerTests
         Assert.Equal("approved", payload.GetProperty("from").GetString());
         Assert.Equal("review", payload.GetProperty("to").GetString());
         Assert.True(payload.GetProperty("pushback").GetBoolean());
+        AssertColumns(e, approved.Id, h.Review);
 
         var comment = Assert.Single(await h.Db.Comments.Where(c => c.IssueId == issue.Id).ToListAsync());
         Assert.Equal(
@@ -7121,6 +7138,7 @@ public class WorkControllerTests
         var payload = JsonDocument.Parse(e.Payload!).RootElement;
         Assert.Equal(CheckVerdicts.Pass, payload.GetProperty("verdict").GetString());
         Assert.Equal(playbookId, payload.GetProperty("playbookId").GetInt32());
+        AssertColumns(e, h.Checking, h.Review);
 
         var comment = Assert.Single(row.Comments);
         Assert.Equal(EfHatchComment.Verdict, comment.Kind);
@@ -7149,6 +7167,7 @@ public class WorkControllerTests
         Assert.Equal(EfHatchIssueEvent.StatusChanged, e.Kind);
         var payload = JsonDocument.Parse(e.Payload!).RootElement;
         Assert.Equal(CheckVerdicts.Fail, payload.GetProperty("verdict").GetString());
+        AssertColumns(e, h.Checking, h.InProgress);
     }
 
     [Fact]
@@ -8862,6 +8881,7 @@ public class WorkControllerTests
         Assert.Equal("done", payload.GetProperty("to").GetString());
         Assert.True(payload.GetProperty("merged").GetBoolean());
         Assert.Equal(Key(story), payload.GetProperty("with").GetString());
+        AssertColumns(e, h.Review, h.Done);
     }
 
     [Fact]
