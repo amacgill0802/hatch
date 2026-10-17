@@ -8,6 +8,7 @@ import {
   buildIconWords,
   conflictEmptyWords,
   failingBuildEmptyWords,
+  landingHeldEmptyWords,
   questionEmptyWords,
   resetWords,
   resumeWords,
@@ -18,7 +19,7 @@ import {
   trunkIconWords,
   waitedWords,
 } from './attention';
-import type { ApprovedHeld, ApprovedWaiting, Attention, Conflict, ExhaustedRunner, Question, Review, TrunkBuild } from '../types';
+import type { ApprovedHeld, ApprovedWaiting, Attention, Conflict, ExhaustedRunner, LandingHeld, Question, Review, TrunkBuild } from '../types';
 
 const NOW = new Date('2026-09-09T12:00:00Z');
 
@@ -62,6 +63,14 @@ const approvedHeld = (over: Partial<ApprovedHeld> = {}): ApprovedHeld => ({
   type: 'story',
   pullRequestUrl: 'https://forge.example/pulls/17',
   sentence: 'Conflicts with main.',
+  ...over,
+});
+
+const landingHeld = (over: Partial<LandingHeld> = {}): LandingHeld => ({
+  key: 'AER-19',
+  title: 'A story that landed and is not done',
+  type: 'story',
+  sentence: 'Its pull request merged but the issue is not done.',
   ...over,
 });
 
@@ -152,6 +161,14 @@ describe('attentionCount', () => {
     expect(
       attentionCount(attention({ approvedHeld: [approvedHeld()], approvedWaiting: [approvedWaiting()] })),
     ).toBe(1);
+  });
+
+  it('counts a landingHeld row, adds it to the other sources, and counts an absent field as zero', () => {
+    // Nothing dispatches at an issue whose work already reached the trunk, so
+    // every row is a person's to finish.
+    expect(attentionCount(attention({ landingHeld: [landingHeld(), landingHeld({ key: 'AER-20' })] }))).toBe(2);
+    expect(attentionCount(attention({ reviews: [review()], landingHeld: [landingHeld()] }))).toBe(2);
+    expect(attentionCount(attention())).toBe(0);
   });
 
   it('does not count a runner out of Claude usage, and stays resting for it', () => {
@@ -329,6 +346,12 @@ describe('conflictEmptyWords', () => {
 describe('approvedHeldEmptyWords', () => {
   it('says nothing approved has stopped merging', () => {
     expect(approvedHeldEmptyWords()).toBe('Nothing approved has stopped merging.');
+  });
+});
+
+describe('landingHeldEmptyWords', () => {
+  it('says nothing landed has stopped short of done', () => {
+    expect(landingHeldEmptyWords()).toBe('Nothing landed has stopped short of done.');
   });
 });
 

@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { AttentionHuman } from './AttentionHuman';
-import { approvedHeldEmptyWords, questionEmptyWords, reviewEmptyWords, trunkBuildEmptyWords } from '../lib/attention';
-import type { Attention, ApprovedHeld, TrunkBuild } from '../types';
+import { approvedHeldEmptyWords, landingHeldEmptyWords, questionEmptyWords, reviewEmptyWords, trunkBuildEmptyWords } from '../lib/attention';
+import type { Attention, ApprovedHeld, LandingHeld, TrunkBuild } from '../types';
 
 /* No DOM here, so this is structural - react-dom/server, the way
    Confirmations.test.tsx reads. What it pins is AC1's "same order, same
@@ -60,6 +60,14 @@ const approvedHeld = (over: Partial<ApprovedHeld> = {}): ApprovedHeld => ({
   ...over,
 });
 
+const landingHeld = (over: Partial<LandingHeld> = {}): LandingHeld => ({
+  key: 'AER-15',
+  title: 'A story that landed and is not done',
+  type: 'story',
+  sentence: 'Its pull request merged but the issue is not done.',
+  ...over,
+});
+
 beforeEach(() => {
   vi.stubGlobal('window', { location: { pathname: '/apps/hatch/' } });
   dialogProps = null;
@@ -75,18 +83,47 @@ describe('AttentionHuman', () => {
       'Trunk builds that fail',
       'Pull requests to review',
       'Approved, not merging',
+      'Landed, not done',
       'Questions to answer',
     ]);
 
     const trunkAt = html.indexOf(trunkBuildEmptyWords());
     const reviewAt = html.indexOf(reviewEmptyWords(null));
     const approvedHeldAt = html.indexOf(approvedHeldEmptyWords());
+    const landingHeldAt = html.indexOf(landingHeldEmptyWords());
     const questionAt = html.indexOf(questionEmptyWords());
 
     expect(trunkAt).toBeGreaterThan(-1);
     expect(trunkAt).toBeLessThan(reviewAt);
     expect(reviewAt).toBeLessThan(approvedHeldAt);
-    expect(approvedHeldAt).toBeLessThan(questionAt);
+    expect(approvedHeldAt).toBeLessThan(landingHeldAt);
+    expect(landingHeldAt).toBeLessThan(questionAt);
+  });
+
+  it('shows the empty words when nothing landed has stopped short of done', () => {
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <AttentionHuman attention={attention({ landingHeld: [] })} now={new Date()} reload={noop} />
+      </MemoryRouter>,
+    );
+
+    expect(html).toContain(landingHeldEmptyWords());
+  });
+
+  it('lists a landed row’s key, title and sentence under Landed, not done, linked to the issue', () => {
+    const held = landingHeld();
+
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <AttentionHuman attention={attention({ landingHeld: [held] })} now={new Date()} reload={noop} />
+      </MemoryRouter>,
+    );
+
+    expect(html).not.toContain(landingHeldEmptyWords());
+    expect(html).toContain(held.key);
+    expect(html).toContain(held.title);
+    expect(html).toContain(held.sentence);
+    expect(html).toContain(`href="/issues/${held.key}"`);
   });
 
   it('shows the empty words when nothing approved has stopped merging', () => {
