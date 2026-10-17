@@ -96,7 +96,30 @@ The rules:
   and a read-only `deniedTools` limit, and leave the review row on the merge
   gate. The check's session judges and records a verdict; the runner moves the
   ticket forward on a pass and back to the build column, with the findings, on
-  a fail.
+  a fail. Only a person marks a playbook as a check, on the Playbooks page; an
+  agent's key is refused, as it is for any playbook write. A check with no
+  denied tools carries a badge, *a check with no denied tools can edit*. It is
+  a warning, and the save is not refused.
+- **A check's session cannot move the ticket.** While a check holds the ticket,
+  a key's move is refused; yours is not. The session records `pass` or `fail`,
+  with its findings, and the runner applies the verdict once the session is
+  over. A pass moves the ticket on to the next column. A fail moves it to the
+  column marked *Code written here*.
+- **A second fail in a row asks you.** The first fail sends the ticket back.
+  When the same check fails again, with no pass and no answered question in
+  between, the ticket stays where it is and gets a question quoting both sets
+  of findings. An open question stops the ticket being picked up, so nothing is
+  sent at it until you answer. A pass, or your answer, starts the count again.
+- **Tick *Code written here* on the build column.** A fail returns the ticket
+  to the ticked column. Unticked, Hatch takes the build column to be the one
+  whose own next move reaches the review column, and on a board with check
+  columns that is the last check column, so a failed check would send the
+  ticket back to the check. `hatch depends` measures the same column, so it
+  would gate the wrong move too.
+- **Look at the card's comments.** When a verdict is applied, pass or fail, its
+  findings are written on the ticket as a comment (`(no findings)` if the
+  session wrote none). The build session that follows a fail is handed the
+  last check's findings.
 - **Models are aliases**: `haiku`, `sonnet`, `opus`, `fable`. A playbook says
   "the big one" and should still mean it a year from now. A full model id is
   accepted for an operator with a reason to pin.
