@@ -218,10 +218,10 @@ public static class TimelineReport
     /// <paramref name="createdBy"/> narrow only the roots.
     /// </summary>
     /// <remarks>
-    /// <see cref="Result.Other"/> is null here; the loose roots' group is built
-    /// from the same walk by the next increment. <see cref="Result.Creators"/>
-    /// ignores <paramref name="createdBy"/> so a picker can still offer the
-    /// people the filter is hiding.
+    /// The kept loose roots are the children of <see cref="Result.Other"/>, which
+    /// is null when there are none. <see cref="Result.Creators"/> ignores
+    /// <paramref name="createdBy"/> so a picker can still offer the people the
+    /// filter is hiding.
     /// </remarks>
     public static Result Fold(
         IReadOnlyList<Row> rows, IReadOnlyList<Change> changes, IReadOnlyList<EfHatchStatus> statuses,
@@ -301,7 +301,48 @@ public static class TimelineReport
             .Select(b => b.Node!)
             .ToList();
 
-        return new Result(epics, Other: null, creators, narrowed.Sum(b => b.Unresolved));
+        var loose = narrowed
+            .Where(b => b.Root.Type != EpicType && b.Node is not null)
+            .Select(b => b.Node!)
+            .ToList();
+
+        Node? other = null;
+        if (loose.Count > 0)
+        {
+            var hull = HullOf(loose);
+            other = new Node(IssueId: null, CreatedBy: "", IsLeaf: false, Segments: hull is null ? [] : [hull], Children: loose);
+        }
+
+        return new Result(epics, other, creators, narrowed.Sum(b => b.Unresolved));
+    }
+
+    /// <summary>
+    /// One segment over every segment at any depth beneath <paramref name="roots"/>:
+    /// from the earliest start, to the latest end or to nothing when any is
+    /// open, in the column of the earliest-starting segment (the first met in
+    /// tree order on a tie). Null when there is no segment at all.
+    /// </summary>
+    private static Segment? HullOf(IReadOnlyList<Node> roots)
+    {
+        Segment? first = null;
+        DateTimeOffset? latest = null;
+        var open = false;
+
+        void Visit(Node node)
+        {
+            foreach (var segment in node.Segments)
+            {
+                if (first is null || segment.From < first.From) first = segment;
+                if (segment.To is not { } end) open = true;
+                else if (latest is null || end > latest) latest = end;
+            }
+
+            foreach (var child in node.Children) Visit(child);
+        }
+
+        foreach (var root in roots) Visit(root);
+
+        return first is null ? null : new Segment(first.StatusId, first.From, open ? null : latest);
     }
 
     /// <summary>
