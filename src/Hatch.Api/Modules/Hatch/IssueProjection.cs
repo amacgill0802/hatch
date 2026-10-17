@@ -55,9 +55,9 @@ public static class IssueProjection
         var ids = issues.Select(i => i.Id).Distinct().ToList();
 
         var projectIds = issues.Select(i => i.ProjectId).Distinct().ToList();
-        var projectKeys = await db.Projects.AsNoTracking()
+        var projects = await db.Projects.AsNoTracking()
             .Where(p => projectIds.Contains(p.Id))
-            .ToDictionaryAsync(p => p.Id, p => p.Key, ct);
+            .ToDictionaryAsync(p => p.Id, p => (p.Key, p.ChecksRequired), ct);
 
         // What the merges column is, so the judgement below is only asked of a
         // row actually sitting there - the same column AttentionController
@@ -176,7 +176,7 @@ public static class IssueProjection
 
         return issues.ToDictionary(issue => issue.Id, issue =>
         {
-            var projectKey = issue.Project?.Key ?? projectKeys[issue.ProjectId];
+            var projectKey = issue.Project?.Key ?? projects[issue.ProjectId].Key;
             var (effective, effectiveFrom) = priorities.Effective(issue.Id);
             var (effectivePreApproval, effectivePreApprovalFrom) = priorities.EffectivePreApproval(issue.Id);
             var (onePr, onePrOwn, onePrFrom) = priorities.EffectiveOnePr(issue.Id);
@@ -188,7 +188,8 @@ public static class IssueProjection
                     bound.TryGetValue(issue.ProjectId, out var repos) ? repos : [],
                     mergeChecksByIssue.TryGetValue(issue.Id, out var mv) ? mv : [],
                     buildChecksByIssue.TryGetValue(issue.Id, out var bv) ? bv : [],
-                    issue.PullRequestClosedAt, true, null, null, now, reviewName);
+                    issue.PullRequestClosedAt, issue.Project?.ChecksRequired ?? projects[issue.ProjectId].ChecksRequired,
+                    issue.PullRequestMergeState, issue.PullRequestHeadSha, now, reviewName);
                 mergeWork = new MergeWorkDto(j.Kind, j.Sentence);
             }
 
