@@ -205,6 +205,105 @@ public static class TimelineReport
         return stretches;
     }
 
+    private const string EpicType = "epic";
+
+    /// <summary>One top-level row's walk: its node when it made the answer, and its subtree's unresolved count.</summary>
+    private sealed record Built(Row Root, Node? Node, int Unresolved);
+
+    /// <summary>
+    /// The tree half: every issue's segments, folded under the top-level epics
+    /// and the loose roots above them. A top-level epic is an epic with no epic
+    /// above it; a loose root is a parentless non-epic. Children ride with
+    /// their root whatever the filters say - <paramref name="projectId"/> and
+    /// <paramref name="createdBy"/> narrow only the roots.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="Result.Other"/> is null here; the loose roots' group is built
+    /// from the same walk by the next increment. <see cref="Result.Creators"/>
+    /// ignores <paramref name="createdBy"/> so a picker can still offer the
+    /// people the filter is hiding.
+    /// </remarks>
+    public static Result Fold(
+        IReadOnlyList<Row> rows, IReadOnlyList<Change> changes, IReadOnlyList<EfHatchStatus> statuses,
+        DateTimeOffset from, DateTimeOffset to, int? projectId, string? createdBy)
+    {
+        var board = IndexOf(statuses);
+        var byId = rows.ToDictionary(r => r.Id);
+        var children = rows
+            .Where(r => r.ParentId is not null)
+            .OrderBy(r => r.Rank).ThenBy(r => r.Id)
+            .GroupBy(r => r.ParentId!.Value)
+            .ToDictionary(g => g.Key, g => g.ToList());
+        var changesByIssue = changes.ToLookup(c => c.IssueId);
+
+        bool IsTopLevelEpic(Row r) =>
+            r.Type == EpicType && (r.ParentId is not { } p || !byId.TryGetValue(p, out var parent) || parent.Type != EpicType);
+
+        var roots = rows
+            .Where(r => (IsTopLevelEpic(r) || (r.Type != EpicType && r.ParentId is null))
+                && (projectId is null || r.ProjectId == projectId))
+            .OrderBy(r => r.Rank).ThenBy(r => r.Id)
+            .ToList();
+
+        // Shared across every root: an issue is drawn, and counted, once.
+        var visited = new HashSet<long>();
+
+        (Node Node, int Unresolved) Walk(Row row)
+        {
+            var (segments, unresolved) = SegmentsOf(row, changesByIssue[row.Id], board, from, to);
+
+            var kept = new List<Node>();
+            if (children.TryGetValue(row.Id, out var below))
+            {
+                foreach (var child in below)
+                {
+                    // A top-level epic is drawn as an epic, once, never under what it sits in.
+                    if (child.Type == EpicType && row.Type != EpicType) continue;
+                    if (!visited.Add(child.Id)) continue;
+
+                    var (node, sub) = Walk(child);
+                    unresolved += sub;
+                    if (node.Segments.Count > 0 || node.Children.Count > 0) kept.Add(node);
+                }
+            }
+
+            var self = new Node(row.Id, row.CreatedBy, !children.ContainsKey(row.Id), segments, kept);
+            return (self, unresolved);
+        }
+
+        var built = new List<Built>();
+        foreach (var root in roots)
+        {
+            visited.Add(root.Id);
+            var (node, unresolved) = Walk(root);
+            var inAnswer = root.Type == EpicType ? node.Segments.Count > 0 : node.Segments.Count > 0 || node.Children.Count > 0;
+            built.Add(new Built(root, inAnswer ? node : null, unresolved));
+        }
+
+        var creators = built
+            .Where(b => b.Node is not null)
+            .Select(b => b.Root.CreatedBy)
+            .Where(c => !string.IsNullOrWhiteSpace(c))
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToList();
+
+        var wanted = string.IsNullOrWhiteSpace(createdBy) ? null : createdBy.Trim();
+        var narrowed = wanted is null
+            ? built
+            : built.Where(b => string.Equals(b.Root.CreatedBy, wanted, StringComparison.Ordinal)).ToList();
+
+        var epics = narrowed
+            .Where(b => b.Root.Type == EpicType && b.Node is not null)
+            .OrderBy(b => b.Node!.Segments[0].From)
+            .ThenBy(b => b.Root.ProjectKey, StringComparer.Ordinal)
+            .ThenBy(b => b.Root.Number)
+            .Select(b => b.Node!)
+            .ToList();
+
+        return new Result(epics, Other: null, creators, narrowed.Sum(b => b.Unresolved));
+    }
+
     /// <summary>
     /// An id, when the event carries one, must name a current status - the name
     /// is not tried, since a deleted column's name may have been reused. With no

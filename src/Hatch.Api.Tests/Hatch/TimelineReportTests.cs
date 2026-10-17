@@ -24,8 +24,13 @@ public class TimelineReportTests
         new() { Id = 6, Name = "parked", SortOrder = 60, IsDeferred = true },
     ];
 
+    private static TimelineReport.Row Issue(
+        long id, string type, int status, DateTimeOffset createdAt, long? parent = null, int project = 1,
+        string key = "HA", string by = "ann", long? rank = null, int? number = null) =>
+        new(id, parent, project, key, number ?? (int)id, type, status, rank ?? id, createdAt, by);
+
     private static TimelineReport.Row Epic(long id, int status, DateTimeOffset createdAt) =>
-        new(id, null, 1, "HA", (int)id, "epic", status, id, createdAt, "ann");
+        Issue(id, "epic", status, createdAt);
 
     private static string NameOf(int id) => Board().Single(s => s.Id == id).Name;
 
@@ -342,5 +347,248 @@ public class TimelineReportTests
     {
         Assert.Null(TimelineReport.ParseChange(7, 9, Day(1), """{"from":"todo","fromId":2}"""));
         Assert.Null(TimelineReport.ParseChange(7, 9, Day(1), """{"from":"todo","to":null,"toId":null}"""));
+    }
+
+    // A row in an active column with no history is active from its creation, and one in the
+    // first column is never active: most of the fold's tests need no changes at all.
+    private static TimelineReport.Result Fold(
+        TimelineReport.Row[] rows, TimelineReport.Change[]? changes = null, int? projectId = null, string? createdBy = null) =>
+        TimelineReport.Fold(rows, changes ?? [], Board(), Day(-5), Day(5), projectId, createdBy);
+
+    private static long?[] Ids(IEnumerable<TimelineReport.Node> nodes) => nodes.Select(n => n.IssueId).ToArray();
+
+    [Fact]
+    public void Fold_AnEpicInTheFirstColumnNeverMoved_IsAbsentFromEpics()
+    {
+        var result = Fold([Issue(1, "epic", 1, Day(-1))]);
+
+        Assert.Empty(result.Epics);
+        Assert.Null(result.Other);
+    }
+
+    [Fact]
+    public void Fold_ChildrenWithNoActivityAreOmitted_AndAParentIsKeptByItsDescendant()
+    {
+        var rows = new[]
+        {
+            Issue(1, "epic", 3, Day(-1)),
+            Issue(2, "story", 5, Day(-30), parent: 1),
+            Issue(3, "task", 3, Day(-1), parent: 2),
+            Issue(4, "task", 1, Day(-1), parent: 2),
+            Issue(5, "story", 1, Day(-1), parent: 1),
+        };
+        var changes = new[] { Move(2, 1, Day(-20), 1, 3), Move(2, 2, Day(-10), 3, 5) };
+
+        var epic = Assert.Single(Fold(rows, changes).Epics);
+
+        var story = Assert.Single(epic.Children);
+        Assert.Equal(2, story.IssueId);
+        Assert.Empty(story.Segments);
+        Assert.Equal<long?[]>([3], Ids(story.Children));
+    }
+
+    [Fact]
+    public void Fold_AnEpicWithOnlyDescendantActivity_IsAbsentFromEpics()
+    {
+        var rows = new[] { Issue(1, "epic", 1, Day(-1)), Issue(2, "task", 3, Day(-1), parent: 1) };
+
+        Assert.Empty(Fold(rows).Epics);
+    }
+
+    [Fact]
+    public void Fold_IsLeafIsTrueOnlyWhereTheTrackerHasNoChildren_EvenWhenChildrenWereNotKept()
+    {
+        var rows = new[]
+        {
+            Issue(1, "epic", 3, Day(-1)),
+            Issue(2, "story", 3, Day(-1), parent: 1),
+            Issue(3, "task", 1, Day(-1), parent: 2),
+            Issue(4, "story", 3, Day(-1), parent: 1),
+        };
+
+        var epic = Assert.Single(Fold(rows).Epics);
+
+        Assert.False(epic.IsLeaf);
+        var withIdleChild = epic.Children.Single(n => n.IssueId == 2);
+        Assert.False(withIdleChild.IsLeaf);
+        Assert.Empty(withIdleChild.Children);
+        Assert.True(epic.Children.Single(n => n.IssueId == 4).IsLeaf);
+    }
+
+    [Fact]
+    public void Fold_ChildrenComeInRankOrder()
+    {
+        var rows = new[]
+        {
+            Issue(1, "epic", 3, Day(-1)),
+            Issue(2, "story", 3, Day(-1), parent: 1, rank: 30),
+            Issue(3, "story", 3, Day(-1), parent: 1, rank: 10),
+            Issue(4, "story", 3, Day(-1), parent: 1, rank: 10),
+            Issue(5, "story", 3, Day(-1), parent: 1, rank: 20),
+        };
+
+        var epic = Assert.Single(Fold(rows).Epics);
+
+        Assert.Equal<long?[]>([3, 4, 5, 2], Ids(epic.Children));
+    }
+
+    [Fact]
+    public void Fold_EpicsAreOrderedByFirstSegmentStart_ThenKey_ThenNumber()
+    {
+        var rows = new[]
+        {
+            Issue(1, "epic", 3, Day(-2), key: "ZZ", number: 1),
+            Issue(2, "epic", 3, Day(-3), key: "BB", number: 9),
+            Issue(3, "epic", 3, Day(-2), key: "AA", number: 5),
+            Issue(4, "epic", 3, Day(-2), key: "AA", number: 2),
+        };
+
+        Assert.Equal<long?[]>([2, 4, 3, 1], Ids(Fold(rows).Epics));
+    }
+
+    [Fact]
+    public void Fold_AnEpicUnderANonEpic_IsAnEpic_AndIsNotDrawnAgainUnderItsAncestors()
+    {
+        var rows = new[]
+        {
+            Issue(1, "story", 3, Day(-1)),
+            Issue(2, "epic", 3, Day(-1), parent: 1),
+            Issue(3, "epic", 3, Day(-1)),
+            Issue(4, "story", 3, Day(-1), parent: 3),
+            Issue(5, "epic", 3, Day(-1), parent: 4),
+        };
+
+        var result = Fold(rows);
+
+        Assert.Equal<long?[]>([2, 3, 5], Ids(result.Epics).OrderBy(i => i).ToArray());
+        var under = result.Epics.Single(e => e.IssueId == 3);
+        Assert.Equal<long?[]>([4], Ids(under.Children));
+        Assert.Empty(under.Children[0].Children);
+    }
+
+    [Fact]
+    public void Fold_AnEpicWhoseParentIsNotInRows_IsTopLevel()
+    {
+        var rows = new[] { Issue(1, "epic", 3, Day(-1), parent: 99) };
+
+        Assert.Equal<long?[]>([1], Ids(Fold(rows).Epics));
+    }
+
+    [Fact]
+    public void Fold_ANestedEpic_AppearsOnceUnderItsParent_NotInEpics()
+    {
+        var rows = new[]
+        {
+            Issue(1, "epic", 3, Day(-1)),
+            Issue(2, "epic", 3, Day(-1), parent: 1),
+        };
+
+        var epic = Assert.Single(Fold(rows).Epics);
+
+        Assert.Equal(1, epic.IssueId);
+        Assert.Equal<long?[]>([2], Ids(epic.Children));
+    }
+
+    [Fact]
+    public void Fold_ProjectIdAndCreatedBy_NarrowTopLevelRows_AndLeaveChildrenIntact()
+    {
+        var rows = new[]
+        {
+            Issue(1, "epic", 3, Day(-1), project: 1, by: "ann"),
+            Issue(2, "task", 3, Day(-1), parent: 1, project: 2, by: "bob"),
+            Issue(3, "epic", 3, Day(-1), project: 2, by: "bob"),
+            Issue(4, "task", 3, Day(-1), parent: 3, project: 1, by: "ann"),
+        };
+
+        var byProject = Assert.Single(Fold(rows, projectId: 1).Epics);
+        Assert.Equal(1, byProject.IssueId);
+        Assert.Equal<long?[]>([2], Ids(byProject.Children));
+
+        var byCreator = Assert.Single(Fold(rows, createdBy: "bob").Epics);
+        Assert.Equal(3, byCreator.IssueId);
+        Assert.Equal<long?[]>([4], Ids(byCreator.Children));
+
+        Assert.Empty(Fold(rows, projectId: 1, createdBy: "bob").Epics);
+    }
+
+    [Fact]
+    public void Fold_CreatedByIsTrimmedAndExact_AndBlankMeansNone()
+    {
+        var rows = new[]
+        {
+            Issue(1, "epic", 3, Day(-1), by: "Ann"),
+            Issue(2, "epic", 3, Day(-1), by: "ann"),
+            Issue(3, "epic", 3, Day(-1), by: "Annabel"),
+        };
+
+        Assert.Equal<long?[]>([1], Ids(Fold(rows, createdBy: "Ann").Epics));
+        Assert.Equal<long?[]>([1], Ids(Fold(rows, createdBy: "  Ann ").Epics));
+        Assert.Equal(3, Fold(rows, createdBy: "  ").Epics.Count);
+        Assert.Equal(3, Fold(rows, createdBy: "").Epics.Count);
+    }
+
+    [Fact]
+    public void Fold_Creators_IgnoreCreatedBy_HonourProjectId_AndAreSortedDistinctNonBlank()
+    {
+        var rows = new[]
+        {
+            Issue(1, "epic", 3, Day(-1), by: "bob"),
+            Issue(2, "epic", 3, Day(-1), by: "Ann"),
+            Issue(3, "epic", 3, Day(-1), by: "bob"),
+            Issue(4, "epic", 3, Day(-1), by: " "),
+            Issue(5, "epic", 3, Day(-1), by: "zed", project: 2),
+            Issue(6, "epic", 1, Day(-1), by: "idle"),
+            Issue(7, "story", 1, Day(-1), by: "loner"),
+            Issue(8, "story", 3, Day(-1), by: "kept"),
+            Issue(9, "task", 3, Day(-1), parent: 7, by: "child"),
+        };
+
+        var all = Fold(rows, createdBy: "bob");
+        Assert.Equal(["Ann", "bob", "kept", "loner", "zed"], all.Creators);
+        Assert.DoesNotContain("idle", all.Creators);
+        Assert.DoesNotContain("child", all.Creators);
+
+        Assert.Equal(["Ann", "bob", "kept", "loner"], Fold(rows, projectId: 1).Creators);
+        Assert.Equal(["zed"], Fold(rows, projectId: 2).Creators);
+    }
+
+    [Fact]
+    public void Fold_AParentCycle_Terminates_AndAnEpicBesideItIsIntact()
+    {
+        var rows = new[]
+        {
+            Issue(1, "story", 3, Day(-1), parent: 2),
+            Issue(2, "story", 3, Day(-1), parent: 1),
+            Issue(3, "epic", 3, Day(-1)),
+        };
+
+        var result = Fold(rows);
+
+        Assert.Equal<long?[]>([3], Ids(result.Epics));
+        Assert.Equal(0, result.Unresolved);
+    }
+
+    [Fact]
+    public void Fold_Unresolved_SumsAcrossASubtree_AndCountsForAnAbsentRow_AndHonoursTheFilters()
+    {
+        TimelineReport.Change Gone(long issue) => Move(issue, issue, Day(-3), 1, null, ids: false, toName: "gone");
+
+        var rows = new[]
+        {
+            Issue(1, "epic", 1, Day(-10), project: 1, by: "ann"),
+            Issue(2, "epic", 3, Day(-10), project: 2, by: "bob"),
+            Issue(3, "story", 1, Day(-10), parent: 2, project: 2, by: "bob"),
+            Issue(4, "task", 1, Day(-10), parent: 3, project: 2, by: "bob"),
+        };
+        var changes = new[] { Gone(1), Gone(3), Gone(4) };
+
+        var result = Fold(rows, changes);
+        Assert.Equal<long?[]>([2], Ids(result.Epics));
+        Assert.Equal(3, result.Unresolved);
+
+        Assert.Equal(1, Fold(rows, changes, projectId: 1).Unresolved);
+        Assert.Equal(2, Fold(rows, changes, projectId: 2).Unresolved);
+        Assert.Equal(2, Fold(rows, changes, createdBy: "bob").Unresolved);
+        Assert.Equal(0, Fold(rows, changes, projectId: 1, createdBy: "bob").Unresolved);
     }
 }
