@@ -231,6 +231,12 @@ public class AdminSurfaceTests
         // runner's poll is exactly who reads this verdict.
         "WorkController.PushbackWork",
 
+        // MergedWork's trunk-landing counterpart: a landing judged "land" by
+        // LandingWork itself, carried to the terminal column after review.
+        // Hatch-scoped like its neighbours: a runner's poll is exactly who
+        // calls it, and it refuses everything a hop refuses plus the judge.
+        "WorkController.LandedWork",
+
         // The merge column's own counterpart to MergedWork above: a pull
         // request read as closed rather than merged, for the same board
         // row and the same reason a key may report it - a runner's poll
