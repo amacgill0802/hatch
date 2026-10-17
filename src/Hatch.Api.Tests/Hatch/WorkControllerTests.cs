@@ -7138,6 +7138,205 @@ public class WorkControllerTests
             "AER-404", new PullRequestPushbackRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default)).Result);
     }
 
+    // ---- Landed: carrying a trunk-landing issue judged "land" from review to the terminal column ----
+
+    private static async Task AssertLandedRefusedAsync(Harness h, EfHatchIssue issue, string? sentence = null)
+    {
+        var result = await h.Work.LandedWork(Key(issue), default);
+
+        var conflict = Assert.IsType<ConflictObjectResult>(result.Result);
+        if (sentence is not null) Assert.Equal(sentence, conflict.Value);
+        var row = await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id);
+        Assert.Empty(row.Events);
+        Assert.Equal(h.Review, row.StatusId);
+        Assert.Empty(await h.Db.Comments.Where(c => c.IssueId == issue.Id).ToListAsync());
+    }
+
+    [Fact]
+    public async Task LandedWork_CarriesALandedGreenIssueToTheTerminalColumn()
+    {
+        var h = await NewAsync();
+        await h.SetLandingAsync(Landings.Trunk);
+        var already = await h.FileAsync("story", "already shipped", h.Done, rank: 1024);
+        var issue = await h.FileAsync("story", "direct", h.Review);
+        await h.LandingAsync(issue, Landed, containedBy: Landed);
+        await h.TrunkBuildAsync("main", Landed, BuildVerdicts.Passed);
+
+        var moved = Value(await h.Work.LandedWork(Key(issue), default));
+        var row = await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id);
+
+        Assert.Equal(h.Done, moved.StatusId);
+        Assert.Equal(h.Done, row.StatusId);
+        Assert.True(row.Rank > already.Rank);
+
+        var e = Assert.Single(row.Events);
+        Assert.Equal(EfHatchIssueEvent.StatusChanged, e.Kind);
+        Assert.True(System.Text.Json.JsonDocument.Parse(e.Payload!).RootElement.GetProperty("landed").GetBoolean());
+
+        var comment = Assert.Single(await h.Db.Comments.Where(c => c.IssueId == issue.Id).ToListAsync());
+        Assert.Equal("Landed on main at ccccccc; the trunk's build passes.", comment.Body);
+    }
+
+    [Fact]
+    public async Task LandedWork_LandsAnUncheckedBuildPastTheWindowWhenNoChecksAreRequired()
+    {
+        var h = await NewAsync();
+        await h.SetLandingAsync(Landings.Trunk, checksRequired: false);
+        var issue = await h.FileAsync("story", "direct", h.Review);
+        await h.LandingAsync(issue, Landed, containedBy: Landed);
+        await h.TrunkBuildAsync("main", Landed, BuildVerdicts.None);
+        h.Time.Advance(MergeWork.SettleWindow + TimeSpan.FromMinutes(1));
+
+        var moved = Value(await h.Work.LandedWork(Key(issue), default));
+
+        Assert.Equal(h.Done, moved.StatusId);
+        var comment = Assert.Single(await h.Db.Comments.Where(c => c.IssueId == issue.Id).ToListAsync());
+        Assert.Equal("Landed on main at ccccccc; this project requires no checks.", comment.Body);
+    }
+
+    [Fact]
+    public async Task LandedWork_RefusesWithTheJudgesSentenceWhenNothingIsLanded()
+    {
+        var h = await NewAsync();
+        await h.SetLandingAsync(Landings.Trunk);
+        var issue = await h.FileAsync("story", "direct", h.Review);
+
+        await AssertLandedRefusedAsync(h, issue, "no landing is recorded for it yet");
+    }
+
+    [Fact]
+    public async Task LandedWork_RefusesWithTheJudgesSentenceWhenTheLandingIsNotContained()
+    {
+        var h = await NewAsync();
+        await h.SetLandingAsync(Landings.Trunk);
+        var issue = await h.FileAsync("story", "direct", h.Review);
+        await h.LandingAsync(issue, Landed);
+
+        await AssertLandedRefusedAsync(h, issue, "no runner has seen ccccccc on main yet");
+    }
+
+    [Fact]
+    public async Task LandedWork_RefusesWithTheJudgesSentenceWhileTheBuildIsPending()
+    {
+        var h = await NewAsync();
+        await h.SetLandingAsync(Landings.Trunk);
+        var issue = await h.FileAsync("story", "direct", h.Review);
+        await h.LandingAsync(issue, Landed, containedBy: Landed);
+        await h.TrunkBuildAsync("main", Landed, BuildVerdicts.Pending);
+
+        await AssertLandedRefusedAsync(h, issue, "main's build on ccccccc is still running");
+    }
+
+    [Fact]
+    public async Task LandedWork_RefusesWithTheJudgesSentenceWhenTheBuildFailed()
+    {
+        var h = await NewAsync();
+        await h.SetLandingAsync(Landings.Trunk);
+        var issue = await h.FileAsync("story", "direct", h.Review);
+        await h.LandingAsync(issue, Landed, containedBy: Landed);
+        await h.TrunkBuildAsync("main", Landed, BuildVerdicts.Failed);
+
+        await AssertLandedRefusedAsync(h, issue, "main's build on ccccccc failed after it landed");
+    }
+
+    [Fact]
+    public async Task LandedWork_RefusesAnUncheckedBuildInsideTheWindow()
+    {
+        var h = await NewAsync();
+        await h.SetLandingAsync(Landings.Trunk, checksRequired: false);
+        var issue = await h.FileAsync("story", "direct", h.Review);
+        await h.LandingAsync(issue, Landed, containedBy: Landed);
+        await h.TrunkBuildAsync("main", Landed, BuildVerdicts.None);
+
+        await AssertLandedRefusedAsync(h, issue, "no checks have run on main at ccccccc yet");
+    }
+
+    [Fact]
+    public async Task LandedWork_RefusesAnUncheckedBuildPastTheWindowWhenChecksAreRequired()
+    {
+        var h = await NewAsync();
+        await h.SetLandingAsync(Landings.Trunk, checksRequired: true);
+        var issue = await h.FileAsync("story", "direct", h.Review);
+        await h.LandingAsync(issue, Landed, containedBy: Landed);
+        await h.TrunkBuildAsync("main", Landed, BuildVerdicts.None);
+        h.Time.Advance(MergeWork.SettleWindow + TimeSpan.FromMinutes(1));
+
+        await AssertLandedRefusedAsync(h, issue, "it is on main at ccccccc and no checks ran there");
+    }
+
+    [Fact]
+    public async Task LandedWork_RefusesAnIssueNotInTheReviewColumn()
+    {
+        var h = await NewAsync();
+        await h.SetLandingAsync(Landings.Trunk);
+        var issue = await h.FileAsync("story", "direct", h.InProgress);
+        await h.LandingAsync(issue, Landed, containedBy: Landed);
+        await h.TrunkBuildAsync("main", Landed, BuildVerdicts.Passed);
+
+        var result = await h.Work.LandedWork(Key(issue), default);
+
+        Assert.Equal(
+            $"\"{(await h.Db.Statuses.SingleAsync(s => s.Id == h.InProgress)).Name}\" is not the review column - a landing only advances a ticket waiting there",
+            Assert.IsType<ConflictObjectResult>(result.Result).Value);
+        var row = await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id);
+        Assert.Empty(row.Events);
+        Assert.Equal(h.InProgress, row.StatusId);
+    }
+
+    [Fact]
+    public async Task LandedWork_RefusesAProjectThatLandsByPullRequest()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "by pull request", h.Review);
+        await h.LandingAsync(issue, Landed, containedBy: Landed);
+        await h.TrunkBuildAsync("main", Landed, BuildVerdicts.Passed);
+
+        await AssertLandedRefusedAsync(h, issue, "this project lands by pull request, so there is no landing to confirm");
+    }
+
+    [Fact]
+    public async Task LandedWork_RefusesATrunkIssueWithAPullRequestRecorded()
+    {
+        var h = await NewAsync();
+        await h.SetLandingAsync(Landings.Trunk);
+        var issue = await h.FileAsync("story", "has a pr", h.Review);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+        await h.LandingAsync(issue, Landed, containedBy: Landed);
+        await h.TrunkBuildAsync("main", Landed, BuildVerdicts.Passed);
+
+        await AssertLandedRefusedAsync(
+            h, issue, "a pull request is recorded on this issue, so it lands by merge and not by landing");
+    }
+
+    [Fact]
+    public async Task LandedWork_RefusesAClaimedIssue()
+    {
+        var h = await NewAsync();
+        await h.SetLandingAsync(Landings.Trunk);
+        var issue = await h.FileAsync("story", "direct", h.Review);
+        await h.LandingAsync(issue, Landed, containedBy: Landed);
+        await h.TrunkBuildAsync("main", Landed, BuildVerdicts.Passed);
+        await h.ClaimAsync(issue);
+
+        await AssertLandedRefusedAsync(h, issue);
+    }
+
+    [Fact]
+    public async Task LandedWork_Is404ForAKeyThatDoesNotParse()
+    {
+        var h = await NewAsync();
+
+        Assert.IsType<NotFoundResult>((await h.Work.LandedWork("nonsense", default)).Result);
+    }
+
+    [Fact]
+    public async Task LandedWork_Is404ForAKeyThatDoesNotExist()
+    {
+        var h = await NewAsync();
+
+        Assert.IsType<NotFoundResult>((await h.Work.LandedWork("AER-404", default)).Result);
+    }
+
     // ---- Closed: a runner reporting that the recorded pull request closed without merging ----
 
     [Fact]
