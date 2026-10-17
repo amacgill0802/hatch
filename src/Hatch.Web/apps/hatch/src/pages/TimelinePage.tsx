@@ -3,7 +3,16 @@ import { useSearchParams } from 'react-router-dom';
 import { EmptyState, PageHeader } from '@hatch/ui';
 import { getStatuses, getTimeline } from '../api/client';
 import { TimelineChart } from '../components/TimelineChart';
-import { makeScale, resolveWindow, toggled, unresolvedPhrase } from '../lib/timeline';
+import { TimelineControls } from '../components/TimelineControls';
+import {
+  makeScale,
+  resolveWindow,
+  sameWindow,
+  toggled,
+  unresolvedPhrase,
+  withWindow,
+  type TimelineWindow,
+} from '../lib/timeline';
 import { useLoaded } from '../lib/useLoaded';
 import type { Status, Timeline } from '../types';
 
@@ -63,12 +72,13 @@ export function TimelineBody({ timeline, statuses, offsetMinutes, now, expanded,
  * When the work happened: every epic as a row of coloured stretches, one per
  * column it sat in, with its children a click away.
  *
- * The window comes off the URL's `from` and `to` and falls back to the last
- * ninety days; which rows are open is page state and never the URL, since a
- * pasted link should open the same range and not somebody's half-unfolded view.
+ * The window comes off the URL's `from` and `to`, or a `range` shorthand, and
+ * falls back to the last ninety days; the controls write `from` and `to`. Which
+ * rows are open is page state and never the URL, since a pasted link should
+ * open the same range and not somebody's half-unfolded view.
  */
 export function TimelinePage() {
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
 
   /* Minutes east of UTC, read once per render rather than held: it is a fact
      about the browser, as on the leaderboard. */
@@ -93,6 +103,16 @@ export function TimelinePage() {
 
   const { data, error } = useLoaded<TimelineView>(load);
 
+  /* Compares the resolved window, not the URL text, so a press that would land
+     where the page already is - Today on the default, with no `from` or `to` in
+     the URL at all - writes nothing. Replaces rather than pushes, as the
+     leaderboard does: a run of presses is not a run of history entries. */
+  function move(next: TimelineWindow) {
+    if (sameWindow(next, { from, to })) return;
+
+    setParams(withWindow(params, next), { replace: true });
+  }
+
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
 
   if (error && !data) return <p className="text-danger">{error}</p>;
@@ -103,6 +123,18 @@ export function TimelinePage() {
       <PageHeader
         title="Timeline"
         description="When each epic was in flight, and how long its work sat in each column."
+        className="hatch-timeline-header"
+        /* The requested window, not the answer's, so the strip responds while a
+           refetch is in flight. `now` is fresh rather than the memoised one so a
+           tab left open past midnight moves on the next press of Today. */
+        actions={
+          <TimelineControls
+            window={{ from, to }}
+            now={new Date()}
+            offsetMinutes={offsetMinutes}
+            onMove={move}
+          />
+        }
       />
 
       {error && <p className="text-danger">{error}</p>}
