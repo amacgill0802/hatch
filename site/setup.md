@@ -629,3 +629,122 @@ a password at the command and never ask the person for one; say what you saw.
 terminal and run step 2's check.
 
 Reference: [git clone](https://git-scm.com/docs/git-clone).
+
+### 5. Start the board
+
+**What this is.** A port is the numbered door a program on this machine
+listens at, so that a browser knows where to knock; only one program can hold
+a given door at a time. Hatch's board listens at port 8080 unless told
+otherwise, and `localhost` is this machine's name for itself, so the board will
+be at `http://localhost:` followed by that number. A `.env` file is a small
+text file of `NAME=value` lines that Docker Compose reads when it starts
+Hatch, and it sits beside `compose.yaml`.
+
+**Tell the person.** "Next I am going to start Hatch. First I will check that
+nothing else on this computer is using the port it wants, and pick another if
+something is. Then comes the first build, which takes several minutes
+because it builds Hatch from source on your machine. There is nothing for you
+to do while it runs; I will tell you when it is done."
+
+**Do it.** This part chooses the port and writes it down. It does not start
+Hatch; the part after it does. Every block starts from the `hatch` folder, so
+it works in a fresh terminal. Compose publishes the board at
+`"${HATCH_PORT:-8080}:8080"`, so the port is 8080 unless `HATCH_PORT` says
+otherwise.
+
+First see whether `~/hatch/.env` already sets a port. This prints the line if
+it does, and nothing if it does not or if there is no `.env`:
+
+macOS and Linux:
+
+```
+cd "$HOME/hatch" && grep '^HATCH_PORT=' .env 2>/dev/null
+```
+
+Windows PowerShell:
+
+```
+Set-Location $env:USERPROFILE\hatch; Select-String -Path .env -Pattern '^HATCH_PORT=' -ErrorAction SilentlyContinue
+```
+
+If it printed a line, the port is the number after `=`. Use it, tell the
+person you found it already set, and go to the end of this part: do not check
+or write anything.
+
+Otherwise check that 8080 is free. Read the output, never the exit status:
+**empty output means free**, and any output means something is listening
+there. (`lsof` exits 1 when nothing listens, which is the good case.)
+
+macOS:
+
+```
+lsof -nP -iTCP:8080 -sTCP:LISTEN
+```
+
+Linux, where `lsof` is often missing:
+
+```
+ss -H -ltn 'sport = :8080'
+```
+
+Windows PowerShell:
+
+```
+Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue
+```
+
+In Git Bash on Windows, run the PowerShell command through PowerShell:
+
+```
+powershell.exe -NoProfile -Command "Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue"
+```
+
+If 8080 is free, the port is 8080 and there is nothing to write. If it is
+taken, run the same check with 8081, then 8082, and so on, and stop at the
+first port whose output is empty. That is the port. Tell the person which port
+you chose and that 8080 was in use.
+
+If the port is not 8080, write it down before Hatch is first started, so that
+`docker compose up -d` is the same command on every machine and every later
+command finds the same port. Put `HATCH_PORT=<port>` in `.env` beside
+`compose.yaml`. The line below creates the file if it is absent and adds to it
+if it is not, and the check above has already shown the file has no
+`HATCH_PORT=` line, so never overwrite the file and never edit a line in it.
+Here the port is 8081; use the real one.
+
+macOS and Linux:
+
+```
+cd "$HOME/hatch" && printf '\nHATCH_PORT=8081\n' >> .env
+```
+
+Windows PowerShell:
+
+```
+Set-Location $env:USERPROFILE\hatch; Add-Content -Path .env -Value '', 'HATCH_PORT=8081'
+```
+
+The `.gitignore` in the folder already ignores `.env`, so the line is never
+committed, and a port number is not a credential, so the rule against putting
+credentials in files does not apply to it.
+
+To try a port once without writing it down, put it in front of the command
+itself. This lasts for that one command only; the next `docker compose`
+command in a new terminal is back on 8080 unless `.env` says otherwise, which
+is why the `.env` line is the one to use here:
+
+macOS and Linux:
+
+```
+cd "$HOME/hatch" && HATCH_PORT=8081 docker compose up -d
+```
+
+Windows PowerShell:
+
+```
+Set-Location $env:USERPROFILE\hatch; $env:HATCH_PORT=8081; docker compose up -d
+```
+
+Those two are shown for what they are and are not to be run now. This part
+ends with one number, the port, which you use for every later command and
+address on this page, and with `docker compose up -d` not yet run.
