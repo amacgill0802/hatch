@@ -1608,6 +1608,137 @@ Reference: [curl manpage](https://curl.se/docs/manpage.html),
 [How emulation works on Arm](https://learn.microsoft.com/windows/arm/apps-on-arm-x86-emulation),
 [Gatekeeper and runtime protection](https://support.apple.com/guide/security/gatekeeper-and-runtime-protection-sec5599b66df/web).
 
+### 12. Point the runner at the board
+
+**What this is.** The origin is the board's address, the part before any
+path: `http://localhost:` followed by the port. The runner has to be told it
+once. It keeps it in a small per-user file outside every repository, so
+telling it changes nothing in the person's code and is not repeated for each
+project. The board you started has its wall off, which means it asks nobody
+who they are, so there is no key to give the runner yet.
+
+**Tell the person.** "Next I am going to tell the Hatch runner where your
+board is. It is one short command and takes a second. It writes the address
+into a small settings file in your user folder, and then it asks the board
+whether it can be reached. You will see a line about a missing key; that is
+expected, because your board does not ask for one."
+
+**Do it.** In each command `<port>` is the port step 5 settled on. Where a
+bare `hatch` was not found in step 11's fifth part, use that step's path form
+in its place: `"$HOME/.local/bin/hatch"` on macOS and Linux, and
+`& "$env:USERPROFILE\.local\bin\hatch.exe"` on Windows PowerShell.
+
+First look at what is already set:
+
+```
+hatch config --show
+```
+
+Read only the line that starts `HATCH_BASE:` aloud. Never read, quote or copy
+a `HATCH_KEY:` line: it prints the start of a key. If `HATCH_BASE` is set to
+an address other than `http://localhost:<port>`, ask the person before
+changing it, since changing it points the runner at a different board.
+
+Then write the origin. It asks nothing, and it is the same on every system.
+
+```
+hatch config --origin http://localhost:<port>
+```
+
+Expect three things, in this order. First `wrote` and the path of the
+settings file. Then, on the error stream, `hatch: no key - calls will name
+themselves` followed by a name in quotes, and `which only a Hatch with its
+wall off reads.` **That line is correct and is not an error**: tell the
+person so, and do not try to add a key. Last, `reached http://localhost:`
+followed by the port, and a list of the board's columns.
+
+**Check.** The command exited 0, and one of its lines begins `reached` and
+names `http://localhost:<port>`. Quote that address to the person, not the
+list of columns. Write down the path on the `wrote` line, for step 15.
+
+**If you see** `has no scheme`, the address lost its `http://`. Run the
+command again with it.
+
+**If you see** `the file is written but that call did not go through`, the
+command exited 1: the board is not answering. Go back to step 5's poll and
+stop there.
+
+**If you see** `reached` naming a different address from the one you wrote,
+an exported `HATCH_BASE` in this shell is overriding the file. `hatch config
+--show` names the layer it came from. Stop, and say so.
+
+Reference: `hatch config -h` lists everything the command can set.
+
+### 13. Their name, and a first project
+
+**What this is.** A board with its wall off does not ask who you are, so it
+signs what you do with your shell's user name, or `friend` if there is none,
+on every comment and every move, for good. The person can change that now,
+and it is worth doing before anything is filed. A project is a key
+namespace: a short key such as `HOME` makes every issue under it numbered
+from that key, `HOME-1`, `HOME-2`, and so on. One board holds as many
+projects as the person makes. Both are done in the browser, by the person.
+
+**Tell the person.** "Last for the board itself: two small things in your
+browser. First, the name your work is signed with, so that the board's
+history says who did what. Second, a first project, which is just a short
+word in capital letters that your tasks will be numbered from. I will tell
+you exactly where to click. Then I will check it from here."
+
+**Do it.** First ask the person for two things in plain words: the name to
+sign their work with, and a short key for their first project, two to six
+characters starting with a letter, such as `HOME`, and a name for the
+project. Then hand over the browser:
+
+> **Hand this to the person.** "In the board, do these two things. (1) Open
+> the gear menu at the right of the top bar and choose **Settings**. Find
+> the card called **Your name**, type the name you want your work signed
+> with in its **Name** box, and press **Save name**. (2) Press **Manage** in
+> the top bar (on a narrow window it is inside the gear menu instead), then
+> **Projects**. Under **New project**, type the **Key** and the **Name**,
+> and press **Add project**. Tell me when both are done."
+
+Do not bind a repository to the project. An unbound project is worked from
+whichever checkout the runner is started in, and that will be the repository
+folder from step 10. Tell the person that in one sentence. If they have more
+than one repository, the same Projects page can bind a project to one of
+them, and that can wait.
+
+**Check.** Both parts must pass.
+
+- (a) The person says the top bar now shows their name and the project is
+  listed on the Projects page.
+- (b) You confirm it from the board's own answers, which a board with its
+  wall off gives to anyone. In each command `<port>` is step 5's port. The
+  first output must contain `"key":"` followed by the key, and the second
+  must show the name.
+
+macOS and Linux:
+
+```
+curl -s http://localhost:<port>/api/hatch/projects
+curl -s http://localhost:<port>/api/hatch/settings | grep -o '"localPersonName":"[^"]*"'
+```
+
+Windows PowerShell:
+
+```
+(Invoke-RestMethod http://localhost:<port>/api/hatch/projects).key
+(Invoke-RestMethod http://localhost:<port>/api/hatch/settings).localPersonName
+```
+
+Never print the whole settings reply: it has a field for a token. Print only
+the name, as above.
+
+Write down the project's key and the name, for step 15.
+
+**If you see** no **Your name** card on the Settings page, the board has its
+wall up, which this guide did not set up. Stop, and say so.
+
+**If you see** the key refused, with "Two to six characters" or a message
+that it is already in use, ask the person for another key and have them try
+again.
+
 ## Where this guide stops for now
 
 The steps above are all that is published so far. Tell the person what is now
