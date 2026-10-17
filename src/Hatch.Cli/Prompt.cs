@@ -444,6 +444,11 @@ public static class Prompt
                     break;
 
                 case BranchKind.AlreadyMerged:
+                    if (entry.TrunkLanding)
+                    {
+                        yield return $"- {where}this project lands its work on the trunk. origin's {string.Join(", ", entry.Merged.Select(m => $"`{m}`"))} has already merged into the trunk, and no branch is wanted: the tree is on `{entry.Trunk}` at origin's tip - commit here, and cut nothing.";
+                        break;
+                    }
                     yield return $"- {where}origin's {string.Join(", ", entry.Merged.Select(m => $"`{m}`"))} has already merged into the trunk. "
                         + $"The tree is on the trunk at origin's tip; cut `{entry.Cut}`, which is not on origin.";
                     break;

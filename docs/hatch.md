@@ -4979,8 +4979,9 @@ and before the spawn:
   that `git merge-tree --write-tree` of the trunk and the branch yields the
   trunk's own tree — which is true of a squash merge too, where the branch's
   commits are nowhere in the trunk's history and an ancestry check would call it
-  unmerged for ever. The prompt then says the old branch merged and names a
-  branch to cut that is not on `origin` (or here).
+  unmerged for ever. Outside a project that lands on the trunk, the prompt then
+  says the old branch merged and names a branch to cut that is not on `origin`
+  (or here).
 - **One branch: the tree goes onto it, at `origin`'s tip, and the trunk is
   merged into it.** The prompt says which branch, at which sha, how many commits
   ahead of the trunk, and whether the merge was a no-op, clean or conflicted. On
@@ -5000,7 +5001,12 @@ and before the spawn:
   not where the work is meant to end.** With no branch, the tree stays on
   `<trunk>` at `origin`'s tip and the prompt says to commit there and cut nothing
   (`Prompt.cs`, `BranchKind.None` with `TrunkLanding`; `Branches.Sentence` says
-  the same on the terminal). With one unmerged branch - a usage-limit push, since
+  the same on the terminal). The same holds when the only branches on `origin`
+  have already merged into the trunk (`BranchKind.AlreadyMerged` with
+  `TrunkLanding`, an earlier increment having landed or a branch left behind):
+  the tree stays on `<trunk>`, the prompt says to commit there and cut nothing,
+  and it names the merged branches only as having merged - no branch to cut.
+  With one unmerged branch - a usage-limit push, since
   `PushForLimit` cuts one from the trunk when it finds work there, or an earlier
   increment's - it is entered as above, and the prompt adds that the session
   finishes on it, merges it into `<trunk>`, pushes `<trunk>`, deletes the branch

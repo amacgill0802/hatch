@@ -315,7 +315,7 @@ public sealed class WorkspaceTests : RepoFixture
     }
 
     [Fact]
-    public void Trunk_landing_does_not_change_the_already_merged_sentence()
+    public void A_trunk_landing_project_whose_only_branch_has_merged_stays_on_the_trunk()
     {
         Publish("ha-31-first", "x.txt", "x");
         G(_other, "checkout", "--quiet", "main");
@@ -327,7 +327,27 @@ public sealed class WorkspaceTests : RepoFixture
         var entry = ws.Enter("HA-31", "First", null, trunkLanding: true);
 
         Assert.Equal(BranchKind.AlreadyMerged, entry.Kind);
-        Assert.Equal($"work: ha-31-first already merged into the trunk; the session is told to cut {entry.Cut}", entry.Sentence());
+        Assert.NotEqual("", entry.Sha);
+        Assert.Equal("main", Current(_work));
+        Assert.Equal($"work: stays on main at {entry.Sha} - this project lands on the trunk; ha-31-first already merged into the trunk", entry.Sentence());
+    }
+
+    [Fact]
+    public void A_plan_for_a_trunk_landing_project_whose_only_branch_has_merged_says_it_would_stay()
+    {
+        Publish("ha-31-first", "x.txt", "x");
+        G(_other, "checkout", "--quiet", "main");
+        G(_other, "merge", "--quiet", "--ff-only", "origin/ha-31-first");
+        G(_other, "push", "--quiet", "origin", "main");
+
+        var ws = Ws();
+        ws.Prepare();
+        var plan = ws.Plan("HA-31", "First", null, trunkLanding: true);
+
+        Assert.Equal(BranchKind.AlreadyMerged, plan.Kind);
+        Assert.True(plan.Planned);
+        Assert.NotEqual("", plan.Sha);
+        Assert.Equal($"work: would stay on main at {plan.Sha} - this project lands on the trunk; ha-31-first already merged into the trunk", plan.Sentence());
     }
 
     [Fact]
