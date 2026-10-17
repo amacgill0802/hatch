@@ -1270,10 +1270,137 @@ Reference: [git config](https://git-scm.com/docs/git-config),
 [setting your commit email address](https://docs.github.com/en/account-and-profile/how-tos/email-preferences/setting-your-commit-email-address),
 [email address reference](https://docs.github.com/en/account-and-profile/reference/email-addresses-reference).
 
+### 10. The repository agents work on
+
+**What this is.** The runner works inside a git checkout: a folder on this
+machine that is a copy of a repository and is linked back to where it came
+from. That link is a remote called `origin`. The trunk is the repository's
+main branch, which the runner resets to before it starts each piece of work.
+So the folder needs an `origin` and a trunk with at least one commit in it.
+
+**Tell the person.** "Last for this part: which repository should agents work
+on? One you already have, or shall I make a new empty private one on your
+GitHub? A new one is a good first try. Agents will make branches and commits
+and push them there. It goes in your home folder beside the `hatch` folder,
+never inside it, because that one is the board's own source."
+
+**Do it.** Ask which, and ask for a folder name made of letters, digits and
+hyphens, other than `hatch`. Suggest `agent-playground`. The folder is
+`$HOME/<name>` (`$env:USERPROFILE\<name>` in PowerShell), with the person's
+name in place of `<name>`. Look at it first, and never delete or overwrite
+it. If `git -C <folder> remote get-url origin` succeeds, it is a checkout
+already: reuse it, do not clone again, and go to the check. If the folder
+exists and that fails, stop and ask for another name.
+
+Take the first case that fits. Which of (A) and (B) to offer depends on the
+answer recorded as **gh signed in** in step 8.
+
+(A) Clone one of the person's repositories. With `gh signed in: yes`, ask for
+it as `owner/name`; `gh repo list --limit 20` lists some, to jog their
+memory. Then, from the home folder:
+
+macOS and Linux:
+
+```
+cd "$HOME" && gh repo clone <owner>/<name> <folder-name>
+```
+
+Windows PowerShell:
+
+```
+Set-Location $env:USERPROFILE; gh repo clone <owner>/<name> <folder-name>
+```
+
+Otherwise ask for the repository's address and clone it from the home
+folder, as step 4 does, with `git clone <address> <folder-name>`. If the
+clone asks for a password or cannot sign in, stop. Never type a credential.
+
+(B) Make a new empty private repository. This needs `gh signed in: yes`; if
+it is not, the person makes an empty repository on their forge's own site,
+following its page, and you go to (A) with its address. This creates
+something on their account, so say the name and that it will be private, and
+wait for a yes first. If they say no, stop. Then, from the home folder:
+
+macOS and Linux:
+
+```
+cd "$HOME" && gh repo create <name> --private --add-readme --clone
+```
+
+Windows PowerShell:
+
+```
+Set-Location $env:USERPROFILE; gh repo create <name> --private --add-readme --clone
+```
+
+`--add-readme` makes the first commit, on GitHub, and `--clone` then copies
+it down, which sets up `origin` and the trunk. Leave `--add-readme` out and
+`gh` only runs `git init` and `git remote add`: there is no commit and no
+trunk. The folder is named after the repository, so the repository name is
+the folder name. If the name is already taken, ask for another.
+
+(C) The clone is empty: git said `You appear to have cloned an empty
+repository`, or `git -C <folder> rev-parse HEAD` fails. The trunk needs a
+first commit, and pushing it needs steps 8 and 9. Ask the person before
+pushing, since it puts a file on their account. Then, with the real folder
+and name in place of the two placeholders:
+
+macOS and Linux:
+
+```
+cd <folder> && printf '# <name>\n' > README.md && git add README.md && git commit -m "Start the repository" && git push -u origin HEAD && git remote set-head origin -a
+```
+
+Windows PowerShell, with the folder's path in quotes:
+
+```
+Set-Location <folder>; Set-Content README.md '# <name>'; git add README.md; git commit -m "Start the repository"; git push -u origin HEAD; git remote set-head origin -a
+```
+
+If the push is refused or asks for a credential, stop.
+
+**Check.** Run all three, each as `git -C <folder> ...`, and every one must
+pass:
+
+1. `git -C <folder> remote get-url origin` prints an address.
+2. `git -C <folder> rev-parse --abbrev-ref origin/HEAD` prints something
+   like `origin/main`. On `unknown revision`, run `git -C <folder> remote
+   set-head origin -a` and this again. If that says `Cannot determine remote
+   HEAD`, the remote is empty: go to (C). The runner needs both this and a
+   commit on the remote.
+3. `git -C <folder> push --dry-run origin HEAD` prints `Everything
+   up-to-date`, or a list of what it would push, and no error. It contacts
+   the remote, so it proves the person can push, which the first two cannot.
+   If it is refused, stop and say which message it gave.
+
+Then say, once: "The repository folder is `<path>`. Remember this folder:
+later steps call it the repository folder from step 10." The path is the
+output of `git -C <folder> rev-parse --show-toplevel`, in full.
+
+**If you see** `Repository not found`, the name is wrong, or the repository
+is private and this account cannot see it. Stop, and say what you saw.
+
+**If you see** `destination path ... already exists and is not an empty
+directory`, never remove it. Ask for another folder name.
+
+**If you see** that the person wants the repository inside the `hatch`
+folder, say no: it goes beside it, because that folder is the board's own
+source.
+
+**If you see** `Permission to ... denied` or a `403` on the push, the account
+has no write access to that repository. Stop, and say so.
+
+Reference: [gh repo create](https://cli.github.com/manual/gh_repo_create),
+[gh repo clone](https://cli.github.com/manual/gh_repo_clone),
+[git clone](https://git-scm.com/docs/git-clone),
+[git remote](https://git-scm.com/docs/git-remote),
+[git push](https://git-scm.com/docs/git-push).
+
 ## Where this guide stops for now
 
 The steps above are all that is published so far. Tell the person what is now
 true from the steps you completed: the board is open at `http://localhost:`
 followed by the port, then `/apps/hatch/`; `claude` is installed and signed
-in; and so on for each later step above. Then tell them plainly that the rest
-of this guide is not published yet, and stop.
+in; the repository folder from step 10 is at the path the check there
+printed; and so on for each later step above. Then tell them plainly that the
+rest of this guide is not published yet, and stop.
