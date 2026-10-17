@@ -146,6 +146,147 @@ public class PullRequestStateControllerTests
         Assert.IsType<NoContentResult>(await h.PutAsync(issue, Request()));
     }
 
+    // ---- Refusals ----
+    //
+    // Each begins with one accepted write, so the columns are non-null and there
+    // is an event to lose, and each is put through RefusedAsync, which proves the
+    // row and its events are as they were.
+
+    [Fact]
+    public async Task NoRecordedUrl_IsRefused()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileWithPullRequestAsync();
+        await h.PutAsync(issue, Request());
+
+        // A url recorded and later cleared: the columns stay, so the snapshot means something.
+        h.Db.Issues.Single().PullRequestUrl = null;
+        await h.Db.SaveChangesAsync();
+
+        var result = await h.RefusedAsync(issue, Request());
+
+        Assert.Equal(
+            "no pull request is recorded on this issue, so there is no state to keep",
+            Assert.IsType<ConflictObjectResult>(result).Value);
+    }
+
+    [Fact]
+    public async Task ADifferentUrl_IsRefused()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileWithPullRequestAsync();
+        await h.PutAsync(issue, Request());
+
+        var other = Url.Replace("/pull/7", "/pull/8");
+        var result = await h.RefusedAsync(issue, Request() with { Url = other });
+
+        Assert.Equal(
+            $"\"{other}\" is not the pull request recorded on this issue",
+            Assert.IsType<ConflictObjectResult>(result).Value);
+    }
+
+    [Theory]
+    [InlineData("upper")]
+    [InlineData("files")]
+    public async Task TheRecordedUrlSpelledDifferently_IsRefused(string spelling)
+    {
+        var h = await NewAsync();
+        var issue = await h.FileWithPullRequestAsync();
+        await h.PutAsync(issue, Request());
+
+        // The comparison is ordinal: a different case, or a page of the same pull request, is another url.
+        var spelled = spelling == "upper" ? Url.ToUpperInvariant() : Url + "/files";
+        var result = await h.RefusedAsync(issue, Request() with { Url = spelled });
+
+        Assert.Equal(
+            $"\"{spelled}\" is not the pull request recorded on this issue",
+            Assert.IsType<ConflictObjectResult>(result).Value);
+    }
+
+    [Theory]
+    [InlineData("mergeable")]
+    [InlineData("CLEAN")]
+    [InlineData("")]
+    public async Task AnUnknownMergeState_IsRefused(string mergeState)
+    {
+        var h = await NewAsync();
+        var issue = await h.FileWithPullRequestAsync();
+        await h.PutAsync(issue, Request());
+
+        var result = await h.RefusedAsync(issue, Request() with { MergeState = mergeState });
+
+        Assert.Equal(
+            $"a merge state is one of {string.Join(", ", MergeStates.All)}",
+            Assert.IsType<BadRequestObjectResult>(result).Value);
+    }
+
+    [Theory]
+    [InlineData("approve")]
+    [InlineData("APPROVED")]
+    [InlineData("")]
+    public async Task AnUnknownReviewDecision_IsRefused(string reviewDecision)
+    {
+        var h = await NewAsync();
+        var issue = await h.FileWithPullRequestAsync();
+        await h.PutAsync(issue, Request());
+
+        var result = await h.RefusedAsync(issue, Request() with { ReviewDecision = reviewDecision });
+
+        Assert.Equal(
+            $"a review decision is one of {string.Join(", ", ReviewDecisions.All)}",
+            Assert.IsType<BadRequestObjectResult>(result).Value);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task AnEmptyHeadSha_IsRefused(string headSha)
+    {
+        var h = await NewAsync();
+        var issue = await h.FileWithPullRequestAsync();
+        await h.PutAsync(issue, Request());
+
+        var result = await h.RefusedAsync(issue, Request() with { HeadSha = headSha });
+
+        Assert.Equal(
+            "a state names the sha the pull request's head stood at",
+            Assert.IsType<BadRequestObjectResult>(result).Value);
+    }
+
+    [Fact]
+    public async Task AnOverLongHeadSha_IsRefused()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileWithPullRequestAsync();
+        await h.PutAsync(issue, Request());
+
+        // The in-memory provider does not enforce [MaxLength], so this exercises
+        // the controller's own check rather than the column's.
+        var result = await h.RefusedAsync(
+            issue, Request() with { HeadSha = new string('a', EfHatchMergeCheck.MaxShaLength + 1) });
+
+        Assert.Equal(
+            $"a sha is at most {EfHatchMergeCheck.MaxShaLength} characters",
+            Assert.IsType<BadRequestObjectResult>(result).Value);
+    }
+
+    [Theory]
+    [InlineData("AER-999")]
+    [InlineData("nonsense")]
+    [InlineData("AER-")]
+    [InlineData("AER-0")]
+    public async Task AnUnknownOrMalformedKey_IsNotFound(string key)
+    {
+        var h = await NewAsync();
+        var issue = await h.FileWithPullRequestAsync();
+        await h.PutAsync(issue, Request());
+        var before = await h.SnapshotAsync(issue.Key);
+
+        Assert.IsType<NotFoundResult>(await h.State.PutPullRequestState(key, Request(), default));
+
+        Assert.Equal(before, await h.SnapshotAsync(issue.Key));
+    }
+
     // ---- The gate ----
 
     [Fact]
@@ -175,6 +316,10 @@ public class PullRequestStateControllerTests
         Assert.Equal(headSha, side.GetProperty("headSha").GetString());
     }
 
+    private sealed record Snapshot(
+        string? MergeState, string? ReviewDecision, string? HeadSha,
+        DateTimeOffset? ReadAt, DateTimeOffset UpdatedAt, int Events);
+
     private sealed class Harness
     {
         public required HatchContext Db { get; init; }
@@ -184,13 +329,19 @@ public class PullRequestStateControllerTests
         public required FakeTimeProvider Time { get; init; }
         public required int ProjectId { get; init; }
 
+        /// <summary>An issue with no pull request recorded on it.</summary>
+        public async Task<IssueDto> FileAsync()
+        {
+            var created = await Issues.CreateIssue(new IssueCreateRequest(ProjectId, "task", "a thing", null, null, null, null), default);
+            return created.Result is CreatedAtActionResult c
+                ? (IssueDto)c.Value!
+                : created.Value ?? throw new InvalidOperationException("expected a created issue");
+        }
+
         /// <summary>An issue with <see cref="Url"/> written straight onto its row - what records one is another route's business.</summary>
         public async Task<IssueDto> FileWithPullRequestAsync()
         {
-            var created = await Issues.CreateIssue(new IssueCreateRequest(ProjectId, "task", "a thing", null, null, null, null), default);
-            var issue = created.Result is CreatedAtActionResult c
-                ? (IssueDto)c.Value!
-                : created.Value ?? throw new InvalidOperationException("expected a created issue");
+            var issue = await FileAsync();
 
             var row = await Db.Issues.SingleAsync();
             row.PullRequestUrl = Url;
@@ -200,6 +351,25 @@ public class PullRequestStateControllerTests
 
         public Task<IActionResult> PutAsync(IssueDto issue, PullRequestStateRequest request) =>
             State.PutPullRequestState(issue.Key, request, default);
+
+        /// <summary>The four columns a state is kept in, the time the issue last changed, and how many state events it has.</summary>
+        public async Task<Snapshot> SnapshotAsync(string key)
+        {
+            var row = await Db.Issues.SingleAsync();
+            var events = await EventsAsync(key);
+            return new Snapshot(
+                row.PullRequestMergeState, row.PullRequestReviewDecision, row.PullRequestHeadSha,
+                row.PullRequestReadAt, row.UpdatedAt, events.Count);
+        }
+
+        /// <summary>Puts a request that must be refused, and proves the refusal left the row and its events as they were.</summary>
+        public async Task<IActionResult> RefusedAsync(IssueDto issue, PullRequestStateRequest request)
+        {
+            var before = await SnapshotAsync(issue.Key);
+            var result = await PutAsync(issue, request);
+            Assert.Equal(before, await SnapshotAsync(issue.Key));
+            return result;
+        }
 
         /// <summary>The state's own events, oldest first.</summary>
         public async Task<IReadOnlyList<IssueEventDto>> EventsAsync(string key)
