@@ -5666,8 +5666,8 @@ itself writes, rather than a second write racing the first.
 
 The CLI is one program — [`src/Hatch.Cli`](../src/Hatch.Cli), published as a
 single binary called `hatch`. Every command is a command of it: `board`, `next`,
-`queue`, `show`, `start`, `move`, `comment`, `pr`, `depends`, `one-pr`, `ask`,
-`questions`, `answer`, `api`, `config`, `work` and `go-to-work`.
+`queue`, `show`, `start`, `move`, `comment`, `pr`, `landed`, `depends`, `one-pr`,
+`ask`, `questions`, `answer`, `api`, `config`, `work` and `go-to-work`.
 
 One command in it is not for a person: `inbox`, which the hooks a spawned session
 runs call to be handed a message and mark it read. It sits beside
@@ -6254,9 +6254,9 @@ the plan reads — and is read on demand.
 ### Reaching Hatch
 
 `hatch` is the calls a working session actually makes — `board`, `next`,
-`queue`, `show`, `start`, `move`, `comment`, `pr`, `depends`, `one-pr`, `ask`,
-`questions`, `answer`, `config`, `work`, `go-to-work`, `do-my-work`, and `api`
-for everything else. It finds a column by name rather than by id — on the
+`queue`, `show`, `start`, `move`, `comment`, `pr`, `landed`, `depends`,
+`one-pr`, `ask`, `questions`, `answer`, `config`, `work`, `go-to-work`,
+`do-my-work`, and `api` for everything else. It finds a column by name rather than by id — on the
 letters and digits alone, so `todo` at a terminal reaches the column the board
 calls `To Do` — and folds off cards whose ready date has not arrived, exactly
 as the board does. `hatch --help` lists the surface and every subcommand takes
@@ -6360,7 +6360,11 @@ ten minutes; `queue` is where the counts turn back into tickets.
   ticket is where somebody looks in six months, and a comment naming a commit is
   what makes that search short. The pull request is a field rather than a
   sentence — `hatch pr AER-12 <url>` puts it there, and the issue page draws
-  it as something to click.
+  it as something to click. In a project that [lands on the
+  trunk](#landing-on-the-trunk) there is no pull request to record:
+  `hatch landed AER-12 [<sha>]` records the sha the work reached the trunk at,
+  per repository — the checkout's origin remote unless `--repo <path>` names
+  another.
 - **Name the ticket in the pull request, in two places.** The title is the key,
   one space, then the subject in house style — `AER-12 Auth: the first Admin`,
   with no brackets and no second colon. The first line of the description is
