@@ -1580,6 +1580,16 @@ public class EfHatchIssueEvent
     public const string PullRequestClosed = "pull_request_closed";
 
     /// <summary>
+    /// What the forge says of the pull request recorded on the issue - its merge
+    /// state, its review decision, or the head sha they are about - changed.
+    /// The payload is <c>{ from, to }</c>, each side
+    /// <c>{ mergeState, reviewDecision, headSha }</c>, and <c>from</c> is null
+    /// for the first read. A repeat of the stored state writes nothing - see
+    /// <see cref="EfHatchIssue.PullRequestMergeState"/>.
+    /// </summary>
+    public const string PullRequestStateChanged = "pull_request_state_changed";
+
+    /// <summary>
     /// The issue was given to somebody, handed to somebody else, or taken off
     /// everybody. The payload's <c>from</c> and <c>to</c> each carry a
     /// <c>name</c> beside the kind and the id, and that is load-bearing: an
