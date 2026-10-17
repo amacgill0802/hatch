@@ -39,6 +39,9 @@ export type AttentionTone = 'rest' | 'asking';
  * person's, every time - there is no loop already on it the way there is for
  * a review-column conflict or a failing build.
  *
+ * `landingHeld` counts for the same reason: nothing dispatches at an issue
+ * whose work already reached the trunk, so every row is a person's to finish.
+ *
  * `approvedWaiting` is deliberately left out: the loop is still progressing
  * those on its own, and a row it cannot clear becomes `approvedHeld`, already
  * counted above.
@@ -49,7 +52,8 @@ export function attentionCount(attention: Attention | null): number {
     attention.reviews.length +
     attention.questions.length +
     (attention.trunkBuilds?.length ?? 0) +
-    (attention.approvedHeld?.length ?? 0)
+    (attention.approvedHeld?.length ?? 0) +
+    (attention.landingHeld?.length ?? 0)
   );
 }
 
@@ -173,6 +177,9 @@ export const failingBuildEmptyWords = (): string => 'No build in review is faili
 
 /** The approved-but-held section's empty state - one wording, like the conflicts' and failing builds'. */
 export const approvedHeldEmptyWords = (): string => 'Nothing approved has stopped merging.';
+
+/** The empty state of the "Landed, not done" section. */
+export const landingHeldEmptyWords = (): string => 'Nothing landed has stopped short of done.';
 
 /** The trunk builds section's empty state - the Human half's own, since a trunk is nobody's issue. */
 export const trunkBuildEmptyWords = (): string => 'No trunk build is failing.';
