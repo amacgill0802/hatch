@@ -102,6 +102,24 @@ describe('IssueSubheader', () => {
     expect(html).not.toContain('hatch-chip-merge-hold');
   });
 
+  it('draws the forge\'s merge state and review decision beside the pull request', () => {
+    const html = render({
+      pullRequestUrl: 'https://forge.test/o/r/pull/1',
+      pullRequestMergeState: 'dirty',
+      pullRequestReviewDecision: 'approved',
+    });
+
+    expect(html).toContain('in conflict');
+    expect(html).toContain('review: approved');
+  });
+
+  it('draws neither chip without a pull request', () => {
+    const html = render({ pullRequestUrl: null, pullRequestMergeState: 'dirty', pullRequestReviewDecision: 'approved' });
+
+    expect(html).not.toContain('in conflict');
+    expect(html).not.toContain('review: approved');
+  });
+
   it('builds the full address against the hatch. subdomain path shape', () => {
     stubWindow('/issues/HA-446');
     const html = render({ key: 'HA-446' });
