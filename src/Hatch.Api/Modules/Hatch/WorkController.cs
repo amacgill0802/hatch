@@ -311,6 +311,17 @@ public class WorkController(
         var verdicts = await _dispatch.MergeChecksAsync(checkIds, ct);
         var builds = await _dispatch.BuildChecksAsync(checkIds, ct);
 
+        // A trunk-landing issue in review has no branch for a runner to check;
+        // what it reports is where the commit landed and how the trunk's build
+        // fares there. Read once for every such row, and for no other.
+        var landing = held.Where(i => i.StatusId == review.Id && LandingWork.Applies(i)).ToList();
+        var landings = landing.Count > 0
+            ? await _dispatch.LandingsAsync(landing.Select(i => i.Id).ToList(), ct)
+            : [];
+        var trunkBuilds = landing.Count > 0
+            ? await _dispatch.TrunkBuildsAsync(landings.Values.SelectMany(l => l).Select(l => l.Canonical), ct)
+            : [];
+
         IReadOnlyDictionary<long, Dispatch.TrainSlot> trainSlots = new Dictionary<long, Dispatch.TrainSlot>();
         if (merging.Count > 0)
         {
@@ -333,6 +344,12 @@ public class WorkController(
                     i.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
                     merged, built, i.PullRequestClosedAt, time.GetUtcNow(), review.Name)
                 : (MergeWork.Judgement?)null;
+            var landed = landing.Contains(i) ? landings.GetValueOrDefault(i.Id, []) : null;
+            var landingWork = landed is null
+                ? (MergeWork.Judgement?)null
+                : LandingWork.Judge(
+                    i.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
+                    landed, trunkBuilds, i.Project.ChecksRequired, time.GetUtcNow());
 
             return new ReviewCheckDto(
                 IssueKey.Format(i.Project!.Key, i.Number),
@@ -347,7 +364,9 @@ public class WorkController(
                 i.Project.Key,
                 i.Project.Landing,
                 IssueKey.Format(i.Project.Key, i.Number),
-                i.Title);
+                i.Title,
+                landed?.Select(IssueLandings.Project).ToList(),
+                landingWork is { } w ? new LandingWorkDto(w.Kind, w.Sentence) : null);
         }).ToList();
     }
 
@@ -441,6 +460,7 @@ public class WorkController(
         var inReview = from.Id == Columns.AwaitingReview(statuses)?.Id;
         var merged = inReview ? (await _dispatch.MergeChecksAsync([issue.Id], ct)).GetValueOrDefault(issue.Id, []) : [];
         var built = inReview ? (await _dispatch.BuildChecksAsync([issue.Id], ct)).GetValueOrDefault(issue.Id, []) : [];
+        var landing = inReview && (await _dispatch.LandedAsync([issue], now, ct)).TryGetValue(issue.Id, out var landed) ? landed : (MergeWork.Judgement?)null;
 
         var wip = await Wip.LoadAsync(db, claims, statuses, now, ct);
         var parent = family.ParentOf(issue.Id);
@@ -466,7 +486,8 @@ public class WorkController(
             await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct),
             repos, merged, built, hopKind, statuses,
             wip,
-            await Wip.EpicsAsync(db, [issue.ParentId], ct));
+            await Wip.EpicsAsync(db, [issue.ParentId], ct),
+            landing: landing);
 
         if (blocked is not null) return Conflict(blocked);
         if (!hop) return Conflict($"{key} is not a hop - a session moves this issue, and a hop does not");
@@ -1027,6 +1048,9 @@ public class WorkController(
         IReadOnlyList<EfHatchBuildCheck> built = inReview
             ? (await _dispatch.BuildChecksAsync([issue.Id], ct)).GetValueOrDefault(issue.Id, [])
             : [];
+        var landing = inReview && (await _dispatch.LandedAsync([issue], claimed.Now, ct)).TryGetValue(issue.Id, out var landed)
+            ? landed
+            : (MergeWork.Judgement?)null;
 
         var repositories = issue.Project!.Repositories
             .OrderBy(r => r.SortOrder)
@@ -1058,7 +1082,7 @@ public class WorkController(
         var blocked = Dispatch.Blocked(
             issue, from, rowTo, playbook, waiting, letGo, sendBackStreak, loop, pace, gate, family, claimed, implementationStatus,
             await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct),
-            repos, merged, built, hopKind, statuses, wip, epics);
+            repos, merged, built, hopKind, statuses, wip, epics, landing: landing);
         var hopped = hop && blocked is null;
 
         return new WorkDto(
@@ -1087,7 +1111,7 @@ public class WorkController(
             questions,
             blocked,
             IssueUrl(issueDto.Key),
-            Dispatch.KindOf(issue, from, rowTo, merged, built, claimed.Now),
+            Dispatch.KindOf(issue, from, rowTo, merged, built, claimed.Now, landing),
             await IssueMessagesController.UnreadAsync(db, issue.Id, ct),
             hopped,
             hopped ? hopKind : null,
