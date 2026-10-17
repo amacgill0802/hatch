@@ -6420,6 +6420,27 @@ public class WorkControllerTests
         Assert.Equal("git@example.com:o/r.git", Assert.Single(row.Repositories).MatchedRemote);
         Assert.Equal(MergeVerdicts.Conflicted, Assert.Single(row.MergeChecks).Verdict);
         Assert.Equal("https://example.com/o/r/pull/1", row.PullRequestUrl);
+        Assert.Null(row.PullRequestMergeState);
+        Assert.Null(row.PullRequestReviewDecision);
+        Assert.Null(row.PullRequestHeadSha);
+    }
+
+    [Fact]
+    public async Task ReviewRead_CarriesWhatTheForgeLastSaidAboutThePullRequest()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "up for review", h.Review);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+        issue.PullRequestMergeState = MergeStates.Behind;
+        issue.PullRequestReviewDecision = ReviewDecisions.ReviewRequired;
+        issue.PullRequestHeadSha = "0123456789abcdef0123456789abcdef01234567";
+        await h.Db.SaveChangesAsync();
+
+        var row = Assert.Single(Value(await h.Work.GetReview(null, true, default)));
+
+        Assert.Equal(MergeStates.Behind, row.PullRequestMergeState);
+        Assert.Equal(ReviewDecisions.ReviewRequired, row.PullRequestReviewDecision);
+        Assert.Equal("0123456789abcdef0123456789abcdef01234567", row.PullRequestHeadSha);
     }
 
     /// <summary>

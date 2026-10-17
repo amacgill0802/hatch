@@ -1271,6 +1271,57 @@ public class IssuesControllerTests
     }
 
     /// <summary>
+    /// What the forge said about one pull request is wrong for another, so
+    /// pointing the issue at a different url clears all four fields it was read
+    /// into - and the event that already says the url changed is the only one.
+    /// </summary>
+    [Fact]
+    public async Task ARecordedPullRequest_ClearsThePullRequestStateReadFromThePreviousOne()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("task", "the work");
+        await h.Issues.PatchIssue("AER-1", Patch(pullRequestUrl: "https://example.com/owner/repo/pull/12"), default);
+
+        var issue = await h.Db.Issues.FirstAsync(i => i.Number == 1);
+        issue.PullRequestMergeState = MergeStates.Clean;
+        issue.PullRequestReviewDecision = ReviewDecisions.Approved;
+        issue.PullRequestHeadSha = "0123456789abcdef0123456789abcdef01234567";
+        issue.PullRequestReadAt = Now;
+        await h.Db.SaveChangesAsync();
+
+        await h.Issues.PatchIssue("AER-1", Patch(pullRequestUrl: "https://example.com/owner/repo/pull/13"), default);
+
+        var after = await h.Db.Issues.FirstAsync(i => i.Number == 1);
+        Assert.Null(after.PullRequestMergeState);
+        Assert.Null(after.PullRequestReviewDecision);
+        Assert.Null(after.PullRequestHeadSha);
+        Assert.Null(after.PullRequestReadAt);
+    }
+
+    [Fact]
+    public async Task ReSendingTheSamePullRequestUrl_LeavesThePullRequestState()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("task", "the work");
+        await h.Issues.PatchIssue("AER-1", Patch(pullRequestUrl: "https://example.com/owner/repo/pull/12"), default);
+
+        var issue = await h.Db.Issues.FirstAsync(i => i.Number == 1);
+        issue.PullRequestMergeState = MergeStates.Blocked;
+        issue.PullRequestReviewDecision = ReviewDecisions.ChangesRequested;
+        issue.PullRequestHeadSha = "0123456789abcdef0123456789abcdef01234567";
+        issue.PullRequestReadAt = Now;
+        await h.Db.SaveChangesAsync();
+
+        await h.Issues.PatchIssue("AER-1", Patch(pullRequestUrl: "https://example.com/owner/repo/pull/12"), default);
+
+        var after = await h.Db.Issues.FirstAsync(i => i.Number == 1);
+        Assert.Equal(MergeStates.Blocked, after.PullRequestMergeState);
+        Assert.Equal(ReviewDecisions.ChangesRequested, after.PullRequestReviewDecision);
+        Assert.Equal("0123456789abcdef0123456789abcdef01234567", after.PullRequestHeadSha);
+        Assert.Equal(Now, after.PullRequestReadAt);
+    }
+
+    /// <summary>
     /// The rule is that the link opens, not whose forge it points at. A
     /// self-hosted one on a private address is a pull request like any other.
     /// </summary>
