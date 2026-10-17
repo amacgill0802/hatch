@@ -3,9 +3,10 @@ import appSource from '../App.tsx?raw';
 import { NAV, activeGroup, navFor, navRows } from './nav';
 import type { NavEntry } from './nav';
 
-// Excluded on purpose: /issues/:key is reached from a card, never the nav;
-// /settings and * (the unknown-route fallback) are not pages a menu lists.
-const EXCLUDED_ROUTES = new Set(['/issues/:key', '/settings', '*']);
+// Excluded on purpose: /issues/:key is reached from a card, and
+// /reports/timeline from the Reports index, never the nav; /settings and *
+// (the unknown-route fallback) are not pages a menu lists.
+const EXCLUDED_ROUTES = new Set(['/issues/:key', '/reports/timeline', '/settings', '*']);
 
 function routesInApp(): string[] {
   const matches = appSource.matchAll(/<Route path="([^"]+)"/g);
