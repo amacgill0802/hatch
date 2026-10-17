@@ -236,13 +236,8 @@ public class WorkLogController(HatchContext db, TimeProvider time) : ControllerB
     private BadRequestObjectResult? Range(
         string? from, string? to, out DateTimeOffset start, out DateTimeOffset end)
     {
-        start = default;
-        if (!Bound(to, time.GetUtcNow(), out end)) return BadRequest(NotAnInstant(to));
-        if (!Bound(from, end - DefaultRange, out start)) return BadRequest(NotAnInstant(from));
-
-        // Equal is legal - one bucket next door, an empty list here. Inverted is
-        // not a range at all.
-        return start > end ? BadRequest("a range ends before it begins") : null;
+        var sentence = RangeBounds.Resolve(from, to, time.GetUtcNow(), DefaultRange, out start, out end);
+        return sentence is null ? null : BadRequest(sentence);
     }
 
     /// <summary>
@@ -267,22 +262,4 @@ public class WorkLogController(HatchContext db, TimeProvider time) : ControllerB
 
         return id is null ? (null, BadRequest($"there is no {ancestorKey}")) : (id, null);
     }
-
-    /// <summary>A bound as it was typed, or the default when nothing was.</summary>
-    private static bool Bound(string? text, DateTimeOffset fallback, out DateTimeOffset at)
-    {
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            at = fallback;
-            return true;
-        }
-
-        var parsed = IssueMoment.TryParse(text, out var moment);
-        at = parsed ? moment.At : default;
-        return parsed;
-    }
-
-    /// <summary>In the house's own words, rather than as a framework 400.</summary>
-    private static string NotAnInstant(string? text) =>
-        $"a range bound is an instant (2026-09-12T17:00:00Z) - not \"{text}\"";
 }
