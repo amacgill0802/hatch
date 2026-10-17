@@ -552,8 +552,10 @@ through the gate that was supposed to stop it.
 
 `EfHatchIssue` — `ProjectId`, `Number`, `Type`, `Title`, `Description`,
 `StatusId`, `ParentId`, `Rank`, `ReadyAt`/`ReadyAtHasTime`,
-`DueAt`/`DueAtHasTime`, `PullRequestUrl`, `ModelOverride`, `EffortOverride`,
-`AssigneePersonId`/`AssigneeApiKeyId`, `CreatedBy`, `CreatedAt`, `UpdatedAt`.
+`DueAt`/`DueAtHasTime`, `PullRequestUrl`, `PullRequestMergeState`,
+`PullRequestReviewDecision`, `PullRequestHeadSha`, `PullRequestReadAt`,
+`ModelOverride`, `EffortOverride`, `AssigneePersonId`/`AssigneeApiKeyId`,
+`CreatedBy`, `CreatedAt`, `UpdatedAt`.
 
 The display key `AER-12` is **computed** (`Project.Key + "-" + Number`) and
 never stored, so there is exactly one fact about a key anywhere and no chance of
@@ -606,6 +608,21 @@ not read from it**: the runner asks `gh` about the checkout's repository, at the
 board's own identity for it (see [checking the branches in
 review](#checking-the-branches-in-review)), so a pull request nobody recorded
 still has its build read.
+
+**The four fields after it are what the forge last said of that pull request.**
+`PullRequestMergeState` is `clean`, `blocked`, `behind`, `dirty`, `unstable`,
+`draft` or `unknown`; `PullRequestReviewDecision` is `none`, `approved`,
+`changes-requested` or `review-required`; `PullRequestHeadSha` is the commit
+that was read, and `PullRequestReadAt` is when. All four are nullable, and null
+means *not read* — which is not `unknown` or `none`, both of which are things
+the forge can say. Only `PUT /api/hatch/issues/{key}/pull-request-state` writes
+them, and when the url changes they are cleared together with
+`PullRequestClosedAt`, since a state read of one pull request says nothing of
+another. **Nothing acts on them yet**: they are stored and drawn, and no gate,
+move or merge decision reads them. The issue page draws a chip beside the pull
+request's link saying what the forge calls it, and the review decision beside
+that where there is one; nothing is drawn while the state is unread or
+`unknown`.
 
 #### Assignee
 
@@ -2025,7 +2042,13 @@ had already gone quiet past its terms and is taking it over — payload
 written immediately before the `claim_taken` for the runner taking over),
 `claim_released` (payload `{ from, to, outcome }`, `outcome` left out entirely
 rather than serialized as null where the release named none), `claim_cleared`,
-`merge_check_changed`, `build_check_changed`, `wip_overridden` (a move into a
+`merge_check_changed`, `build_check_changed`, `pull_request_state_changed` (the
+forge's last word on the recorded pull request - its merge state, its review
+decision, or the head sha they were read at - differs from what the board
+held, the first read counting; payload `{ from, to }`, each side `{ mergeState,
+reviewDecision, headSha }` and `from` null on the first read. The board stores
+them and nothing acts on them yet; a read that repeats all three writes no
+event and refreshes only when it was read), `wip_overridden` (a move into a
 full [WIP](#wip) section, or past [an epic's own
 limit](#an-epics-own-limit), let through because a person said *move
 anyway* - payload `{ limit, load, to, epic? }`, `load` counting the card
@@ -2447,6 +2470,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/issues/{key}/claim/heartbeat` | POST | `{ token, chatter? }` — refreshes it, `204`. `409` on a token that is not the row's, on a lease that is over, and on one that has gone quiet — see [Claim](#claim). `chatter` absent leaves the carried line alone, `""` clears it, anything longer than the column is truncated rather than refused |
 | `/issues/{key}/claim?token=…&outcome=…` | DELETE | Releases it, `204`. A mismatched token is `409` and clears nothing; an issue holding no claim is `204` and writes nothing. `outcome` (`dropped` or `worked`) is read only where `token` is given and is otherwise optional — an older CLI names none — and a value that is neither is `400`. **With no token at all it is person-only** — an agent that could clear another runner's claim could take a ticket off it mid-increment |
 | `/issues/{key}/merge-check` | PUT | Keeps a runner's [verdict](#merge-check) for one repository. `{ remote, trunk, trunkSha, verdict, branch?, branchSha?, files?, runner, holdsTrunk? }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an unknown verdict, `conflicted` with no files, and `clean` or `conflicted` with no branch sha; `404` on an unknown key. The column is not checked. A verdict that repeats the stored one writes no event, and neither does a change to `holdsTrunk` alone |
+| `/issues/{key}/pull-request-state` | PUT | Keeps what the forge last said of the pull request recorded on an issue: its merge state (`clean`, `blocked`, `behind`, `dirty`, `unstable`, `draft` or `unknown`) and its review decision (`none`, `approved`, `changes-requested` or `review-required`), with the head sha it was read at and when. `{ url, headSha, mergeState, reviewDecision, runner }`; answers `204`. Refused, in a sentence, with `409` for an issue with no pull request recorded or a `url` that is not the recorded one, and `400` for a merge state or review decision outside those lists, an empty head sha, or one longer than a sha can be; `404` on an unknown key. The column is not checked, and `runner` is neither checked nor kept. The board stores them and nothing acts on them yet. A read that repeats the stored merge state, review decision and head sha writes no event and refreshes only when it was read |
 | `/issues/{key}/landing` | PUT | Keeps what a repository holds for an issue's branch — see [landing](#landing). `{ remote, sha, trunk?, containedBy?, runner? }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an empty or non-hex sha, and `containedBy` given without a `trunk`; `404` on an unknown key. The column is not checked. A write that repeats the stored sha and `containedBy` writes no event |
 | `/questions` | GET | Every open question in the house |
 | `/plan`, `/plan/{key}` | GET | See [the level above the board](#the-level-above-the-board) |
