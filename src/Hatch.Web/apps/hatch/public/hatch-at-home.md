@@ -37,8 +37,13 @@ handed out by your own Hatch, from **Agents → Get the runner**:
 - **`gh`, signed in — optional** ([cli.github.com](https://cli.github.com/);
   `gh auth login`, or `HATCH_GH_TOKEN` for the container runner, below). It
   turns on build checks, noticing merged pull requests, and merging approved
-  pull requests. Without it the runner still works tickets; it just never
-  reads a build, never notices a merge and never merges.
+  pull requests. It also reads the build on the trunk's tip, which landing on
+  the trunk needs: a repository with no CI reads as *no checks*, which a project
+  with *Checks are required* unticked lands on after a settle window. Without
+  it the runner still works tickets; it just never reads a build, never notices
+  a merge and never merges a pull request. A ticket that lands on the trunk is
+  still recorded and confirmed in the trunk, but waits as pending, since no
+  build is ever read for it.
 
 ## The one line
 
@@ -296,6 +301,11 @@ teach the board a column where moving a ticket by hand *is* the approval,
 and the runner merges its pull request from there with no session and
 nothing spent.
 
+A project chooses how its work lands: by pull request, which this section is
+about, or straight onto the trunk. It is set on **Manage → Projects**, edit,
+**Landing** — an owner's alone — as *By pull request* or *On the trunk*, beside
+a *Checks are required* box. Step 3 says which to pick.
+
 **1. Add the column.** On **Manage → Statuses**, add a column — call it
 `Approved`, or anything else; every name here is a placeholder, and nothing
 hangs on it being this one — positioned between `In Review` and `Done`.
@@ -317,20 +327,49 @@ dialog. An approver here is always a *person* — a key can never move work
 into a protected column, by the gate's own design: "moving work into a
 protected column is an owner's or approver's call, not an agent's".
 
-**3. On GitHub: a ruleset, and why.** The runner merges a pull request with
-`gh pr merge --merge --admin --match-head-commit <sha>` — exactly what it
-runs once Hatch's own gate has approved the move. `--admin` is what lets
-that succeed even though nobody clicked **Approve** on GitHub's own pull
-request review: the approval already happened on the board, in the move
-into the protected column, not on the forge. So, on `<your-org>/<your-repo>`:
+**3. On the forge: which shape is the repository?** Three shapes of
+repository are common, and which one you have decides what, if anything, to
+configure. To tell: look at the rules on `<trunk>` — the repository's default
+branch — in the forge's settings. No rules at all is the first shape; required
+status checks and nothing else is the second; a required approving review is
+the third. They are offered simplest first, and each says what it costs in
+trust.
 
-- Create a ruleset on the default branch requiring one approving review and
-  the required status checks — the ordinary protection everybody else's push
-  still has to clear.
-- Add the account `HATCH_GH_TOKEN` signs `gh` in as to the ruleset's
-  **bypass list**. Without it, the same rule that protects everyone else's
-  pushes would also refuse the runner's merge, and the approval that already
-  happened on the board would have nowhere to land.
+- **A trunk nobody protects.** Either set the project to land on the trunk
+  (**Landing → On the trunk**, above), or leave it
+  on pull requests and untick **Checks are required** when the repository has no
+  CI. There is nothing to configure on the forge; the account the session's git
+  pushes as needs push access, and that is all. *The cost in trust:* a landed
+  commit reaches `<trunk>` before anyone reads it, and the only check is the
+  trunk's build after the fact (landing on the trunk) or Hatch's own approval
+  (pull requests).
+- **Pull requests with checks and no review.** Leave the defaults. A person
+  still approves in Hatch — the move into the column from step 1, or a
+  pre-approval — and the train merges once the checks pass. No bypass is needed:
+  the runner's merge is still requested with `--admin`, which a forge honours as
+  a bypass only where something required is unmet, and here nothing is (the flag
+  is always sent; the forge decides). *The cost in trust:* CI is the only reader
+  of the code.
+- **Pull requests with a required review.** The runner merges a pull request
+  with `gh pr merge --merge --admin --match-head-commit <sha>` — exactly what it
+  runs once Hatch's own gate has approved the move. `--admin` is what lets that
+  succeed even though nobody clicked **Approve** on the forge's own pull request
+  review: the approval already happened on the board, in the move into the
+  protected column, not on the forge. So, on `<your-org>/<your-repo>`:
+  - Create a ruleset on `<trunk>` requiring one approving review and the
+    required status checks — the ordinary protection everybody else's push still
+    has to clear.
+  - Add the account `HATCH_GH_TOKEN` signs `gh` in as to the ruleset's
+    **bypass list**. Without it, the same rule that protects everyone else's
+    pushes would also refuse the runner's merge, and the approval that already
+    happened on the board would have nowhere to land.
+
+  *The cost in trust:* the bypass means anyone who may move a ticket into the
+  merge column gets a merge past the review rule — which is why the column is
+  protected, and why its approvers are owners or approvers, never a key.
+
+Hatch asks for its own approval in every shape that opens pull requests,
+whatever the forge requires.
 
 **4. `HATCH_GH_TOKEN`.** The same `.env` beside `compose.yaml` as *Putting a
 front door on it*, above it on this page. Compose turns it into `GH_TOKEN`
@@ -558,7 +597,7 @@ the bulk endpoint and the plan reads. Read it on demand.
 ### Reaching Hatch
 
 `hatch` is the calls a working session actually makes — `board`, `next`,
-`queue`, `show`, `comments`, `start`, `move`, `comment`, `pr`, `verdict`, `depends`, `one-pr`, `ask`,
+`queue`, `show`, `comments`, `start`, `move`, `comment`, `pr`, `landed`, `verdict`, `depends`, `one-pr`, `ask`,
 `questions`, `answer`, `config`, `work`, `go-to-work`, `do-my-work`, and `api`
 for everything else. It finds a column by name rather than by id — on the
 letters and digits alone, so `todo` at a terminal reaches the column the board
@@ -566,10 +605,11 @@ calls `To Do` — and folds off cards whose ready date has not arrived, exactly
 as the board does. `hatch --help` lists the surface and every subcommand
 takes `-h` for its own.
 
-Only `work`, `go-to-work` and `do-my-work` need a checkout, because only those
-three are about a codebase — the checkout you are standing in, or one named
-with `--repo` or `HATCH_REPOS`. The other sixteen are one request and a
-sentence about the answer, and `hatch board` from a directory that has never
+Only `work`, `go-to-work`, `do-my-work` and `landed` need a checkout, because
+only those four are about a codebase — the checkout you are standing in, or one
+named with `--repo` or `HATCH_REPOS` (`landed` reads that checkout's origin
+remote, to record the sha a ticket's work reached the trunk at). Every other
+call is one request and a sentence about the answer, and `hatch board` from a directory that has never
 been a repository is the ordinary case.
 
 `--mine` on `work`, `go-to-work` and `queue` narrows to the caller's own
@@ -648,7 +688,9 @@ ten minutes; `queue` is where the counts turn back into tickets.
   ticket is where somebody looks in six months, and a comment naming a commit is
   what makes that search short. The pull request is a field rather than a
   sentence — `hatch pr AER-12 <url>` puts it there, and the issue page draws
-  it as something to click.
+  it as something to click. On a project that lands on the trunk there is no
+  pull request: the ticket records the sha with `hatch landed AER-12`, not
+  `hatch pr`.
 - **Name the ticket in the pull request, in two places.** The title is the key,
   one space, then the subject in house style — `AER-12 Auth: the first Admin`,
   with no brackets and no second colon. The first line of the description is
@@ -982,7 +1024,9 @@ so that a session never has to work out its own base:
   progress for the session, and the prompt says so. With no branch, or only one
   already merged, the checkout stays on the trunk and the prompt names a branch
   to cut. With two unmerged branches the loop asks on the ticket which to use and
-  spawns nothing. Never a rebase, never a force-push.
+  spawns nothing. In a project that lands on the trunk, the checkout stays on
+  `<trunk>` when origin has no branch for the ticket, and the session pushes
+  `<trunk>` itself; the runner never does. Never a rebase, never a force-push.
 - **When the increment ends, the tree is put right before the ticket is let go**:
   a merge or rebase left half-done is aborted, uncommitted changes are stashed
   under a message naming the ticket, unpushed commits and commits left on the
@@ -1028,6 +1072,7 @@ hatch comment AER-12 "sha abc123 on branch aer-12-thing"
 hatch pr AER-12                   where it is being reviewed
 hatch pr AER-12 https://...       ...or say where, having opened one
 hatch pr AER-12 --clear           ...or take it off the one it has
+hatch landed AER-12 [<sha>] [--repo <path>]    ...or, on a project that lands on the trunk, the sha it reached
 hatch depends AER-13 AER-12       AER-13 waits on AER-12
 hatch depends AER-13 --remove AER-12        ...no longer
 hatch one-pr AER-5                whether the story's tasks share its branch and one PR
