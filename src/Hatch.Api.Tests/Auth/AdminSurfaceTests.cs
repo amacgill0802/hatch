@@ -372,6 +372,12 @@ public class AdminSurfaceTests
         // which is a question. See BuildCheckController.
         "BuildCheckController.PutBuildCheck",
 
+        // What the forge says of an issue's recorded pull request, cut the same
+        // way: a fact any runner reads the same way from the forge, and a wrong
+        // one stalls nothing, since nothing acts on it yet. See
+        // PullRequestStateController.
+        "PullRequestStateController.PutPullRequestState",
+
         // What a check session judged about an issue - pass or fail - and
         // Hatch-scoped for the same reason the two verdicts above are: the
         // caller is whatever ran the check, and a verdict only an operator
