@@ -754,7 +754,7 @@ public class IssuesController(
             // The whole row rather than the name, because two of its flags are
             // read below - what is being left as well as what is being entered.
             var from = await db.Statuses.AsNoTracking().FirstOrDefaultAsync(s => s.Id == issue.StatusId, ct);
-            events.Add(Event(actor, EfHatchIssueEvent.StatusChanged, new { from = from?.Name, to = status.Name }, now));
+            events.Add(Event(actor, EfHatchIssueEvent.StatusChanged, IssueEventPayload.StatusChanged(from, status), now));
 
             issue.StatusId = status.Id;
             // A column change through PATCH has no neighbours to sit between,
@@ -969,7 +969,7 @@ public class IssuesController(
 
             var actor = await caller.ActorNameAsync(ct);
             var from = await db.Statuses.AsNoTracking().FirstOrDefaultAsync(s => s.Id == issue.StatusId, ct);
-            issue.Events.Add(Event(actor, EfHatchIssueEvent.StatusChanged, new { from = from?.Name, to = status.Name }, now));
+            issue.Events.Add(Event(actor, EfHatchIssueEvent.StatusChanged, IssueEventPayload.StatusChanged(from, status), now));
             if (wip.Kind == WipVerdictKind.Overridden)
                 foreach (var over in wip.Overrides)
                     issue.Events.Add(Event(actor, EfHatchIssueEvent.WipOverridden, WipOverriddenPayload(over, status.Name), now));

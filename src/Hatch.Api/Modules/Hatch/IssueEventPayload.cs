@@ -28,4 +28,27 @@ public static class IssueEventPayload
             return null;
         }
     }
+
+    /// <summary>
+    /// The payload of a <see cref="EfHatchIssueEvent.StatusChanged"/> row, in
+    /// one place so both writers say the same thing. The column is named and
+    /// numbered: names because the trail is read long after an id means
+    /// anything, ids because a name stops matching once the column is renamed.
+    /// <paramref name="from"/> is null for an issue with no previous column,
+    /// and then <c>from</c> and <c>fromId</c> are both JSON null. Each
+    /// <paramref name="extra"/> pair lands after the four keys, in order.
+    /// </summary>
+    public static Dictionary<string, object?> StatusChanged(
+        EfHatchStatus? from, EfHatchStatus to, params (string Key, object? Value)[] extra)
+    {
+        var payload = new Dictionary<string, object?>
+        {
+            ["from"] = from?.Name,
+            ["to"] = to.Name,
+            ["fromId"] = from?.Id,
+            ["toId"] = to.Id,
+        };
+        foreach (var (key, value) in extra) payload[key] = value;
+        return payload;
+    }
 }
