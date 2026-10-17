@@ -26,13 +26,15 @@ agent working it from your terminal. Ten minutes if the downloads are quick.
 ## 1. Install these first
 
 The board runs in Docker. The agent runs bare on your machine, so it needs
-git and the Claude Code CLI installed where it can find them.
+git and the Claude Code CLI installed where it can find them, and
+optionally the GitHub CLI.
 
 | What | Why | Get it |
 |---|---|---|
 | **Docker Desktop** | Runs the board: Postgres, a migration, the API. Builds the image from source, so there is nothing else to install for the board itself. | [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/) |
 | **git** | The runner fetches, branches, commits and pushes from a checkout. | [git-scm.com/install](https://git-scm.com/install/) ([macOS](https://git-scm.com/install/mac) · [Windows](https://git-scm.com/install/windows) · [Linux](https://git-scm.com/install/linux)) |
 | **Claude Code CLI**, logged in | Each increment is one headless `claude` session. Needs a Claude Pro, Max, Team or Enterprise plan, or a Console account. | [code.claude.com/docs/en/setup](https://code.claude.com/docs/en/setup) |
+| **GitHub CLI** (`gh`), signed in with `gh auth login` — optional | Turns on build checks, noticing merged pull requests, and merging approved pull requests. Without it the runner still works tickets; it just never reads a build, never notices a merge and never merges. | [cli.github.com](https://cli.github.com/) |
 | **A repository to work on** | A git checkout with a remote the runner can push to. Hatch's own repository is fine for a first run. | Your own |
 | **The `hatch` binary** | The runner. Your own board hands it out, built from the same commit as the board, so there is nothing to download until the board is up. | Step 3, below |
 
@@ -45,7 +47,7 @@ curl -fsSL https://claude.ai/install.sh | bash
 On Windows, in PowerShell: `irm https://claude.ai/install.ps1 | iex`. Then run
 `claude` once and follow the browser prompt to log in.
 
-Not needed: the .NET SDK, Node, the GitHub CLI. The binary is self-contained
+Not needed: the .NET SDK or Node. The binary is self-contained
 and the runner records a pull request by URL rather than opening one.
 
 ## 2. Bring up the board

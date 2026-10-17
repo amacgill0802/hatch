@@ -20,6 +20,11 @@ exhaustive reference for every flag and behaviour.
 - **The `claude` CLI**, logged in, on the `PATH` or named in
   `HATCH_CLAUDE_BIN`. The runner refuses to take a ticket if it cannot find
   one, before claiming anything.
+- **The `gh` CLI** ([cli.github.com](https://cli.github.com/)), signed in with
+  `gh auth login` — optional. With it the loop reads each pull request's build,
+  notices a merged pull request, and merges approved pull requests; without
+  it, or signed out, those three are off and the loop carries on working
+  tickets.
 - **A git checkout** of the repository the board is about, with a remote
   called `origin` — the one you are standing in, or one named with `--repo`
   or `HATCH_REPOS`, so a loop with none of its own still works the two or
@@ -30,7 +35,7 @@ exhaustive reference for every flag and behaviour.
   binds that it has no checkout of — for a machine with nothing cloned on it
   at all.
 
-Nothing else. The binary is self-contained: no .NET, no Node, no `gh`, no
+Nothing else is required. The binary is self-contained: no .NET, no Node, no
 `jq`.
 
 ## Getting the binary

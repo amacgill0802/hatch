@@ -34,6 +34,11 @@ handed out by your own Hatch, from **Agents → Get the runner**:
   board; both are needed by the runner, which branches, commits and pushes from
   a checkout and spends each increment inside a `claude` session. The Runner
   page inside Hatch links all three.
+- **`gh`, signed in — optional** ([cli.github.com](https://cli.github.com/);
+  `gh auth login`, or `HATCH_GH_TOKEN` for the container runner, below). It
+  turns on build checks, noticing merged pull requests, and merging approved
+  pull requests. Without it the runner still works tickets; it just never
+  reads a build, never notices a merge and never merges.
 
 ## The one line
 
