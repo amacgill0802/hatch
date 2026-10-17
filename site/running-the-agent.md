@@ -139,6 +139,46 @@ Exit codes:
 130  interrupted
 ```
 
+### A check increment
+
+An issue whose column has a check playbook (see [Playbooks](how-to-hatch.md#playbooks)
+for what a check is) runs the same way, with these differences. The
+[agent manual](agent-manual.md#after-the-session) has the detail.
+
+- **The session ends with a verdict, not a move.** The prompt lists `hatch
+  verdict AER-12 pass|fail ["findings"]` where it would list `hatch start` and
+  `hatch move`, and its *Where this increment ends* names a column for a pass
+  and another for a fail, rather than one column to stop in.
+- **The tree is read before anything is applied.** In every checkout the
+  increment entered, `git status --porcelain` must be empty and `HEAD` must be
+  where the runner left it. Only then does it ask the board to apply the
+  verdict.
+- **A fail is an ordinary move.** The first one sends the ticket back to the
+  build column with the findings as a comment, and counts as progress.
+- **A second consecutive fail is held.** The board moves nothing and asks a
+  person instead, so the runner writes no comment of its own.
+- **A dirty tree, a moved `HEAD` or no verdict is counted as a stall** (see
+  [Stalls](#stalls)). Nothing is applied, the first one in a row is let go with
+  a comment, and the next is marked stalled. The reason (`the check changed
+  the tree, so its verdict was not applied`, or `the check ended without a
+  verdict`) is in the runner's output and the end-of-night tally, not in a
+  comment of its own.
+- **Issues filed during a check count for nothing.** A check that filed
+  children and recorded no verdict is still a failed increment.
+- **A tree check or an apply call that itself fails counts no stall.** The
+  runner prints the error and says on the outcome that it does not know
+  whether the tree was clean, or whether the verdict was applied.
+- **A usage limit, a preemption, a hard limit or a lost lease skips the tree
+  check and the apply altogether.**
+- **`hatch work --dry-run` prints the two columns.** A check shows `# check:
+  pass -> <column>, fail -> <column>` under the `# tools:` line; any other
+  playbook shows no such line.
+- **`hatch work -i` does the same tree check and the same apply**, but it is
+  attended, so nothing is let go or counted as a stall. On a changed tree it
+  comments that the verdict was not applied; with no verdict it comments that
+  the session ended without one; if the apply call itself fails it says so on
+  the terminal and writes no comment.
+
 ## The loop: `hatch go-to-work`
 
 `work` in a circle: next actionable issue, one increment, ask again, until the
