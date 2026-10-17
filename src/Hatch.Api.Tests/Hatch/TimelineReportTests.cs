@@ -591,4 +591,171 @@ public class TimelineReportTests
         Assert.Equal(2, Fold(rows, changes, createdBy: "bob").Unresolved);
         Assert.Equal(0, Fold(rows, changes, projectId: 1, createdBy: "bob").Unresolved);
     }
+
+    [Fact]
+    public void Fold_LooseWork_FoldsIntoOther_WithTheStoryAsItsChildAndTheTaskBeneathIt()
+    {
+        var rows = new[] { Issue(1, "story", 1, Day(-1)), Issue(2, "task", 3, Day(-1), parent: 1) };
+
+        var result = Fold(rows);
+
+        Assert.Empty(result.Epics);
+        var other = Assert.IsType<TimelineReport.Node>(result.Other);
+        Assert.Null(other.IssueId);
+        Assert.Equal("", other.CreatedBy);
+        Assert.False(other.IsLeaf);
+        var story = Assert.Single(other.Children);
+        Assert.Equal(1, story.IssueId);
+        Assert.Equal<long?[]>([2], Ids(story.Children));
+    }
+
+    [Fact]
+    public void Fold_Other_IsNullWithNoLooseWork_AndWhenTheLooseWorkHasNoActivity()
+    {
+        Assert.Null(Fold([Issue(1, "epic", 3, Day(-1))]).Other);
+
+        var idle = new[] { Issue(1, "story", 1, Day(-1)), Issue(2, "task", 1, Day(-1), parent: 1) };
+        Assert.Null(Fold(idle).Other);
+    }
+
+    [Fact]
+    public void Fold_OtherHull_RunsFromTheEarliestStartToTheLatestEnd_AcrossRootsAndDescendants()
+    {
+        var rows = new[]
+        {
+            Issue(1, "story", 5, Day(-30)),
+            Issue(2, "task", 5, Day(-30), parent: 1),
+            Issue(3, "story", 5, Day(-30)),
+        };
+        var changes = new[]
+        {
+            Move(1, 1, Day(-3), 1, 3), Move(1, 2, Day(-1), 3, 5),
+            Move(2, 3, Day(-4), 1, 4), Move(2, 4, Day(2), 4, 5),
+            Move(3, 5, Day(0), 1, 3), Move(3, 6, Day(3), 3, 5),
+        };
+
+        var other = Assert.IsType<TimelineReport.Node>(Fold(rows, changes).Other);
+
+        Assert.Equal([new TimelineReport.Segment(4, Day(-4), Day(3))], other.Segments);
+    }
+
+    [Fact]
+    public void Fold_OtherHull_IsOpenWhenAnyDescendantIsStillOpen()
+    {
+        var rows = new[]
+        {
+            Issue(1, "story", 5, Day(-30)),
+            Issue(2, "task", 3, Day(1), parent: 1),
+        };
+        var changes = new[] { Move(1, 1, Day(-3), 1, 3), Move(1, 2, Day(-1), 3, 5) };
+
+        var other = Assert.IsType<TimelineReport.Node>(Fold(rows, changes).Other);
+
+        Assert.Equal([new TimelineReport.Segment(3, Day(-3), null)], other.Segments);
+    }
+
+    [Fact]
+    public void Fold_OtherHull_IsOpenWhenAStretchContinuesPastTheRange()
+    {
+        var rows = new[] { Issue(1, "story", 5, Day(-30)), Issue(2, "task", 5, Day(-30), parent: 1) };
+        var changes = new[]
+        {
+            Move(1, 1, Day(-3), 1, 3), Move(1, 2, Day(3), 3, 5),
+            Move(2, 3, Day(-2), 1, 3), Move(2, 4, Day(8), 3, 5),
+        };
+
+        var other = Assert.IsType<TimelineReport.Node>(Fold(rows, changes).Other);
+
+        Assert.Equal([new TimelineReport.Segment(3, Day(-3), null)], other.Segments);
+    }
+
+    [Fact]
+    public void Fold_OtherHull_TakesTheStatusOfTheEarliestStartingSegment()
+    {
+        // The task started in review before its story started in doing.
+        var rows = new[]
+        {
+            Issue(1, "story", 3, Day(-2)),
+            Issue(2, "task", 4, Day(-4), parent: 1),
+        };
+
+        var other = Assert.IsType<TimelineReport.Node>(Fold(rows).Other);
+
+        Assert.Equal([new TimelineReport.Segment(4, Day(-4), null)], other.Segments);
+    }
+
+    [Fact]
+    public void Fold_OtherHull_OnATieOfStarts_TakesTheStatusOfTheFirstSegmentInTreeOrder()
+    {
+        // Root 2 ranks before root 1, so its subtree is met first; inside it the parent comes before its child.
+        var rows = new[]
+        {
+            Issue(1, "story", 4, Day(-2), rank: 2),
+            Issue(2, "story", 3, Day(-2), rank: 1),
+            Issue(3, "task", 4, Day(-2), parent: 2),
+        };
+
+        var other = Assert.IsType<TimelineReport.Node>(Fold(rows).Other);
+
+        Assert.Equal([new TimelineReport.Segment(3, Day(-2), null)], other.Segments);
+    }
+
+    [Fact]
+    public void Fold_OtherChildren_AreInRankOrder_ThenId()
+    {
+        var rows = new[]
+        {
+            Issue(1, "story", 3, Day(-1), rank: 30),
+            Issue(2, "story", 3, Day(-1), rank: 10),
+            Issue(4, "story", 3, Day(-1), rank: 20),
+            Issue(3, "story", 3, Day(-1), rank: 20),
+        };
+
+        var other = Assert.IsType<TimelineReport.Node>(Fold(rows).Other);
+
+        Assert.Equal<long?[]>([2, 3, 4, 1], Ids(other.Children));
+    }
+
+    [Fact]
+    public void Fold_AnEpicBelowALooseRoot_IsDrawnAsAnEpicOnly_AndItsSegmentsDoNotFeedTheHull()
+    {
+        var rows = new[]
+        {
+            Issue(1, "story", 3, Day(-1)),
+            Issue(2, "epic", 3, Day(-3), parent: 1),
+        };
+
+        var result = Fold(rows);
+
+        Assert.Equal<long?[]>([2], Ids(result.Epics));
+        var other = Assert.IsType<TimelineReport.Node>(result.Other);
+        var story = Assert.Single(other.Children);
+        Assert.Equal(1, story.IssueId);
+        Assert.Empty(story.Children);
+        Assert.Equal([new TimelineReport.Segment(3, Day(-1), null)], other.Segments);
+    }
+
+    [Fact]
+    public void Fold_OtherNarrowsItsRootsByProjectAndCreator_WhileDescendantsRideRegardless()
+    {
+        var rows = new[]
+        {
+            Issue(1, "story", 1, Day(-10), project: 1, by: "ann"),
+            Issue(2, "story", 1, Day(-10), project: 2, by: "bob"),
+            Issue(3, "task", 3, Day(-3), parent: 1, project: 2, by: "bob"),
+            Issue(4, "task", 4, Day(-4), parent: 2, project: 1, by: "ann"),
+        };
+
+        var byProject = Assert.IsType<TimelineReport.Node>(Fold(rows, projectId: 1).Other);
+        Assert.Equal<long?[]>([1], Ids(byProject.Children));
+        Assert.Equal<long?[]>([3], Ids(byProject.Children[0].Children));
+        Assert.Equal([new TimelineReport.Segment(3, Day(-3), null)], byProject.Segments);
+
+        var byCreator = Assert.IsType<TimelineReport.Node>(Fold(rows, createdBy: "bob").Other);
+        Assert.Equal<long?[]>([2], Ids(byCreator.Children));
+        Assert.Equal<long?[]>([4], Ids(byCreator.Children[0].Children));
+        Assert.Equal([new TimelineReport.Segment(4, Day(-4), null)], byCreator.Segments);
+
+        Assert.Null(Fold(rows, projectId: 2, createdBy: "ann").Other);
+    }
 }
