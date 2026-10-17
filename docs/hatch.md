@@ -5190,15 +5190,27 @@ half iterates the `/api/hatch/work/review` answer itself rather than the
 per-checkout targets the others build, and reads each issue's pull request
 once regardless of how many repositories its project names — the checkout is
 only somewhere for `gh` to run, taken as the first one a project's
-repositories resolve to. It asks `gh pr view <url> --json state`, because
-`git` and the merge verdict both lie about this: a squash merge leaves no
+repositories resolve to. It asks `gh pr view <url>` for six fields — `--json
+state,headRefOid,number,mergeStateStatus,reviewDecision,isDraft` — the first
+because `git` and the merge verdict both lie about this: a squash merge leaves no
 ancestry for `merge-tree` to find, and `MergeVerdicts.None` already means
 three different things — a merge, a close, and a branch never pushed — none of
-which `gh` confuses. On `merged` it calls the route that advances the issue
-out of review, with the url it read; a `409` is the row having moved under it
+which `gh` confuses, and the rest because the board keeps the forge's account
+of the pull request beside the issue (below). On `merged` it calls the route
+that advances the issue out of review, with the url it read; a `409` is the row having moved under it
 between the read and the write, the same as [the hop](#the-hop) - a line at
-most, and the poll walks on to the next issue. On `open` it does nothing - see
-below for why that is by design. On `closed` a review-column row (`MergeWork`
+most, and the poll walks on to the next issue. On `open` it puts the head sha,
+the merge state and the review decision to
+`PUT /api/hatch/issues/{key}/pull-request-state` wherever any of the three
+differs from what `/work/review` carried for that row, so a quiet pull request
+costs no call after the first; it does this for a review-column row and a
+merge-column row alike, and an answer missing any of the three writes nothing.
+The route answers `204` and the board stores what it was given, with the head
+sha and when it was read; nothing on the server acts on it yet. A `404` is a
+board that predates the route, and reads as one line - "the board does not know
+pull request state yet - it will be asked again next tick"; a `409` is the row
+having moved, and is silent; any other refusal is one line. `merged` and
+`closed` write no state. On `closed` a review-column row (`MergeWork`
 null) is left alone too, the same as `open`: a closed-without-merging pull
 request there is a real stuck state and is not this half's to surface. A
 merge-column row
@@ -5207,7 +5219,8 @@ one this project's merge train is elected to - see the note after the two
 halves below: there, `closed` calls `/work/{key}/closed` once, which records
 `PullRequestClosedAt` the first time and moves nothing, and comments once -
 "Its pull request was closed without merging." - deduplicated by issue key, so
-a quiet interval after says nothing again. `unknown` does nothing either way.
+a quiet interval after says nothing again. A pull request state of `unknown`
+(not the merge state of that name, below) does nothing either way.
 **There is no stored verdict and no window logic like `NoneWindow`**: an open
 pull request is asked about every interval, by design, since noticing the
 merge promptly is the point, and a merged one advances the issue out of review
@@ -5216,6 +5229,18 @@ terminal hears about a change only - `hatch: HA-12 pull request merged ->
 Done` - and a quiet interval says nothing. A `gh` that cannot answer is one
 line per checkout, the same as the build half, and a board that predates the
 route answers `404`, which is asked again next interval.
+
+The forge's words become Hatch's here, in `GhForge` alone; the server never
+sees GitHub's spellings, only the two vocabularies the route accepts. The merge
+state is `clean`, `blocked`, `behind`, `dirty`, `unstable`, `draft` or
+`unknown`. A draft is `draft` whatever `mergeStateStatus` says; `HAS_HOOKS`,
+which is only a pending hook, is `clean`; `CLEAN`, `BLOCKED`, `BEHIND`, `DIRTY`
+and `UNSTABLE` map straight across; and any other `mergeStateStatus`, or none,
+is `unknown`. The review decision is `approved`, `changes-requested`,
+`review-required` or `none`, and an empty `reviewDecision` and one the runner
+does not recognise both read `none` - `unknown` is a word for the merge state
+alone. A field the read failed to produce is neither: it is absent, and the
+put is skipped.
 
 **The approved-merge half.** For every row the merge column holds that the
 judge marked **merge** and that is the merge train's own head for its project
