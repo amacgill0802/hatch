@@ -366,7 +366,10 @@ public class WorkController(
                 IssueKey.Format(i.Project.Key, i.Number),
                 i.Title,
                 landed?.Select(IssueLandings.Project).ToList(),
-                landingWork is { } w ? new LandingWorkDto(w.Kind, w.Sentence) : null);
+                landingWork is { } w ? new LandingWorkDto(w.Kind, w.Sentence) : null,
+                i.PullRequestMergeState,
+                i.PullRequestReviewDecision,
+                i.PullRequestHeadSha);
         }).ToList();
     }
 
