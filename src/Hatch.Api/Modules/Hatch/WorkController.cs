@@ -1144,13 +1144,8 @@ public class WorkController(
         var sendBackStreak = implementationStatus is { } implementation
             ? await SendBackStreak.ForIssueAsync(db, issue.Id, implementation.Name, ct)
             : 0;
-        var lastEvent = await db.IssueEvents.AsNoTracking()
-            .Where(e => e.IssueId == issue.Id)
-            .OrderByDescending(e => e.At).ThenByDescending(e => e.Id)
-            .FirstOrDefaultAsync(ct);
         var lastCheckFindings = issue.StatusId == implementationStatus?.Id
-            && IssueEventPayload.Parse(lastEvent?.Payload)?.TryGetProperty("verdict", out var lastVerdict) == true
-            && lastVerdict.GetString() == CheckVerdicts.Fail
+            && await LastVerdict.ForIssueAsync(db, issue.Id, ct)
                 ? await MostRecentVerdictFindingsAsync(issue.Id, ct)
                 : null;
         var (branchKey, branchTitle) = await BranchOfAsync(issue, gate, ct);
