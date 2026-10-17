@@ -882,10 +882,11 @@ mistake and says so.
 |---|---|---|
 | `git` | `go-to-work`'s workspace reset, and whatever the session does | Spawned directly for `rev-parse`, `fetch`, `symbolic-ref`, `ls-remote`, `status`, `stash push`, `rev-list`, `checkout -B`, `for-each-ref`, `branch --delete`. Missing git reads as a workspace that can never be reset. |
 | the `claude` CLI, logged in | `work`, `go-to-work` | Found on `PATH` or in `HATCH_CLAUDE_BIN`. |
+| `gh`, signed in with `gh auth login` — optional | the build half, the merged-pull-request half and the merge train | `GhForge` runs `gh api` for the build verdict, `gh pr view` to notice a merged pull request, `gh pr merge` to merge. Missing or signed out turns those halves off rather than stopping the loop. |
 | .NET SDK 10 | only `scripts/hatch.sh`, `scripts\hatch.ps1` and `make build-hatch` inside a Hatch checkout | A downloaded binary needs no .NET at all. |
 | `make` | `scripts/hatch.sh`'s rebuild | Falls back to `dotnet build`, then to a message. `scripts\hatch.ps1` always uses `dotnet build`. |
 | bash 3.2 or newer | `scripts/hatch.sh` only | |
 | PowerShell 5.1 or newer | `scripts\hatch.ps1` only | Windows PowerShell or PowerShell 7. Where the execution policy refuses scripts, see `running-the-agent.md`. |
 | Docker | the board, and the container runner | |
 
-Not used anywhere: the GitHub CLI, Node, `jq`, `curl`, `python`, `openssl`.
+Not used anywhere: Node, `jq`, `curl`, `python`, `openssl`.
