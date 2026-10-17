@@ -24,6 +24,7 @@ import {
   windowEndingToday,
   withWindow,
   xOf,
+  type TimelineWindow,
 } from './timeline';
 
 const NOW = new Date('2026-10-09T12:00:00Z');
@@ -596,5 +597,59 @@ describe('withWindow', () => {
     withWindow(input, w);
 
     expect(input.toString()).toBe('range=1y&project=3');
+  });
+});
+
+describe('as the page composes it', () => {
+  /** What `move` chains: resolve the URL, step, write, and read the written URL back. */
+  const roundTrip = (startQuery: string, step: (w: TimelineWindow) => TimelineWindow) => {
+    const start = params(startQuery);
+    const next = step(resolveWindow(start, NOW, 0));
+    const written = withWindow(start, next);
+
+    return { next, written, read: resolveWindow(params(written.toString()), NOW, 0) };
+  };
+
+  it.each([
+    ['from the default', ''],
+    ['from range=1y', 'range=1y'],
+  ])('Earlier %s reads back as the window it wrote', (_, query) => {
+    const { next, written, read } = roundTrip(query, (w) => shiftWindow(w, -1));
+
+    expect(read).toEqual(next);
+    expect(written.has('from') && written.has('to')).toBe(true);
+    expect(written.has('range')).toBe(false);
+  });
+
+  it.each([
+    ['from the default', ''],
+    ['from range=1y', 'range=1y'],
+  ])('a resize to 6m %s reads back as the window it wrote', (_, query) => {
+    const days = WINDOW_PRESETS.find((preset) => preset.key === '6m')!.days;
+    const { next, written, read } = roundTrip(query, (w) => resizeWindow(w, days));
+
+    expect(read).toEqual(next);
+    expect(presetOf(read)).toBe('6m');
+    expect(written.has('range')).toBe(false);
+  });
+
+  it('Today on the default window is the window already showing, so nothing is written', () => {
+    const shown = resolveWindow(params(''), NOW, 0);
+
+    expect(sameWindow(windowEndingToday(shown, NOW, 0), shown)).toBe(true);
+  });
+
+  it('reads range=1y alone as the year ending at the next midnight', () => {
+    expect(resolveWindow(params('range=1y'), NOW, 0)).toEqual(ending(D, 365));
+  });
+
+  it('reads from and to as exactly themselves, over range', () => {
+    const w = ending('2026-08-01T00:00:00.000Z', 30);
+
+    expect(resolveWindow(params(`range=1y&from=${w.from}&to=${w.to}`), NOW, 0)).toEqual(w);
+  });
+
+  it('reads neither as the default', () => {
+    expect(resolveWindow(params(''), NOW, 0)).toEqual(ending(D, DEFAULT_DAYS));
   });
 });
