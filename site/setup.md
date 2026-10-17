@@ -1206,6 +1206,70 @@ Reference: [GitHub CLI](https://cli.github.com/),
 [Windows install](https://github.com/cli/cli/blob/trunk/docs/install_windows.md),
 [creating an account on GitHub](https://docs.github.com/en/get-started/start-your-journey/creating-an-account-on-github).
 
+### 9. Who git says they are
+
+**What this is.** Every commit (a saved change in git's history) is stamped
+with a name and an email address. The commits agents make carry whatever git
+is set to on this machine, and git either refuses to save or guesses when
+nothing is set.
+
+**Tell the person.** "Next I will check what name and email address git puts
+on the changes it saves. It is one question and two short commands, a few
+seconds. Whatever you choose will appear on the changes agents make for you,
+and on GitHub it is public if the repository is."
+
+**Do it.** Read first, and ask nothing yet:
+
+```
+git config --global user.name
+git config --global user.email
+```
+
+These are the same in PowerShell. An empty output with exit status 1 means
+that setting is not set.
+
+If both print something, tell the person what they are and change nothing:
+they may be deliberate. Go to the check below.
+
+If either is empty, ask only for what is missing, one question at a time:
+"What name should appear on the changes agents save?" and "What email
+address?" Never take either from the machine's user name, from `claude auth
+status` or from `gh`: the person decides. For the email, mention that GitHub
+offers a private "noreply" address. It is shown on GitHub under **Settings →
+Emails** once **Keep my email address private** is ticked, and it looks like
+`ID+USERNAME@users.noreply.github.com`. You cannot read that page, so the
+person reads it out to you. Then set exactly what they said, in double
+quotes, leaving a setting that was already filled in alone:
+
+```
+git config --global user.name "Their Name"
+git config --global user.email "their-address@example.com"
+```
+
+These are the same in PowerShell, and the address above is a placeholder, not
+a real one. Say that this edits `~/.gitconfig`, the person's own git settings
+file, and remember it for the closing summary.
+
+**Check.** Run the two read commands again. Both must print the values just
+set, and neither may be empty. Tell the person the two values back.
+
+**If you see** a name with a quote or a backslash in it, pass it whole inside
+the double quotes and stop only if git reports an error. If a value contains
+`$` or a backtick, use single quotes instead, which both shells take
+literally.
+
+**If you see** `error: could not lock config file`, the file is read-only or
+the home folder is not writable. Stop and say what you saw.
+
+**If you see**, in a later step, a push refused with `GH007` ("push would
+publish a private email address"), the email is one GitHub keeps private. Ask
+the person for their noreply address as above, set it with the second command
+above, and push again.
+
+Reference: [git config](https://git-scm.com/docs/git-config),
+[setting your commit email address](https://docs.github.com/en/account-and-profile/how-tos/email-preferences/setting-your-commit-email-address),
+[email address reference](https://docs.github.com/en/account-and-profile/reference/email-addresses-reference).
+
 ## Where this guide stops for now
 
 The steps above are all that is published so far. Tell the person what is now
