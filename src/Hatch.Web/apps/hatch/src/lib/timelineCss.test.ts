@@ -63,6 +63,14 @@ describe('the timeline styles', () => {
     expect(declarationsIn(mediaBlock(), '.hatch-timeline-title')['display']).toBe('none');
   });
 
+  it('wraps the header on a phone, so the controls drop under the title', () => {
+    expect(declarationsIn(mediaBlock(), '.hatch-timeline-header')['flex-wrap']).toBe('wrap');
+  });
+
+  it('gives the controls the facet height the board filters define for themselves', () => {
+    expect(declarationsIn(css, '.hatch-timeline-controls')['--facet-h']).toBe('calc(var(--sp-8) + var(--sp-1))');
+  });
+
   it('scrolls the pane sideways', () => {
     expect(declarationsIn(css, '.hatch-timeline-pane')['overflow-x']).toBe('auto');
   });

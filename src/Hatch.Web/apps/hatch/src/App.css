@@ -4246,16 +4246,35 @@ button.hatch-option.chosen {
   pointer-events: none;
 }
 
+/* The window's controls. --facet-h is defined on .hatch-board-filters only, so
+   the facets here take it from this strip. */
+.hatch-timeline-controls {
+  --facet-h: calc(var(--sp-8) + var(--sp-1));
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
 /* What the server could not place, said once under the chart. */
 .hatch-timeline-footnote {
   margin-top: var(--sp-3);
 }
 
-/* A phone keeps the key and the toggle and scrolls the chart. */
+/* A phone keeps the key and the toggle and scrolls the chart. The header wraps
+   so the strip drops under the title instead of overflowing the document;
+   PageHeader makes its actions flex: none and does not wrap the header. */
 @media (max-width: 40rem) {
   .hatch-timeline-title,
   .hatch-timeline-label .hatch-type-glyph {
     display: none;
+  }
+
+  .hatch-timeline-header {
+    flex-wrap: wrap;
+  }
+
+  .hatch-timeline-header .hatch-page-header__actions {
+    flex: 1 1 auto;
   }
 }
 

@@ -1,0 +1,66 @@
+import { facetClass } from '../lib/facet';
+import {
+  WINDOW_PRESETS,
+  parsePreset,
+  presetOf,
+  resizeWindow,
+  shiftWindow,
+  windowEndingToday,
+  type TimelineWindow,
+} from '../lib/timeline';
+import { Facet, type FacetOption } from './Facet';
+
+const CUSTOM = 'custom';
+
+/** The timeline's window controls: a step either way, back to today, and a
+    length. It reports the window it would move to and writes nothing - nor does
+    it decide whether that differs from the current one; the page that owns the
+    URL does. */
+export function TimelineControls({
+  window,
+  now,
+  offsetMinutes,
+  onMove,
+}: {
+  window: TimelineWindow;
+  now: Date;
+  offsetMinutes: number;
+  onMove: (next: TimelineWindow) => void;
+}) {
+  const preset = presetOf(window);
+  const key = preset ?? CUSTOM;
+  // A window of some other length (a pasted link) is shown as Custom rather
+  // than as the nearest preset.
+  const options: FacetOption[] = [
+    ...WINDOW_PRESETS.map((p) => ({ value: p.key, text: p.label })),
+    ...(preset === null ? [{ value: CUSTOM, text: 'Custom' }] : []),
+  ];
+
+  return (
+    <div className="hatch-timeline-controls" role="group" aria-label="Window">
+      <button type="button" className={facetClass(false)} onClick={() => onMove(shiftWindow(window, -1))}>
+        Earlier
+      </button>
+      <button
+        type="button"
+        className={facetClass(false)}
+        onClick={() => onMove(windowEndingToday(window, now, offsetMinutes))}
+      >
+        Today
+      </button>
+      <button type="button" className={facetClass(false)} onClick={() => onMove(shiftWindow(window, 1))}>
+        Later
+      </button>
+      <Facet
+        label="Length"
+        lit={key !== '3m'}
+        value={key}
+        options={options}
+        onChange={(value) => {
+          const chosen = WINDOW_PRESETS.find((p) => p.key === parsePreset(value));
+          if (chosen) onMove(resizeWindow(window, chosen.days));
+        }}
+      />
+    </div>
+  );
+}
