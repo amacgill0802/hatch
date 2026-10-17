@@ -1694,6 +1694,9 @@ public static class WorkKinds
 
     /// <summary>The merge column is waiting on the poll itself - a branch it has not checked yet, a build still running or not yet read. Not a person's row.</summary>
     public const string Pending = "pending";
+
+    /// <summary>A trunk-landing issue in review whose landing is on the trunk and whose trunk build passes - the board carries it to Done.</summary>
+    public const string Land = "land";
 }
 
 /// <summary>Which of the seven reasons carried a hop - see WorkDto.HopKind.</summary>
@@ -1824,6 +1827,8 @@ public record QueueEntryDto(
 /// where the client reads <paramref name="Key"/>.
 /// </param>
 /// <param name="BranchTitle">The title the branch's slug is cut from, or null where <paramref name="BranchKey"/> is null.</param>
+/// <param name="Landings">The landings the board holds for the issue, set only on a trunk-landing review row.</param>
+/// <param name="LandingWork">The judge's answer for a trunk-landing review row - null on every other row, and on a board that predates it.</param>
 public record ReviewCheckDto(
     string Key,
     IReadOnlyList<WorkRepositoryDto> Repositories,
@@ -1834,7 +1839,9 @@ public record ReviewCheckDto(
     string ProjectKey = "",
     string Landing = Landings.PullRequest,
     string? BranchKey = null,
-    string? BranchTitle = null);
+    string? BranchTitle = null,
+    IReadOnlyList<LandingDto>? Landings = null,
+    LandingWorkDto? LandingWork = null);
 
 /// <summary>The kind of work an issue in the merges column is, and why it is not work where it is not - see <see cref="Hatch.Api.Modules.Hatch.MergeWork.Judgement"/>.</summary>
 /// <param name="IsHead">
@@ -1843,6 +1850,9 @@ public record ReviewCheckDto(
 /// already the head.
 /// </param>
 public record MergeWorkDto(string Kind, string Sentence, bool IsHead = true);
+
+/// <summary>The kind of work a trunk-landing issue in review is, and why it is not work where it is not - see <see cref="Hatch.Api.Modules.Hatch.LandingWork.Judge"/>.</summary>
+public record LandingWorkDto(string Kind, string Sentence);
 
 // ---- Rollups ----
 
