@@ -83,6 +83,8 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
                 i.Title,
                 i.PullRequestUrl,
                 i.PullRequestClosedAt,
+                Landing = i.Project!.Landing,
+                i.Project.ChecksRequired,
             })
             .ToListAsync(ct);
 
@@ -104,6 +106,31 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
                 .ToListAsync(ct))
             .GroupBy(r => r.ProjectId)
             .ToDictionary(g => g.Key, g => (IReadOnlyList<EfHatchProjectRepository>)g.ToList());
+
+        // A trunk-landing issue has no pull request to review: its landing, and
+        // the build of the trunk it landed in, are what LandingWork.Judge reads.
+        // Only read when one is in the column, as Dispatch.LandedAsync does.
+        var landingIds = inReview
+            .Where(i => LandingWork.Applies(i.Landing, i.PullRequestUrl))
+            .Select(i => i.Id)
+            .ToList();
+
+        Dictionary<long, IReadOnlyList<EfHatchLanding>> landingsByIssue = [];
+        IReadOnlyList<EfHatchTrunkBuild> landedBuilds = [];
+        if (landingIds.Count > 0)
+        {
+            landingsByIssue = (await db.Landings.AsNoTracking()
+                    .Where(l => landingIds.Contains(l.IssueId))
+                    .OrderBy(l => l.Canonical)
+                    .ToListAsync(ct))
+                .GroupBy(l => l.IssueId)
+                .ToDictionary(g => g.Key, g => (IReadOnlyList<EfHatchLanding>)g.ToList());
+
+            var wanted = landingsByIssue.Values.SelectMany(l => l).Select(l => l.Canonical).Distinct().ToList();
+            landedBuilds = await db.TrunkBuilds.AsNoTracking()
+                .Where(t => wanted.Contains(t.Canonical))
+                .ToListAsync(ct);
+        }
 
         // Every merge verdict for the column, not only the conflicted ones:
         // a row's build/up-to-date state needs the clean ones too, so this
@@ -213,8 +240,12 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
         var closesTo = Columns.Closes(statuses, review);
         var family = closesTo is not null ? await FamilyGate.ForAsync(db, statuses, ct) : null;
 
+        // A trunk-landing issue stops being "without a pull request" once its
+        // landing is recorded: it was never going to have one, and where it
+        // stands from there is LandingWork's to say - see landingHeld below.
         var withoutPr = inReview.Count(i =>
             string.IsNullOrWhiteSpace(i.PullRequestUrl)
+            && !(LandingWork.Applies(i.Landing, i.PullRequestUrl) && landingsByIssue.ContainsKey(i.Id))
             && !(family is not null
                 && tree.EffectivePreApproval(i.Id).Level == PreApprovalLevels.PreApproved
                 && family.Children(i.Id).Count > 0
@@ -224,6 +255,20 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
 
         var reviewsHeldBack = inReview.Count(i => !string.IsNullOrWhiteSpace(i.PullRequestUrl)
             && (conflicted.ContainsKey(i.Id) || failed.ContainsKey(i.Id)));
+
+        // Only the ones the judge holds: a landing still waiting on its trunk
+        // build, or one that is good to go, is the loop's and not a person's.
+        var landingHeld = new List<LandingHeldDto>();
+        foreach (var i in inReview.Where(r => LandingWork.Applies(r.Landing, r.PullRequestUrl)))
+        {
+            var judged = LandingWork.Judge(
+                bound.TryGetValue(i.ProjectId, out var landedRepos) ? landedRepos : [],
+                landingsByIssue.TryGetValue(i.Id, out var landed) ? landed : [],
+                landedBuilds, i.ChecksRequired, time.GetUtcNow());
+
+            if (judged.Kind == WorkKinds.Hold)
+                landingHeld.Add(new LandingHeldDto(IssueKey.Format(i.ProjectKey, i.Number), i.Title, i.Type, judged.Sentence));
+        }
 
         var approvedHeld = new List<ApprovedHeldDto>();
         var approvedWaiting = new List<ApprovedWaitingDto>();
@@ -271,7 +316,7 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
 
         return new AttentionDto(
             reviews, withoutPr, questions, conflicts, failingBuilds, reviewsHeldBack, trunkBuilds, exhausted,
-            approvedHeld, approvedWaiting);
+            approvedHeld, approvedWaiting, landingHeld);
     }
 
     /// <summary>

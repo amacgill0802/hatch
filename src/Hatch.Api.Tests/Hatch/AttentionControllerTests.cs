@@ -1131,6 +1131,141 @@ public class AttentionControllerTests
         Assert.Single(Value(await h.Attention.GetAttention(default)).TrunkBuilds!);
     }
 
+    // ---- The trunk-landing half ----
+
+    private static readonly string Landed = new('2', 40);
+
+    /// <summary>A trunk-landing issue in review whose landing the trunk's build, in the given verdict, is read on.</summary>
+    private static async Task<EfHatchIssue> LandedAsync(Harness h, string? verdict, string? sha = null)
+    {
+        await h.SetLandingAsync(Landings.Trunk);
+        var issue = await h.FileAsync("story", "landed", h.Review);
+        await h.LandingAsync(issue, Landed, containedBy: sha ?? Landed);
+        if (verdict is not null) await h.TrunkAsync(verdict);
+        return issue;
+    }
+
+    [Fact]
+    public async Task Attention_ListsALandingWhoseTrunkBuildFailedAfterItLanded()
+    {
+        var h = await NewAsync();
+        var issue = await LandedAsync(h, BuildVerdicts.Failed);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        var row = Assert.Single(attention.LandingHeld!);
+        Assert.Equal(Key(issue), row.Key);
+        Assert.Equal("landed", row.Title);
+        Assert.Equal("story", row.Type);
+        Assert.Contains("failed after it landed", row.Sentence);
+        Assert.Empty(attention.Reviews);
+        Assert.Equal(0, attention.InReviewWithoutPullRequest);
+
+        // The trunk's own row is a separate list, and stays in it.
+        Assert.Single(attention.TrunkBuilds!);
+    }
+
+    [Fact]
+    public async Task Attention_ListsALandingWhoseTrunkRanNoChecksOnceTheSettleWindowHasPassed()
+    {
+        var h = await NewAsync();
+        var issue = await LandedAsync(h, BuildVerdicts.None);
+
+        // Inside the window the checks may yet start: the loop's, not a person's.
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).LandingHeld!);
+
+        h.Time.Advance(TimeSpan.FromMinutes(11));
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).LandingHeld!);
+        Assert.Equal(Key(issue), row.Key);
+        Assert.Contains("no checks ran there", row.Sentence);
+    }
+
+    [Fact]
+    public async Task Attention_LeavesOutALandingWithNoChecksOnAProjectThatRequiresNone()
+    {
+        var h = await NewAsync();
+        await LandedAsync(h, BuildVerdicts.None);
+        await h.SetLandingAsync(checksRequired: false);
+        h.Time.Advance(TimeSpan.FromMinutes(11));
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        Assert.Empty(attention.LandingHeld!);
+        Assert.Empty(attention.Reviews);
+    }
+
+    [Fact]
+    public async Task Attention_LeavesOutALandingThatPassesAndOneStillPending()
+    {
+        var h = await NewAsync();
+        await h.SetLandingAsync(Landings.Trunk);
+        var passed = await h.FileAsync("story", "passed", h.Review);
+        var unseen = await h.FileAsync("story", "unseen", h.Review);
+        var unread = await h.FileAsync("story", "unread", h.Review);
+        var building = await h.FileAsync("story", "building", h.Review);
+        await h.LandingAsync(passed, Landed, containedBy: Landed, remote: "forge.example/owner/passed");
+        await h.TrunkAsync(BuildVerdicts.Passed, remote: "forge.example/owner/passed");
+        await h.LandingAsync(unseen, Landed, remote: "forge.example/owner/unseen");
+        await h.LandingAsync(unread, Landed, containedBy: Landed, remote: "forge.example/owner/unread");
+        await h.LandingAsync(building, Landed, containedBy: Landed, remote: "forge.example/owner/building");
+        await h.TrunkAsync(BuildVerdicts.Pending, remote: "forge.example/owner/building");
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        Assert.Empty(attention.LandingHeld!);
+        Assert.Empty(attention.Reviews);
+        Assert.Equal(0, attention.InReviewWithoutPullRequest);
+    }
+
+    [Fact]
+    public async Task Attention_LeavesOutALandingWhoseBuildIsOfAnotherSha()
+    {
+        var h = await NewAsync();
+        await LandedAsync(h, BuildVerdicts.Failed, sha: new string('3', 40));
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).LandingHeld!);
+    }
+
+    [Fact]
+    public async Task Attention_CountsATrunkLandingWithoutPullRequestOnlyWhileItHasNoLanding()
+    {
+        var h = await NewAsync();
+        await h.SetLandingAsync(Landings.Trunk);
+        var issue = await h.FileAsync("story", "to land", h.Review);
+
+        Assert.Equal(1, Value(await h.Attention.GetAttention(default)).InReviewWithoutPullRequest);
+
+        await h.LandingAsync(issue, Landed);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+        Assert.Equal(0, attention.InReviewWithoutPullRequest);
+        Assert.Empty(attention.LandingHeld!);
+    }
+
+    [Fact]
+    public async Task Attention_StillCountsAPullRequestProjectsIssueWithNoPullRequest()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "forgot hatch pr", h.Review);
+        await h.LandingAsync(issue, Landed, containedBy: Landed);
+        await h.TrunkAsync(BuildVerdicts.Failed);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        Assert.Equal(1, attention.InReviewWithoutPullRequest);
+        Assert.Empty(attention.LandingHeld!);
+    }
+
+    [Fact]
+    public async Task Attention_HasAnEmptyLandingHeldListWhenNothingIsHeld()
+    {
+        var h = await NewAsync();
+        await h.FileAsync("story", "delivered", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).LandingHeld!);
+    }
+
     // ---- The merges column half (HA-466) ----
 
     [Fact]
@@ -1317,6 +1452,45 @@ public class AttentionControllerTests
             Db.TrunkBuilds.Add(row);
             await Db.SaveChangesAsync();
             return row;
+        }
+
+        /// <summary>
+        /// A project's landing policy and check requirement, written straight
+        /// onto the row - what the write route accepts is a separate task's
+        /// business.
+        /// </summary>
+        public async Task SetLandingAsync(string? landing = null, bool? checksRequired = null)
+        {
+            var project = await Db.Projects.SingleAsync(p => p.Id == ProjectId);
+            if (landing is not null) project.Landing = landing;
+            if (checksRequired is not null) project.ChecksRequired = checksRequired.Value;
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// A landing a runner recorded, written straight to the table, with the
+        /// canonical the raw remote - as <see cref="TrunkAsync"/> writes it - so
+        /// the two join. Contained by <paramref name="containedBy"/> when given,
+        /// and unseen otherwise.
+        /// </summary>
+        public async Task LandingAsync(
+            EfHatchIssue issue, string sha, string? containedBy = null,
+            string remote = "forge.example/owner/repo", string trunk = "main")
+        {
+            Db.Landings.Add(new EfHatchLanding
+            {
+                IssueId = issue.Id,
+                Remote = remote,
+                Canonical = remote,
+                Trunk = trunk,
+                Sha = sha,
+                ContainedBy = containedBy,
+                RecordedAt = Now,
+                CheckedAt = containedBy is null ? null : Now,
+                RecordedBy = "runner",
+            });
+
+            await Db.SaveChangesAsync();
         }
 
         /// <summary>
