@@ -1793,6 +1793,64 @@ from step 10 was mistyped. Copy it again from what step 10 printed.
 
 Reference: `hatch queue -h` lists what the command can narrow to.
 
+### 15. The summary
+
+**What this is.** The walkthrough is over, and the person has watched a lot
+of it scroll past. This step is the one place that says, in order, where the
+board is, what is now on their machine, what was changed on it, and what is
+left for them to do. Nothing here is run. It only says what this walkthrough
+did, so it leaves out anything it did not do.
+
+**Tell the person.** "That is everything I can set up for you. Before we
+stop, here is a plain account of what is where, what I changed, and the
+three things that are yours to do next. Tell me if any of it is unclear."
+
+**Do it.** Say the following, in the person's terms and in this order, drawn
+only from what this walkthrough did. A program that was already there is
+"already there", not "installed". Leave out any line for something that did
+not happen.
+
+1. **The board.** It is open at `http://localhost:<port>/apps/hatch/`, with
+   `<port>` the one step 5 settled on.
+2. **What was installed**, only what this run did: Git (step 2), Docker
+   (step 3), Hatch's source in `~/hatch` and the running board (steps 4 and
+   5), the `claude` program (step 7), `gh` (step 8), and the `hatch` runner
+   (step 11).
+3. **What was changed**, again only what was done:
+   - `~/hatch/.env`, which holds the port (step 5, if a line was written);
+   - the line in the shell file, or the Windows user `PATH`, that puts a
+     program on the search path (steps 7 and 11, where each **changed the
+     PATH**);
+   - git's name and email in `~/.gitconfig` (step 9);
+   - `gh`'s credential helper in git (step 8, if `gh auth setup-git` ran);
+   - the per-user `hatch` settings file, at the path on step 12's `wrote`
+     line;
+   - the repository folder from step 10, and the new private repository on
+     their account if step 10 made one;
+   - on the board, their name and the project, with the key and name from
+     step 13.
+4. **What is now theirs to do**, one plain line each, in this order. None of
+   it is done by Claude:
+   - (a) Write a first ticket in **Draft** and drag it to **Breakdown**, the
+     first column an agent owns.
+   - (b) Open **Docs** in the gear menu, copy the section **The `CLAUDE.md`
+     block** into a file called `CLAUDE.md` in the repository folder from
+     step 10, then commit it and push it to the trunk. The runner starts
+     each piece of work from the trunk, so the file has to be there.
+   - (c) In their own terminal, inside that folder, run `hatch go-to-work
+     --once`. It starts an agent on the ticket, and that spends their Claude
+     usage.
+5. **Close with this**, in your own words but with this meaning: Claude never
+   runs `go-to-work` itself, here or later. It can explain (a) to (c), and
+   answer questions about them, but it does not do (c).
+
+**Check.** There is nothing to run. The check is that the summary named the
+address, the three headings (what was installed, what was changed, and what
+is theirs to do) and the three actions (a) to (c), and that the person says
+they understood or asks a question. Answer any question, and do not start
+(c) for them. There is no failure to name in this step, so it has no **If you
+see** and no **Reference**.
+
 ## Where this guide stops for now
 
 The steps above are all that is published so far. Tell the person what is now
