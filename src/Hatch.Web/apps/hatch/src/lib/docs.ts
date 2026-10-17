@@ -1,4 +1,5 @@
 import { Marked, type Token, type Tokens } from 'marked';
+import { APP_BASENAME } from './basename';
 
 /** The plain text of a run of inline tokens: what a reader sees, with the markup
     gone. A heading token's own `text` is raw markdown (backticks and all), so a
@@ -77,4 +78,50 @@ export function renderDocs(source: string): { html: string; outline: OutlineEntr
   });
   const html = marked.parse(source, { async: false });
   return { html, outline };
+}
+
+/** The id a `#fragment` names, decoded: one leading `#` off, then percent-escapes
+    undone. A malformed escape is not an error worth a throw - the text comes back
+    as written and simply matches no heading. */
+export function hashId(hash: string): string {
+  const raw = hash.startsWith('#') ? hash.slice(1) : hash;
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
+export type DocLinkTarget =
+  | { kind: 'fragment'; id: string }
+  | { kind: 'app'; to: string }
+  | { kind: 'external' };
+
+/** What a link inside the document is: a fragment in this page, a path within this
+    app (handed to the router as `to`, the app prefix stripped), or anything else,
+    which is the browser's. The prefix is matched by whole segment, the rule
+    `routerBasename` uses, so `/apps/hatchery/x` is not this app. */
+export function docLinkTarget(href: string | null): DocLinkTarget {
+  if (!href) return { kind: 'external' };
+  if (href.startsWith('#')) return { kind: 'fragment', id: hashId(href) };
+  if (href.startsWith(APP_BASENAME)) {
+    const rest = href.slice(APP_BASENAME.length);
+    if (rest === '' || rest[0] === '/' || rest[0] === '?' || rest[0] === '#') {
+      return { kind: 'app', to: rest[0] === '/' ? rest : `/${rest}` };
+    }
+  }
+  return { kind: 'external' };
+}
+
+/** A click the page may take over: the primary button, unmodified, and not already
+    handled. Anything else is the reader asking the browser for something. */
+export function isPlainPrimaryClick(e: {
+  button: number;
+  metaKey: boolean;
+  ctrlKey: boolean;
+  shiftKey: boolean;
+  altKey: boolean;
+  defaultPrevented: boolean;
+}): boolean {
+  return e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey && !e.defaultPrevented;
 }
