@@ -66,7 +66,8 @@ the same line there.
 - **Check before you install anything.** Run the check a step names first;
   if it already passes, say so and move on.
 - **Use the machine's own package manager**: Homebrew on macOS, winget on
-  Windows, apt or dnf on Linux.
+  Windows, apt or dnf on Linux, unless a step names another route and says
+  why.
 - **Never type a password.** Anything that needs `sudo`, an administrator
   prompt, a restart or a sign-in is handed to the person as one exact line
   or click to do themselves, in their own terminal window or browser. Wait
@@ -80,11 +81,12 @@ the same line there.
 
 ### Where this page ends
 
-At the board open in the person's browser. The sign-ins and the runner come
-after that and are added to this guide once they are written. If the steps
-below stop before the board is open, the guide is not finished yet: do the
-steps that are there, then tell the person plainly that the rest is not
-published yet, and stop.
+At a repository on the machine that agents can work in, with `claude` signed
+in, `gh` signed in where the person's code is on GitHub, and git knowing who
+they are. The runner and the board's first project come after that and are
+added to this guide once they are written. If the steps below stop before
+then, the guide is not finished yet: do the steps that are there, then tell
+the person plainly that the rest is not published yet, and stop.
 
 ### Which shell you are in
 
@@ -906,9 +908,146 @@ again.
 
 Reference: [Start-Process](https://learn.microsoft.com/powershell/module/microsoft.powershell.management/start-process).
 
-## The board is open
+### 7. The Claude Code CLI
 
-The board is up at `http://localhost:` followed by the port, then
-`/apps/hatch/`. This page goes on with the sign-ins and the runner. Until
-they are published the guide stops here: tell the person the board is open and
-that the rest of this guide is not published yet, then stop.
+**What this is.** `claude` is the program that Hatch's runner starts, once
+for each piece of work, to let an agent do it. It is looked for on the
+terminal's search path, so it has to be installed there and signed in to the
+person's Claude account. The Claude Code you are running as now may be
+another copy: the Claude desktop app has Claude Code built in but puts no
+`claude` in the terminal ([Desktop quickstart](https://code.claude.com/docs/en/desktop-quickstart)).
+So check, and do not assume.
+
+**Tell the person.** "Next I am going to make sure the `claude` program is
+installed in the terminal and signed in to your Claude account, because Hatch
+will start it to do the work. If it is not there, the install takes about two
+minutes and shows no progress while it downloads, so please be patient. The
+sign-in is yours to do, in your browser; I cannot do it for you. Claude Code
+needs a Claude Pro, Max, Team or Enterprise plan, or a Console account; the
+free claude.ai plan does not include it. Do you have one of those?" If they
+have none, say so plainly and stop.
+
+**Do it.** First run the check below. A version such as
+`2.1.287 (Claude Code)` means `claude` is installed: go to the sign-in below.
+On Windows, if it opens a window instead of printing a version, an old
+desktop app is answering to the name; treat `claude` as not installed and see
+the second **If you see** below.
+
+```
+claude --version
+```
+
+If it is not found, install it with the vendor's own installer. This is the
+one install on this page that does not go through the package manager,
+because the installer is the route the vendor recommends, needs no
+administrator, and keeps itself up to date.
+
+macOS and Linux:
+
+```
+curl -fsSL https://claude.ai/install.sh | bash
+```
+
+Windows PowerShell:
+
+```
+irm https://claude.ai/install.ps1 | iex
+```
+
+In Git Bash on Windows, the line below is this page's own wrapper around the
+same installer, not the vendor's. If it fails, use the PowerShell line above
+instead:
+
+```
+powershell.exe -NoProfile -Command "irm https://claude.ai/install.ps1 | iex"
+```
+
+The shell you are running commands in started before the install, so it
+may not find the new program yet. If a bare `claude --version` is still not found, run the file
+by its path:
+
+```
+"$HOME/.local/bin/claude" --version
+```
+
+On Windows PowerShell:
+
+```
+& "$env:USERPROFILE\.local\bin\claude.exe" --version
+```
+
+If that works but a new terminal cannot find `claude`, see the first
+**If you see** below.
+
+Then the sign-in, which is the person's:
+
+> **Hand this to the person.** "Please open your own terminal window (not
+> this one), run this line, and sign in with your Claude account in the
+> browser it opens. Tell me when the terminal says `Login successful`."
+>
+> ```
+> claude auth login
+> ```
+>
+> (For a Console account, `claude auth login --console`.) If the browser
+> does not open, press `c` in the terminal to copy the address and open it
+> yourself. If the page shows a code, paste it at the `Paste code here if
+> prompted` prompt.
+
+**Check.** Both of these must pass. `claude --version` prints a version, and
+this exits 0 and prints a `Login method` line:
+
+```
+claude auth status --text
+```
+
+Tell the person `claude` is installed and which login method it showed, such
+as "Claude Max account". Quote only that line; never read out the
+organization or the email address.
+
+**If you see** `command not found` or `is not recognized` for `claude` in a
+new terminal, the installer put the file in a folder that is not on the
+search path. Confirm the file with `ls -la ~/.local/bin/claude`. On macOS or
+Linux, the fix is two lines in the person's own shell file, so it changes
+their files: say so, ask first, and tell them afterwards what you changed.
+Hand them these, with `~/.zshrc` on macOS, or `~/.bashrc` for Bash on Linux
+or `~/.bash_profile` for Bash on macOS:
+
+```
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+On Windows, `%USERPROFILE%\.local\bin` goes on the user's search path; the
+vendor's page has the steps, in its PATH section, so link it rather than
+retyping it ([troubleshooting](https://code.claude.com/docs/en/troubleshoot-install)).
+
+**If you see** on Windows that `claude` opens the desktop app, the desktop
+app is shadowing it. Tell the person to update the desktop app, then open a
+new terminal and check again.
+
+**If you see** an error from the installer, such as `syntax error near
+unexpected token '<'` or a `403`, stop and say what you saw. Do not retry in
+a loop. The vendor's troubleshooting page below covers it.
+
+**If you see** `claude auth status` exit 1 after the person said they were
+done, ask what the terminal said, hand them `claude auth login` again, and
+check again. Do this at most twice, then stop and say what you saw.
+
+**If you see** that the person's plan is only through Bedrock, Vertex or
+Foundry (cloud providers that can host Claude), this guide does not cover
+that. Stop and say so.
+
+Reference: [Claude Code setup](https://code.claude.com/docs/en/setup),
+[authentication](https://code.claude.com/docs/en/authentication),
+[CLI reference](https://code.claude.com/docs/en/cli-reference),
+[troubleshooting](https://code.claude.com/docs/en/troubleshoot-install),
+[Desktop quickstart](https://code.claude.com/docs/en/desktop-quickstart).
+
+## Where this guide stops for now
+
+The steps above are all that is published so far. Tell the person what is now
+true from the steps you completed: the board is open at `http://localhost:`
+followed by the port, then `/apps/hatch/`; `claude` is installed and signed
+in; and so on for each later step above. Then tell them plainly that the rest
+of this guide is not published yet, and stop.
