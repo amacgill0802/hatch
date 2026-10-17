@@ -482,6 +482,14 @@ public record IssueClaimDto(
 /// The story <paramref name="OnePr"/> was read from, or null when the value is
 /// this issue's own, comes from its project, or does not exist.
 /// </param>
+/// <param name="PullRequestMergeState">
+/// What the forge last said of the pull request recorded on this issue - one of
+/// <see cref="MergeStates"/> - or null where none has been read, or none is
+/// recorded. Trailing and defaulted for the reason <paramref name="OpenQuestions"/> is.
+/// </param>
+/// <param name="PullRequestReviewDecision">What the forge last said of the pull request's reviews - one of <see cref="ReviewDecisions"/> - or null where none has been read.</param>
+/// <param name="PullRequestHeadSha">The head commit of the pull request when the forge was last read, or null where none has been read.</param>
+/// <param name="PullRequestReadAt">When the forge was last read for the pull request, or null where it has not been.</param>
 public record IssueDto(
     string Key,
     int ProjectId,
@@ -524,7 +532,11 @@ public record IssueDto(
     IReadOnlyList<LandingDto>? Landings = null,
     bool OnePr = false,
     bool? OnePrOwn = null,
-    string? OnePrFrom = null);
+    string? OnePrFrom = null,
+    string? PullRequestMergeState = null,
+    string? PullRequestReviewDecision = null,
+    string? PullRequestHeadSha = null,
+    DateTimeOffset? PullRequestReadAt = null);
 
 /// <summary>Taking the lease: who is asking is the credential's to say, so the body names only where from.</summary>
 /// <param name="Runner">The checkout holding it - <c>host:/path/to/checkout</c>, as the runner names itself.</param>
@@ -1846,6 +1858,9 @@ public record QueueEntryDto(
 /// <param name="BranchTitle">The title the branch's slug is cut from, or null where <paramref name="BranchKey"/> is null.</param>
 /// <param name="Landings">The landings the board holds for the issue, set only on a trunk-landing review row.</param>
 /// <param name="LandingWork">The judge's answer for a trunk-landing review row - null on every other row, and on a board that predates it.</param>
+/// <param name="PullRequestMergeState">What the board holds of the pull request's merge state - one of <see cref="MergeStates"/> - so a runner can tell whether what the forge answered is news. Null where none is held, and from a board that predates it.</param>
+/// <param name="PullRequestReviewDecision">What the board holds of the pull request's review decision - one of <see cref="ReviewDecisions"/> - for the same comparison. Null where none is held, and from a board that predates it.</param>
+/// <param name="PullRequestHeadSha">The head commit the board last read the pull request at, for the same comparison. Null where none is held, and from a board that predates it.</param>
 public record ReviewCheckDto(
     string Key,
     IReadOnlyList<WorkRepositoryDto> Repositories,
@@ -1858,7 +1873,10 @@ public record ReviewCheckDto(
     string? BranchKey = null,
     string? BranchTitle = null,
     IReadOnlyList<LandingDto>? Landings = null,
-    LandingWorkDto? LandingWork = null);
+    LandingWorkDto? LandingWork = null,
+    string? PullRequestMergeState = null,
+    string? PullRequestReviewDecision = null,
+    string? PullRequestHeadSha = null);
 
 /// <summary>The kind of work an issue in the merges column is, and why it is not work where it is not - see <see cref="Hatch.Api.Modules.Hatch.MergeWork.Judgement"/>.</summary>
 /// <param name="IsHead">
@@ -2394,6 +2412,17 @@ public record PullRequestMergedRequest(string Url, string Runner);
 public record PullRequestClosedRequest(string Url, string Runner);
 
 /// <summary>
+/// A runner reporting what the forge says of the still-open pull request
+/// recorded on an issue.
+/// </summary>
+/// <param name="Url">The pull request the runner read, compared against the one recorded on the issue.</param>
+/// <param name="HeadSha">The head commit the pull request had when it was read.</param>
+/// <param name="MergeState">One of <see cref="MergeStates"/>.</param>
+/// <param name="ReviewDecision">One of <see cref="ReviewDecisions"/>.</param>
+/// <param name="Runner">The checkout that read it - <c>host:/path/to/checkout</c>, as <see cref="ClaimRequest.Runner"/> is. Not validated or persisted; it rides the body for shape parity with the requests that do use it.</param>
+public record PullRequestStateRequest(string Url, string HeadSha, string MergeState, string ReviewDecision, string Runner);
+
+/// <summary>
 /// A runner reporting that the merge column has judged the issue's branch a
 /// pushback - a conflict or a failed build the review column must fix.
 /// </summary>
@@ -2519,6 +2548,54 @@ public static class PullRequestStates
     public const string Unknown = "unknown";
 
     public static readonly IReadOnlyList<string> All = [Merged, Open, Closed, Unknown];
+}
+
+/// <summary>
+/// What a forge says of an open pull request's standing against the trunk and
+/// the repository's rules - whether it could be merged now, and if not, why.
+/// </summary>
+public static class MergeStates
+{
+    /// <summary>The forge says it is mergeable and nothing holds it.</summary>
+    public const string Clean = "clean";
+
+    /// <summary>The repository's rules hold it - required reviews or required checks.</summary>
+    public const string Blocked = "blocked";
+
+    /// <summary>The head is behind the trunk.</summary>
+    public const string Behind = "behind";
+
+    /// <summary>It conflicts with the trunk.</summary>
+    public const string Dirty = "dirty";
+
+    /// <summary>It is mergeable, but a check that is not required is failing.</summary>
+    public const string Unstable = "unstable";
+
+    /// <summary>It is a draft, and not mergeable whatever else is true.</summary>
+    public const string Draft = "draft";
+
+    /// <summary>The forge had not said yet, or named something this does not know.</summary>
+    public const string Unknown = "unknown";
+
+    public static readonly IReadOnlyList<string> All = [Clean, Blocked, Behind, Dirty, Unstable, Draft, Unknown];
+}
+
+/// <summary>What a forge says the reviews on a pull request add up to. The values are the wire spellings, hyphens included.</summary>
+public static class ReviewDecisions
+{
+    /// <summary>No review has been asked for or given, or the repository does not require one.</summary>
+    public const string None = "none";
+
+    /// <summary>The reviews the repository requires have been given.</summary>
+    public const string Approved = "approved";
+
+    /// <summary>A reviewer asked for changes.</summary>
+    public const string ChangesRequested = "changes-requested";
+
+    /// <summary>The repository requires a review and none has been given yet.</summary>
+    public const string ReviewRequired = "review-required";
+
+    public static readonly IReadOnlyList<string> All = [None, Approved, ChangesRequested, ReviewRequired];
 }
 
 /// <summary>The three states of a review row's build icon - see <see cref="ReviewDto.BuildState"/>.</summary>
