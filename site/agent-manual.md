@@ -30,7 +30,7 @@ A name that is not a command is refused before anything is loaded:
 hatch: no such command "<x>" - `hatch --help` lists them.
 ```
 
-### The nineteen commands
+### The twenty-one commands
 
 | Command | Needs a checkout | Writes to the board |
 |---|---|---|
@@ -44,6 +44,8 @@ hatch: no such command "<x>" - `hatch --help` lists them.
 | `move` | no | yes |
 | `comment` | no | yes |
 | `pr` | no | read: no; set: yes |
+| `landed` | reads git in the working directory, or `--repo` | yes |
+| `verdict` | no | yes |
 | `depends` | no | read: no; add/remove: yes |
 | `one-pr` | no | read: no; set: yes |
 | `ask` | no | yes |
@@ -54,6 +56,9 @@ hatch: no such command "<x>" - `hatch --help` lists them.
 | `go-to-work` | **yes** | yes |
 | `do-my-work` | **yes** | yes |
 | `runner-claude-token` | no | no |
+
+The count is `Program.Commands` less its `Internal` entries. `runner-claude-token`
+is the one row outside it, listed because the container's entrypoint calls it.
 
 ### Start-up, in order
 
@@ -288,6 +293,33 @@ Prints `<key> -> <column>`.
 `POST /api/hatch/issues/<key>/comments`. Prints `commented on <key> as
 <author>`.
 
+### `hatch verdict AER-12 pass|fail ["findings"]`
+
+A check session's own verdict. Refused before any request, exit 1:
+
+- Not two or three arguments: `hatch: verdict takes one issue key, pass or
+  fail, and an optional findings body`, with the usage.
+- A second argument that, trimmed, is not exactly `pass` or `fail`: `hatch:
+  "<x>" is not a verdict - it is "pass" or "fail"`.
+
+Findings are the optional third argument, one quoted body, the way `comment`
+takes its body; there is no stdin or file form. The server trims them, stores
+an empty body as none, and refuses more than 100,000 characters with a `400`.
+
+`POST /api/hatch/issues/<key>/verdicts` with the verdict and the findings. It
+answers `204`, so the CLI prints `recorded <verdict> on <key>`. A key and a
+person may both call it.
+
+The verdict is recorded against the issue's **live claim**: one verdict per
+claim token, and a second under the same claim replaces the first. Nothing
+moves yet. The runner applies the verdict after the session ends - step 2 of
+"After the session" below - and a `verdict_recorded` event is written now.
+
+Where no check playbook covers the issue - which is any issue whose live
+claim was not taken under one, or that has no claim at all - the server
+answers `400` and the CLI prints `hatch: 400 - a verdict needs a check
+playbook covering <key> where it stands, and none does`, exit 1.
+
 ### `hatch pr AER-12 [<url>|--clear]`
 
 - One argument: prints the URL alone on stdout, so `open "$(hatch pr
@@ -298,6 +330,25 @@ Prints `<key> -> <column>`.
   it.
 - `--clear`: the same patch with an empty string. A literal empty argument is
   refused: `hatch: give a url, or --clear to take <key> off the one it has`.
+
+### `hatch landed AER-12 [<sha>] [--repo <path>]`
+
+Records that the issue's work reached the trunk. `--repo <path>` names the
+checkout, the working directory by default; `<sha>` is `HEAD` by default.
+Refused before any request, exit 1:
+
+- `--repo` with no path: `landed --repo takes a path`, with the usage.
+- Not one key and an optional sha: `landed takes one issue key and an optional
+  sha`, with the usage.
+- `hatch: <root> - has no origin remote, so a project's binding could never
+  match it`.
+- `hatch: cannot tell which branch is the trunk here - name it in
+  HATCH_BASE_BRANCH`.
+- `hatch: <sha> does not resolve to a commit here`.
+- `hatch: <sha> is not on <trunk> here - land it first`.
+
+Otherwise `PUT /api/hatch/issues/<key>/landing` with the origin remote, the
+full sha and the trunk. Prints `<key>: landed on <trunk> at <first 7 of sha>`.
 
 ### `hatch depends AER-12 [<key>|--remove <key>]`
 
@@ -409,8 +460,9 @@ Reads `GET /api/hatch/work/<key>` for a named ticket, or
 never the claim walk. Prints a header of `# <KEY> <From> -> <To>`,
 `# model <m>, effort <e>`, `# playbook: <key>'s own` or
 `# playbook: board-wide`, `# tools: denied <…>` or `# tools: all`,
-optionally `# <model and/or effort> from <KEY>, not the playbook`, and then
-the whole composed prompt. Nothing to do or blocked: exit 2.
+then, for a check playbook only, `# check: pass -> <To>, fail -> <fail column>`
+(either name that is missing prints `?`), optionally `# <model and/or effort>
+from <KEY>, not the playbook`, and then the whole composed prompt. Nothing to do or blocked: exit 2.
 
 ### The increment, in order
 
@@ -451,6 +503,11 @@ by default. The runner heartbeats `POST …/claim/heartbeat` every
 whole process tree and the increment ends with
 `hatch: <key> - <sentence>` and `the session was stopped; nothing further was
 written there`. Every other heartbeat failure is weather, retried next tick.
+The take and the heartbeat carry the matched playbook's `playbookId`, which is
+what lets the board tell a check's claim from any other. `hatch work <KEY>` names it on the take;
+the picker (`go-to-work`, and `work` with no key) attaches it with a heartbeat
+after its second read, best-effort - a failed attach prints `hatch: <key> -
+could not attach its playbook to the claim` and the claim stands.
 Release is `DELETE …/claim?token=<token>`, idempotent, with an optional
 `&outcome=dropped|worked` naming the claim's own verdict on the increment -
 see "The stall guard" below for who sends which. Every release that is not an
@@ -520,10 +577,47 @@ before it said what it had spent`. A failed post never fails the increment.
 1. `GET /api/hatch/work/<key>`: same column means **stalled**, a different
    column means **moved**. A read that fails is neither; the outcome is
    `where it ended up is not known - the board did not answer`.
-2. `GET …/questions?open=true`: questions whose ids were not open before the
+2. **A check's verdict**, only for an increment whose matched playbook is a
+   check, and skipped on a lost lease, a usage limit, a preemption and a hard
+   limit. The tree comes first: in every checkout the increment entered,
+   `git status --porcelain` must be empty and `HEAD` must be what the entering
+   step left it at (after the trunk was merged forward, not the branch's sha).
+   A `git status` that fails reads as dirty.
+   - **Dirty or moved:** nothing is applied. The outcome reads `the check
+     changed the tree, so its verdict was not applied`, the terminal says
+     `hatch: <key> left its tree changed - the check's verdict was not
+     applied`, and the increment is **stalled**, overriding step 1's read, so
+     the stall guard below handles it.
+   - **The tree check itself throws:** nothing is applied, and this step
+     counts no stall. The outcome carries `whether the check's tree is clean
+     is not known - the check failed` and step 1's read stands.
+   - **Clean:** `POST /api/hatch/work/<key>/verdict?heldToken=<token>`, with
+     the declared-checkout query the other work reads carry. A `404` means
+     nothing unapplied was recorded under that claim: the outcome reads `the
+     check ended without a verdict`, the terminal says `hatch: <key> ended
+     without a verdict - nothing was applied`, and the increment is stalled
+     through the guard below, like a dirty tree. Any other failure (a `409`
+     for no live claim, or a token that is not the claim's) is printed, the
+     outcome reads `whether the check's verdict was applied is not known - the
+     apply call failed`, and this step neither moves the increment nor counts
+     a stall.
+   - **Applied:** the returned issue's column is compared with the column it
+     started in. A move prints `hatch: <key> <From> -> <Ended>` and the claim
+     releases `worked`; the board wrote the findings on the ticket as a
+     `verdict` comment. A pass moves it to the dispatch's destination column
+     and the first fail to the board's implementation column.
+   - **A second consecutive fail is held.** The board moves nothing and writes
+     a question naming both failures; the CLI prints `hatch: <key> held in
+     "<column>" - a second consecutive fail`, and the increment is stalled.
+     Step 3 runs after this one and that question was not open before the
+     run, so it counts as one the session asked: it prints under `--- <KEY>
+     asked 1 question(s) ---` and the stall guard takes its first branch,
+     writing nothing and releasing `worked`. Only if step 3's read itself
+     failed does the guard take the `letGo` branches instead.
+3. `GET …/questions?open=true`: questions whose ids were not open before the
    run are printed under `--- <KEY> asked N question(s) ---` with the answer
    command and the issue URL.
-3. **The stall guard**, when stalled and the lease was not lost and it was not
+4. **The stall guard**, when stalled and the lease was not lost and it was not
    a usage limit. The dispatch itself carries `letGo`: how many releases of
    this ticket in a row already came back `dropped`, counted back to the last
    `worked` release, a status change, or a person's answer.
@@ -561,6 +655,16 @@ before it said what it had spent`. A failed post never fails the increment.
    still flagged or let go of for the branch, but the claim still reads as
    having worked.
 
+   **`hatch work -i`** attaches to a check session and has no report, no
+   `letGo`, no stall guard, and none of the lease, usage-limit, preemption or
+   hard-limit guards, since a person is watching. After the session: a tree
+   that is not clean gets a plain comment, `This check session left the tree
+   changed, so its verdict was not applied.`; a clean one makes the same apply
+   call, and a `404` gets the comment `This check session ended without a
+   verdict.`; any other failure prints `hatch: <key> - the verdict could not be
+   applied - <detail>` on stderr and writes no comment. A held second fail is
+   just the board's question. The exit code is the session's own.
+
 ### Prompt assembly
 
 Joined with newlines, in this order:
@@ -590,6 +694,20 @@ Joined with newlines, in this order:
    it is recorded as having done nothing so move it or ask before stopping,
    do not edit playbooks); and the instruction to end with a `work-log` block
    of a title line and a summary under 100 words.
+
+   For a check playbook the tail differs in two places. `## Reaching Hatch`
+   drops the `hatch start` and `hatch move` lines and gains `hatch verdict
+   <KEY> pass|fail ["findings"]   record this check's own verdict`. The first
+   line of `## Where this increment ends` becomes `<KEY>'s session ends with a
+   verdict, not a move: a pass sends it to "<To>", and a fail sends it to
+   "<fail column>".` The rest of that section is unchanged.
+
+Between the repositories and the branch section, a dispatch whose
+`lastCheckFindings` is set - the issue stands in the implementation column
+because its last check failed - carries `## The last check`: `The last check
+on this issue failed. These are its findings:` and then the findings in a code
+fence one backtick longer than the longest run inside them. Findings over 40
+KiB are replaced by `_findings left out: this section is at its size cap_`.
 
 ## `hatch go-to-work`
 
@@ -856,16 +974,19 @@ own `--max-spend` could raise its own budget. `--mine` is shown on the row
 | GET | `/api/hatch/issues?ancestorKey=…` | the idle report under an epic |
 | GET | `/api/hatch/issues/{key}/comments` | `show`, `comments` |
 | POST | `/api/hatch/issues/{key}/comments` | `comment`, `ask`, `answer`, the stall comment, the let-go comment |
-| POST | `/api/hatch/issues/{key}/move` | `move`, `start` |
+| POST | `/api/hatch/issues/{key}/verdicts` | `verdict` |
+| POST | `/api/hatch/issues/{key}/move` | `move`, `start`; refused (`409`) for a key while the issue's live claim was taken under a check playbook - `<key>'s live claim is a check's - a session judges here, it does not move the ticket` - and a person's move is not, including a same-column reorder |
 | PATCH | `/api/hatch/issues/{key}` | `pr` set and clear |
 | PUT | `/api/hatch/issues/{key}/one-pr` | `one-pr` set |
+| PUT | `/api/hatch/issues/{key}/landing` | `landed` |
 | POST, DELETE | `/api/hatch/issues/{key}/dependencies[/{other}]` | `depends` |
 | GET | `/api/hatch/questions?open=…`, `/api/hatch/issues/{key}/questions?open=…` | `questions`, `answer`, before and after an increment |
 | GET | `/api/hatch/work/queue?offsetMinutes=…[&ancestorKey=…][&mine=true]` | `queue`, the picker, the idle report |
 | GET | `/api/hatch/work/next?offsetMinutes=…[&ancestorKey=…][&mine=true]` | `work --dry-run` only |
 | GET | `/api/hatch/work/{key}[?heldToken=…]` | `work`, the picker's second read, the post-increment read |
-| POST | `/api/hatch/issues/{key}/claim` | taking a claim |
-| POST | `/api/hatch/issues/{key}/claim/heartbeat` | keeping it |
+| POST | `/api/hatch/work/{key}/verdict?heldToken=…` | a check increment's apply, after the session |
+| POST | `/api/hatch/issues/{key}/claim` | taking a claim, carrying the matched playbook's `playbookId` |
+| POST | `/api/hatch/issues/{key}/claim/heartbeat` | keeping it; the picker's attach of the `playbookId` |
 | DELETE | `/api/hatch/issues/{key}/claim?token=…[&outcome=dropped\|worked]` | releasing it |
 | POST | `/api/hatch/issues/{key}/work-log` | the work-log row |
 | POST | `/api/hatch/runners/{name}` | the runner heartbeat |
