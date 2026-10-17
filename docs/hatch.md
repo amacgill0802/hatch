@@ -116,8 +116,11 @@ absence starts to hurt:
   was once refetched on action and focus alone, on the premise that whoever
   moves a card is looking at it; the loop moves cards all night, so the premise
   lapsed and the board polls.
-- **Events are recorded, not rendered.** The Plan view answers "how far along
-  is this" from current state; nothing draws the event log as a report.
+- **Events are rendered as column history, and no further.** The
+  [Timeline](#the-timeline) reads the `status_changed` events and draws them as
+  stretches in each column; no other kind is drawn, and nothing draws the rest
+  of the trail as a report of its own. The Plan view still answers "how far
+  along is this" from current state.
 
 ## Where it lives
 
@@ -2092,10 +2095,11 @@ replaced lapsing, when taking a claim answered a question itself; nothing
 writes that shape now, but an old one is still skipped rather than counted or
 stopped at, same as `letGo` above), `imported`.
 
-Nothing renders this, and it has been written since the first release anyway,
-because an event log is the one feature that cannot be added retroactively:
-turned on in March, it answers nothing about February. The cost is a row per
-edit.
+Only `status_changed` is read back, by the [Timeline](#the-timeline); no other
+kind is drawn anywhere. All of it has been written since the first release
+anyway, because an event log is the one feature that cannot be
+added retroactively: turned on in March, it answers nothing about February. The
+cost is a row per edit.
 
 `Payload` is schemaless on purpose — `{ "from": …, "to": … }` for an edit, the
 source filename for an import — because the shape differs per kind and a column
@@ -2526,7 +2530,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/issues/{key}/work-log` | GET, POST | What each session on this issue cost. **POST is a key only** — a browser is refused outright, because the only honest writer of a meter reading is the dispatcher that read it. See [the leaderboard](#the-leaderboard) |
 | `/work-log/sessions` | GET | The sessions in a range, ranked, with the range's own totals — see [the leaderboard](#the-leaderboard) |
 | `/work-log/history` | GET | The same rows folded into equal buckets of time, for the graph |
-| `/reports/timeline` | GET | When the work happened: top-level epics active in a range, and the work beneath each, as stretches in the board's active columns. `from`, `to` (default: the 90 days ending now), `projectId`, `createdBy`. Hatch-scoped, open to a key. `400` for an unparseable or inverted bound and for an unknown `projectId` |
+| `/reports/timeline` | GET | When the work happened: top-level epics active in a range, and the work beneath each, as stretches in the board's active columns. `from`, `to` (default: the 90 days ending now), `projectId`, `createdBy`. Hatch-scoped, open to a key. `400` for an unparseable or inverted bound and for an unknown `projectId` — see [the timeline](#the-timeline) |
 | `/runners` | GET | Every runner heard from lately, most recent first — see [runners on the board](#runners-on-the-board) |
 | `/runners/{name}` | POST | The heartbeat: says what this process is, answers with what it has been asked to do. The name is a character off the cast list, or `HATCH_RUNNER`'s override, escaped — a slash in it stays `%2F`. `where` (`host:/path/to/checkout`) rides beside it; a name already the *live* runner at a different `where` is refused with `409` |
 | `/runners/{name}` | PATCH | **Person only** — plain `[RequireRole(User)]`. `{ state?, under?, maxRuns?, maxSpend?, untilAt? }`, all strings, the bulk rule throughout. An agent that could raise its own `--max-spend` could raise its own budget |
@@ -6609,8 +6613,12 @@ code already settles is a round trip through a person for nothing.
 - **A second scope for agents**, which would stop a key answering its own
   question. Worth a column when somebody wants it; see
   [the one edge](#the-one-edge-that-is-deliberately-cut).
-- **Reporting.** The events are there; nothing renders them. The Plan view
-  answers the question that was actually being asked.
+- **Reports beyond the Timeline.** The [Timeline](#the-timeline) reads the
+  `status_changed` events; what remains deferred is a report over the trail's
+  other kinds, a menu under the Reports nav link (it waits for a second report
+  to put in it), and a CLI subcommand for a report (`hatch api GET` reaches the
+  Timeline already). Each is cheap to add later. The Plan view answers the
+  question that was actually being asked.
 - **GitHub integration, beyond one read and two writes.** A branch and a PR
   are named in a comment by whoever made them. The one thing read from a forge
   is the build on an in-review branch's tip, with the pull request's merge
