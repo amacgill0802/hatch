@@ -775,6 +775,7 @@ public class TimelineReportControllerTests
 
     private sealed class Harness
     {
+        public required HatchContext Db { get; init; }
         public required ReportsController Reports { get; init; }
         public required int ProjectId { get; init; }
     }
@@ -797,6 +798,7 @@ public class TimelineReportControllerTests
 
         return new Harness
         {
+            Db = db,
             Reports = new ReportsController(
                 db, new StubActorDirectory(), TestClaims.With(), new FakeTimeProvider(Now)),
             ProjectId = project.Id,
@@ -808,6 +810,37 @@ public class TimelineReportControllerTests
 
     private static string Refusal<T>(ActionResult<T> result) =>
         Assert.IsType<string>(Assert.IsType<BadRequestObjectResult>(result.Result).Value);
+
+    private static async Task<EfHatchProject> AddProjectAsync(Harness h, string key)
+    {
+        var project = new EfHatchProject { Key = key, Name = key, CreatedAt = Now };
+        h.Db.Projects.Add(project);
+        await h.Db.SaveChangesAsync();
+        return project;
+    }
+
+    /// <summary>An epic that moved into "doing" ten days ago, so it has a stretch inside the default range.</summary>
+    private static async Task<EfHatchIssue> ActiveEpicAsync(Harness h, int projectId, string by, long? parentId = null)
+    {
+        var issue = new EfHatchIssue
+        {
+            ProjectId = projectId,
+            Number = await h.Db.Issues.CountAsync(i => i.ProjectId == projectId) + 1,
+            Type = "epic", Title = "epic", Description = "", StatusId = 3, Rank = 1024, ParentId = parentId,
+            CreatedBy = by, CreatedAt = Now.AddDays(-20), UpdatedAt = Now.AddDays(-20),
+        };
+        h.Db.Issues.Add(issue);
+        await h.Db.SaveChangesAsync();
+
+        h.Db.IssueEvents.Add(new EfHatchIssueEvent
+        {
+            IssueId = issue.Id, Actor = by, Kind = EfHatchIssueEvent.StatusChanged,
+            Payload = "{\"from\":\"todo\",\"to\":\"doing\",\"fromId\":2,\"toId\":3}",
+            At = Now.AddDays(-10),
+        });
+        await h.Db.SaveChangesAsync();
+        return issue;
+    }
 
     [Fact]
     public async Task NoRange_IsTheNinetyDaysEndingNow()
@@ -898,5 +931,51 @@ public class TimelineReportControllerTests
         var timeline = Value(await h.Reports.GetTimeline(null, null, h.ProjectId, null, default));
 
         Assert.Empty(timeline.Epics);
+    }
+
+    [Fact]
+    public async Task AKnownProject_NarrowsTheEpicsToThatProjects()
+    {
+        var h = await NewAsync();
+        var other = await AddProjectAsync(h, "BEE");
+        await ActiveEpicAsync(h, h.ProjectId, "ann");
+        await ActiveEpicAsync(h, other.Id, "ann");
+
+        var first = Value(await h.Reports.GetTimeline(null, null, h.ProjectId, null, default));
+        var second = Value(await h.Reports.GetTimeline(null, null, other.Id, null, default));
+        var both = Value(await h.Reports.GetTimeline(null, null, null, null, default));
+
+        Assert.Equal(["AER-1"], first.Epics.Select(e => e.Issue.Key));
+        Assert.Equal(["BEE-1"], second.Epics.Select(e => e.Issue.Key));
+        Assert.Equal(["AER-1", "BEE-1"], both.Epics.Select(e => e.Issue.Key).Order());
+    }
+
+    [Fact]
+    public async Task CreatedBy_NarrowsTheEpics_AndCreatorsStillListsEveryName()
+    {
+        var h = await NewAsync();
+        await ActiveEpicAsync(h, h.ProjectId, "ann");
+        await ActiveEpicAsync(h, h.ProjectId, "bob");
+
+        var timeline = Value(await h.Reports.GetTimeline(null, null, null, "bob", default));
+
+        var epic = Assert.Single(timeline.Epics);
+        Assert.Equal("bob", epic.CreatedBy);
+        Assert.Equal(["ann", "bob"], timeline.Creators);
+    }
+
+    [Fact]
+    public async Task ANestedEpic_IsReturnedOnceUnderItsParent_NotAgainInEpics()
+    {
+        var h = await NewAsync();
+        var parent = await ActiveEpicAsync(h, h.ProjectId, "ann");
+        await ActiveEpicAsync(h, h.ProjectId, "ann", parent.Id);
+
+        var timeline = Value(await h.Reports.GetTimeline(null, null, null, null, default));
+
+        var top = Assert.Single(timeline.Epics);
+        Assert.Equal("AER-1", top.Issue.Key);
+        Assert.Equal("AER-2", Assert.Single(top.Children).Issue.Key);
+        Assert.DoesNotContain(timeline.Epics, e => e.Issue.Key == "AER-2");
     }
 }
