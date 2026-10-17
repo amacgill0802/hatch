@@ -1523,7 +1523,20 @@ refused story would have taken is still there for the next one.
 
 Seven nullable columns on the issue row — `ClaimToken`, `ClaimedBy`,
 `ClaimRunner`, `ClaimedAt`, `ClaimHeartbeatAt`, `ClaimChatter`, `ClaimChatterAt`
-— and a lease is all of them set or all of them null.
+— and a lease is all of them set or all of them null. An eighth,
+`ClaimPlaybookId`, rides beside them but is not part of that rule: it is null
+on a lease taken with no playbook named, and a lease with a token and no
+playbook is ordinary.
+
+**`ClaimPlaybookId` says which playbook the lease is working under.** It is set
+by the take (`playbookId` on `POST …/claim`) and by a heartbeat (`playbookId` on
+`POST …/claim/heartbeat`, where absent leaves it alone and nothing can clear it
+back to null), and it is cleared with the rest on every release, by the holder
+or by the operator; on a lease that merely expired it stays, like the rest,
+until the next take overwrites it. The runner supplies it and the session never
+does. It exists so the server can tell a [check](#check)'s lease from any other:
+a key's move is refused while it is a check's, and a verdict is accepted only
+under it.
 
 **A claim is a lease held by a running dispatcher**: taken before an increment,
 refreshed while it runs, released after it, and expiring on its own when the
@@ -1937,7 +1950,7 @@ board is not a poll that never gets there.
 `Options`, `DeliveredAt`, `DeliveredTo`, `CreatedAt`.
 
 Most comments are notes: a commit sha, a summary for a reviewer, a change of
-mind. Three are not, and those carry a `Kind`.
+mind. Four are not, and those carry a `Kind`.
 
 - A **question** (`Kind = "question"`) is an agent saying it cannot proceed
   without a decision that is not its to make.
@@ -1945,6 +1958,19 @@ mind. Three are not, and those carry a `Kind`.
   settles by `AnswersId`.
 - A **message** (`Kind = "message"`) is something said to whichever session is
   working the issue, written from the Claim panel.
+- A **verdict** (`Kind = "verdict"`) is a [check](#check)'s findings, posted by
+  the apply that acts on the verdict — author the verdict's, body its findings or
+  `(no findings)` — on every apply, whether it moved the ticket or held it. The
+  thread is where a person reads them, and the next build session is handed the
+  newest as *The last check*.
+
+  Nothing needs to write one by hand, but `POST /issues/{key}/comments` does not
+  refuse it: `verdict` is a legal `Kind`, so the comment is stored as given, with
+  a `commented` event like a note. Only the sentence for a bad `Kind`, which
+  names `question`, `answer` and `message`, leaves it out. It is a comment and
+  nothing more — no [verdict](#verdict) row, no move, no effect on the second-fail
+  count — but the read of "the newest verdict comment" cannot tell a hand-posted
+  one from the apply's, so don't.
 
 A question is a row rather than a heading in a comment body for the same reason
 a ready date is a column rather than a line saying "not until March": something
@@ -2057,7 +2083,8 @@ migration renamed five) and a name alone cannot place a stretch of history
 after the rename; `from` and `fromId` are null where there was no previous
 column; an event written before the ids were added carries names only, so a
 reader must not assume them; the hop flags - `express`, `pulled`, `merged`,
-... - ride beside them unchanged),
+... - ride beside them unchanged; a move the [check](#check) apply made carries
+`verdict` and `playbookId` there too),
 `parent_changed`, `ready_changed`, `due_changed`, `pull_request_changed`,
 `model_override_changed`, `effort_override_changed`, `assignee_changed`,
 `priority_changed`, `express_changed`, `wip_limit_changed` (an epic's [Stories
@@ -2069,7 +2096,11 @@ had already gone quiet past its terms and is taking it over — payload
 written immediately before the `claim_taken` for the runner taking over),
 `claim_released` (payload `{ from, to, outcome }`, `outcome` left out entirely
 rather than serialized as null where the release named none), `claim_cleared`,
-`merge_check_changed`, `build_check_changed`, `pull_request_state_changed` (the
+`verdict_recorded` (a [check](#check) session recorded its verdict - payload
+`{ verdict, playbookId }`, written on every call, a replace under the same claim
+included), `verdict_held` (the apply found a second consecutive fail and moved
+nothing - payload `{ verdict, playbookId }`, `verdict` always `fail`, written
+beside the `asked` for the question it posts), `merge_check_changed`, `build_check_changed`, `pull_request_state_changed` (the
 forge's last word on the recorded pull request - its merge state, its review
 decision, or the head sha they were read at - differs from what the board
 held, the first read counting; payload `{ from, to }`, each side `{ mergeState,
@@ -2108,8 +2139,8 @@ matter under a hundred lines of tidying.
 ### Playbook
 
 `EfHatchPlaybook` — `FromStatusId`, `ToStatusId`, `Types`, `Shape`, `Prompt`,
-`Model`, `Effort`, `Budget`, `BriefLimit`, `DeniedTools`, `ProjectId`. Unique
-on `(from, to, types, shape, project)`.
+`Model`, `Effort`, `Budget`, `BriefLimit`, `DeniedTools`, `IsCheck`, `ProjectId`.
+Unique on `(from, to, types, shape, project)`.
 
 What an agent is told, and how much thought to spend, when it moves an issue of
 some type and shape from one column to the next. `Shape` is one of `any`
@@ -2119,7 +2150,9 @@ else a list of Claude Code permission rules in deny position — a bare tool
 name (`Edit`) or a scoped pattern (`Bash(git push *)`). `ProjectId` is null on
 every row written before the column existed, and null means the row speaks
 for every project on the board; a row naming one project speaks for that
-project alone. See [the dispatcher](#the-dispatcher).
+project alone. See [the dispatcher](#the-dispatcher). `IsCheck` is false by
+default and a person's write only — a key's `POST` or `PATCH` of it is refused
+with the rest of the playbook write — and what it means is in [Check](#check).
 
 **A read-only example, not a shipped list.** `DeniedTools: ["Read", "Edit",
 "Write", "NotebookEdit", "Bash(git add *)", "Bash(git commit *)",
@@ -2140,6 +2173,29 @@ than it reads — a real run denying `Write` alone did not stop the write it
 named; the session routed around it with a plain `Bash` call instead, because
 the deny list left `Bash` itself untouched (HA-454's own run). A bare-name
 deny removes *that one tool*, not the action everywhere else capable of it.
+
+### Verdict
+
+`EfHatchVerdict` — `IssueId`, `PlaybookId`, `StatusId`, `Verdict`, `Findings`,
+`Author`, `ClaimToken`, `CreatedAt`, `AppliedAt`. Unique on `(IssueId,
+ClaimToken)`.
+
+What a [check](#check) session concluded about an issue: `Verdict` is `pass` or
+`fail`, `Findings` is whatever came with it (null when nothing did), and
+`ClaimToken` is the lease the session was running under — which is why a second
+write under the same claim replaces the first, and why a new claim starts a new
+row. `Author` is the caller's name, as on a comment.
+
+**The row is its own audit record.** Unlike the bare `ClaimPlaybookId` it was
+written under, `PlaybookId` and `StatusId` are real navigations to the playbook
+and the column the issue stood in when the verdict was given, so the row still
+says under which playbook and where it was judged after the issue has moved on
+and the claim is gone.
+
+`AppliedAt` is null until [the apply](#check) sets it, and is set by nothing
+else — not by a replace, which leaves it alone. A verdict with it set is not
+looked at again: a retried apply under the same claim finds no unapplied row and
+answers `404`. Written by `POST /issues/{key}/verdicts`; no route reads it back.
 
 ### Overnight seen
 
@@ -2479,8 +2535,8 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/issues` | GET, POST | GET filters on `projectId`, `type`, `statusId`, `parentKey`, `ancestorKey`, `text`, ANDed, all optional |
 | `/issues/bulk` | POST | `keys` plus any of `type`, `statusId`, `parentKey`, `readyAt`, `dueAt`. No `wipOverride` — a full [WIP](#wip) section or [an epic at its own limit](#an-epics-own-limit) is a per-key failure, named in `failures`; `projectId` with `moveDescendants` moves the batch the same way — see [Moving between projects](#moving-between-projects) — `400` on an unknown project, `403` from a key or a keyless runner, a live claim anywhere in the moving set a per-key failure rather than a whole-request refusal; the response gains `rekeyed: [{ from, to }]`, additive and empty when no project was named |
 | `/issues/{key}` | GET, PATCH, DELETE | PATCH writes one event per changed field; `""` clears a parent, a date or the pull request URL; `wipOverride` — see [WIP](#wip) — moves a full section or a full epic anyway, `409` (`WipRefusalDto`, carrying the epic's own numbers when it is the epic's limit) otherwise, `403` from a key or a keyless runner; `projectId` with `moveDescendants` moves it to another project — see [Moving between projects](#moving-between-projects) — re-keying it and (by default) everything below it; `400` on an unknown project, `403` from a key or a keyless runner, `409` naming any issue in the moving set holding a live claim |
-| `/issues/{key}/move` | POST | `{ statusId, afterKey?, beforeKey?, fromStatusId?, wipOverride? }` — the server computes the rank. A card no longer in `fromStatusId` is a 409 and nothing is written; a move into a full [WIP](#wip) section or past [an epic's own limit](#an-epics-own-limit) is the same (`409` carrying the epic's own numbers when it is the epic's), unless `wipOverride` is set (person only - `403` from a key or a keyless runner) |
-| `/issues/{key}/comments` | GET, POST | POST carries the kind (a note, `question`, `answer` or `message`), the `answersId`, and a question's options; every comment carries `deliveredAt` and `deliveredTo` |
+| `/issues/{key}/move` | POST | `{ statusId, afterKey?, beforeKey?, fromStatusId?, wipOverride? }` — the server computes the rank. A card no longer in `fromStatusId` is a 409 and nothing is written; a move into a full [WIP](#wip) section or past [an epic's own limit](#an-epics-own-limit) is the same (`409` carrying the epic's own numbers when it is the epic's), unless `wipOverride` is set (person only - `403` from a key or a keyless runner). **A key is refused with `409` while the issue's live claim is a [check](#check)'s** — *"<KEY>'s live claim is a check's - a session judges here, it does not move the ticket"* — before anything else is read, a reorder inside one column included; a person's move is not |
+| `/issues/{key}/comments` | GET, POST | POST carries the kind (a note, `question`, `answer`, `message` or — though only the apply has a reason to — `verdict`), the `answersId`, and a question's options; every comment carries `deliveredAt` and `deliveredTo` |
 | `/issues/{key}/messages/deliver` | POST | marks messages read, all unread or the `ids` named, and answers with only the ones this call marked |
 | `/issues/{key}/questions` | GET | `?open=false` for the answered ones too |
 | `/issues/{key}/events` | GET | Newest first |
@@ -2495,28 +2551,30 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/issues/{key}/express` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ express }` — see [Express](#pre-approval). Setting what it already holds writes nothing. Now an alias for `/pre-approval` above, sharing its guards |
 | `/issues/{key}/stall` | PUT | Carries no `[RequireRole]` at all — a dispatcher is exactly who leaves this mark. `{ why }` — the sentence an increment leaves behind it saying why it left the ticket where it found it; sets `StalledAt` to now and `StalledWhy` to it, normalised and capped the way claim chatter is. Always writes, so a second mark replaces the first on the row but still leaves its own `stalled` event behind it |
 | `/issues/{key}/hold` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action: an agent that could hold its own ticket could park it off the board for the night. `{ held }` — holds it or resumes it. Resuming clears `StalledAt` and `StalledWhy` together, so *Resume now* leaves nothing behind for the dispatcher to fold on, even where nothing had set `held` true. Setting what it already holds writes nothing and does not move `UpdatedAt` — except that `held: false` still clears a stall mark where one is there to clear |
-| `/issues/{key}/claim` | POST | Takes the [lease](#claim). `{ runner }`; answers with the token, the holder, when it was taken and the TTL, and `stallLapseSeconds` — the same window a claim goes quiet by, in seconds, or `0` when lapsing is off. `409` naming the holder where something live already has it — including the same runner asking twice |
-| `/issues/{key}/claim/heartbeat` | POST | `{ token, chatter? }` — refreshes it, `204`. `409` on a token that is not the row's, on a lease that is over, and on one that has gone quiet — see [Claim](#claim). `chatter` absent leaves the carried line alone, `""` clears it, anything longer than the column is truncated rather than refused |
+| `/issues/{key}/claim` | POST | Takes the [lease](#claim). `{ runner, playbookId? }` — the playbook the lease works under, stored as `ClaimPlaybookId`, `400` naming it where there is no such playbook; answers with the token, the holder, when it was taken and the TTL, and `stallLapseSeconds` — the same window a claim goes quiet by, in seconds, or `0` when lapsing is off. `409` naming the holder where something live already has it — including the same runner asking twice |
+| `/issues/{key}/claim/heartbeat` | POST | `{ token, chatter?, playbookId? }` — refreshes it, `204`. `409` on a token that is not the row's, on a lease that is over, and on one that has gone quiet — see [Claim](#claim). `chatter` absent leaves the carried line alone, `""` clears it, anything longer than the column is truncated rather than refused. `playbookId` absent leaves the claim's playbook alone, and a value overwrites it (`400` for an unknown playbook); a heartbeat cannot clear it |
 | `/issues/{key}/claim?token=…&outcome=…` | DELETE | Releases it, `204`. A mismatched token is `409` and clears nothing; an issue holding no claim is `204` and writes nothing. `outcome` (`dropped` or `worked`) is read only where `token` is given and is otherwise optional — an older CLI names none — and a value that is neither is `400`. **With no token at all it is person-only** — an agent that could clear another runner's claim could take a ticket off it mid-increment |
+| `/issues/{key}/verdicts` | POST | Records a [check](#check) session's [verdict](#verdict). `{ verdict, findings? }`; open to a key and a person, `204`, no body. `400` where the live claim is not under a check playbook (*"a verdict needs a check playbook covering <KEY> where it stands, and none does"* — also what a claim with no playbook named, or no claim at all, gets), for a `verdict` that is not `pass` or `fail` (*"\"<word>\" is not a verdict - it is \"pass\" or \"fail\""*), and for `findings` over the comment body length (*"findings are at most <n> characters"*); `404` on an unknown key. A second call under the same claim replaces the first. Writes a `verdict_recorded` event and moves nothing. No `GET` |
 | `/issues/{key}/merge-check` | PUT | Keeps a runner's [verdict](#merge-check) for one repository. `{ remote, trunk, trunkSha, verdict, branch?, branchSha?, files?, runner, holdsTrunk? }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an unknown verdict, `conflicted` with no files, and `clean` or `conflicted` with no branch sha; `404` on an unknown key. The column is not checked. A verdict that repeats the stored one writes no event, and neither does a change to `holdsTrunk` alone |
 | `/issues/{key}/pull-request-state` | PUT | Keeps what the forge last said of the pull request recorded on an issue: its merge state (`clean`, `blocked`, `behind`, `dirty`, `unstable`, `draft` or `unknown`) and its review decision (`none`, `approved`, `changes-requested` or `review-required`), with the head sha it was read at and when. `{ url, headSha, mergeState, reviewDecision, runner }`; answers `204`. Refused, in a sentence, with `409` for an issue with no pull request recorded or a `url` that is not the recorded one, and `400` for a merge state or review decision outside those lists, an empty head sha, or one longer than a sha can be; `404` on an unknown key. The column is not checked, and `runner` is neither checked nor kept. The board stores them; `MergeWork.Judge` reads the merge state and head sha (see [the merge column's judge list](#the-approval-column)) and nothing else on the server does, and the review decision is read by nothing. A read that repeats the stored merge state, review decision and head sha writes no event and refreshes only when it was read |
 | `/issues/{key}/landing` | PUT | Keeps what a repository holds for an issue's branch — see [landing](#landing). `{ remote, sha, trunk?, containedBy?, runner? }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an empty or non-hex sha, and `containedBy` given without a `trunk`; `404` on an unknown key. The column is not checked. A write that repeats the stored sha and `containedBy` writes no event |
 | `/questions` | GET | Every open question in the house |
 | `/plan`, `/plan/{key}` | GET | See [the level above the board](#the-level-above-the-board) |
 | `/work/next` | GET | See [the dispatcher](#the-dispatcher). `?heldToken=` names a [claim](#claim) of one's own, so it is not folded past as somebody else's. `?remote=` (repeatable), `?standing=` and `?clones=` declare what the runner has; absent is undeclared and folds nothing. `?mine=true` narrows the pass to the caller's own tickets — see [one more, on `next` alone](#one-more-on-next-alone); `400` when the calling key belongs to nobody. Carries `letGo`, the count of this issue's trailing dropped releases — `0` on a client too old to read it |
-| `/work/{key}` | GET | See [the dispatcher](#the-dispatcher). Same `?heldToken=`, `?remote=`, `?standing=` and `?clones=` as `/work/next`. `?mine=` is ignored — somebody who names a ticket has already chosen it. Carries `letGo` the same way |
+| `/work/{key}` | GET | See [the dispatcher](#the-dispatcher). Same `?heldToken=`, `?remote=`, `?standing=` and `?clones=` as `/work/next`. `?mine=` is ignored — somebody who names a ticket has already chosen it. Carries `letGo` the same way. Also carries `failStatusName` — the implementation column's name, the column a failed [check](#check) sends the issue back to, set on every dispatch and null where the board has none — and `lastCheckFindings`, the newest check's findings, set only for an issue standing in that column whose most recent event of any kind is a fail's, null otherwise |
 | `/work/queue` | GET | The same walk `next` takes, reported rather than acted on, and the same three repository flags — see [what a pass skipped](#what-a-pass-skipped). Same `?mine=true`, folding every ticket that is not the caller's own with a sentence naming whose it is. `?asRunner=<name>` answers off that runner's own row instead of the query string — `remote`, `standing`, `clones`, `mine` and `ancestorKey` come from it and may not be given alongside it; a name no live row answers to is a `400` naming it. `clearNote` names a row that is clear only because a stall mark's resume window passed, e.g. `"it stalled 18 minutes ago and resumes itself after 15 minutes"` — null on every ordinary clear row |
 | `/work/{key}/hop` | POST | Carries one of seven kinds one column right with no session — see [the hop](#the-hop): an issue [pre-approved](#pre-approval) at `express` or above standing in a column marked `ExpressSkips`; an epic entering the WIP section; a story or bug under a running epic; a child its parent pulls; a childless issue over its playbook's `BriefLimit`, sent back; a pre-approved issue in review whose branch merges cleanly or needs only bringing current; or a pre-approved parent in review with no pull request and every child done, carried past review into the first terminal column. Takes the same query parameters as `GET /work/{key}` and no `heldToken`: a hop takes no claim. `409` carrying the fold's sentence where the issue is blocked, and `409` where it is clear but not a hop |
 | `/work/{key}/merged` | POST | Advances an issue in the review column whose pull request has merged, one column right, with no claim and no session. `{ url, runner }` — `runner` rides the body unused, for shape parity with the requests that do read it. `409` for a column other than review, for no pull request recorded, for a `url` that does not match the one recorded (trimmed, ordinal), for no column after review, and for a claimed issue; `404` on an unknown key. See [the four paths past the terminal guard](#the-four-paths-past-the-terminal-guard) |
 | `/work/{key}/closed` | POST | Records that an issue's pull request was closed without merging (`PullRequestClosedAt`) — a runner's poll calls it once, on the first read, and does nothing further; `MergeWork.Judge` holds an approval on this until a person acts. `{ url, runner }`, the same shape parity as `/merged`. `409` for a column that does not merge the pull request, for no pull request recorded, and for a `url` that does not match the one recorded; `404` on an unknown key |
 | `/work/{key}/pushback` | POST | Carries an issue in the merge column back to the review column, with no claim and no session — judged by `MergeWork` itself, off the issue's own stored merge and build checks, not by the caller. `{ url, runner }` — `runner` rides the body unused, for shape parity. `409` for a column that does not merge the pull request, for no pull request recorded, for a `url` that does not match the one recorded (trimmed, ordinal), for a judged kind other than `pushback` (carrying the judge's own sentence), for no review column on the board or one that is the merge column itself, and for a claimed issue; `404` on an unknown key |
 | `/work/{key}/landed` | POST | Carries a trunk-landing issue in the review column to the first terminal column after it, with no claim and no session — judged by `LandingWork` itself, off the issue's own stored [landings](#landing) and [trunk builds](#trunk-build), not by the caller. No body. `409` for a column other than review, for a project that lands by pull request (*"this project lands by pull request, so there is no landing to confirm"*), for an issue with a pull request recorded (*"a pull request is recorded on this issue, so it lands by merge and not by landing"*), for no terminal column after review, for a judged kind other than `land` (carrying the judge's own sentence), and for a claimed issue; `404` on an unknown key. See [landing on the trunk](#landing-on-the-trunk) and [the four paths past the terminal guard](#the-four-paths-past-the-terminal-guard) |
+| `/work/{key}/verdict` | POST | Applies the [verdict](#verdict) a check session recorded under `?heldToken=` — the runner's own write, after the session, with no gate of any kind; see [Check](#check). A pass moves the issue to where a dispatch from the column it stands in would take it, a first fail to the implementation column, and a second consecutive fail moves nothing and asks a question. `200` with the issue. `409` for an issue holding no live claim (*"<KEY> holds no live claim, so there is nothing for this token to match"*) and for a token that is not the claim's (*"<KEY>'s live claim does not match this token"*); `404` on an unknown key and for no unapplied verdict under that claim (*"no verdict was recorded under this claim"*), which is also what a retried apply gets. Takes `?remote=`, `?standing=` and `?clones=` as `GET /work/{key}` does, and ignores them |
 | `/issues/{key}/build-check` | PUT | Keeps a runner's [build verdict](#build-check) for one repository. `{ remote, branch, sha, verdict, failing?, runner, pushedByIncrement? }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an unknown verdict, no branch or sha, and `failed` with no failing checks; a link that is not `http(s)` is stored as null; `404` on an unknown key. The column is not checked. A verdict that repeats the stored one writes no event, and one that moves the row into failed-and-flagged marks the issue stalled with it |
 | `/trunk-builds` | PUT | Keeps a runner's [trunk build verdict](#trunk-build) for one repository's trunk. `{ remote, trunk, sha, verdict, failing?, runner }`; answers with what it now holds. The same refusals the build check's write takes, naming the trunk rather than the branch. No event and no question — there is no issue to write either on. `passed` lets an attached bug go |
 | `/trunk-builds` | GET | Every stored [trunk verdict](#trunk-build), ordered by canonical then trunk — what a runner's poll reads once a poll, since a trunk carries no issue for the verdict to ride in on |
 | `/trunk-builds/{id}/bug` | POST | **Person only** — no class-level scope, the way expedite is cut. Files the bug a failing trunk's *File a bug* button asks for (HA-95), expedited, in the project that binds the repository, in the board's first column — see [what is waiting on you](#what-is-waiting-on-you). `409` once the row is no longer failing; `400` naming the Projects page when no project binds it; a second call answers the bug already filed rather than filing another |
 | `/work/review` | GET | Every issue in the review column the caller holds a checkout of, with its bound repositories and the [merge checks](#merge-check) the board holds — what a runner's poll reads before it asks git anything. `?remote=` (repeatable) and `?standing=` as on the queue; no `clones`, because a poll clones nothing. Not narrowed by a claim, a question, a date or an assignee — see [checking the branches in review](#checking-the-branches-in-review) |
-| `/playbooks` | GET | **Reads only.** POST/PATCH/DELETE are plain `[RequireRole(User)]` |
+| `/playbooks` | GET | **Reads only.** POST/PATCH/DELETE are plain `[RequireRole(User)]`. Each playbook carries `isCheck`; a person's `POST` and `PATCH` take `isCheck?` (absent is false on create and leaves it alone on patch) — see [Check](#check) |
 | `/import/preview`, `/import/preview-text`, `/import` | POST | See [the importer](#the-importer) |
 | `/utilization` | GET | My own Claude headroom, off my own runners' heartbeats. `204` when no runner of mine has ever reported a reading — see [the battery](#the-battery) |
 | `/attention` | GET | What the loop is waiting on a person for — the issues up for review that carry a pull request, how many in that column carry none, every open question still waiting on somebody — not one whose ticket has already shipped, every repository's trunk whose latest build is failing (counted, unlike the rest below), and (listed, not counted) the issues in review whose branch conflicts or whose build has failed, plus how many of those are held back from the pull request list on that account (`reviewsHeldBack`), plus every live runner out of Claude usage (`exhaustedRunners`). One read for all of it — see [what is waiting on you](#what-is-waiting-on-you) |
@@ -3620,6 +3678,133 @@ which of the seven carried it, and `HopUnder` carries the epic's key when
 always null where `Hop` is true, even where one covers the move, so no client
 can spawn a session for a hop by accident.
 
+### Check
+
+**A check is a playbook that judges instead of editing.** `IsCheck` on a
+[playbook](#playbook), written only by a person, the same cut `DeniedTools`
+rides — a key's write of a playbook is refused ([the one edge that is
+deliberately cut](#the-one-edge-that-is-deliberately-cut)). It is never the
+review row, and no seeded row is one: see [Playbooks](#playbooks). The
+Playbooks page has an *Is check* checkbox, and a row with `isCheck` set and no
+`deniedTools` carries a red badge saying it can edit — a warning, not a
+refusal, since the API never checks the pairing.
+
+**`IsCheck` removes no tool.** The tools go with `DeniedTools`; what `IsCheck`
+adds is everything below: a claim a key cannot move the ticket under, a route
+to record a verdict, a different tail on the prompt, and the runner's look at
+the tree afterwards. The issue stands in the playbook's *from* column while
+the session runs, as under any playbook.
+
+**The session cannot move the ticket.** The claim records the playbook it was
+taken under (`ClaimPlaybookId`, see [Claim](#claim)), named by the runner on the
+take or, in the loop, by the heartbeat straight after it, and never by the
+session. While the issue's live claim is a check's, `POST /issues/{key}/move`
+from a key is refused with a `409` and a sentence — a reorder inside one column
+too — and a person's move is not. That is said of the move route only. The
+check's prompt follows: its *Reaching Hatch* block drops `hatch start` and
+`hatch move` and adds `hatch verdict KEY pass|fail ["findings"]`, and the first
+line of *Where this increment ends* becomes *"KEY's session ends with a
+verdict, not a move: a pass sends it to "X", and a fail sends it to "Y"."*
+The rest of that section is unchanged. The attach is best-effort: when it
+fails, the runner complains and keeps the claim, which then names no playbook,
+so the move is not refused and `hatch verdict` answers `400`.
+
+**The verdict is a record, not a move.** `POST /issues/{key}/verdicts`, open to
+a key and to a person, takes `pass` or `fail` and optional findings, and writes
+a [verdict](#verdict) row and a `verdict_recorded` event. It is a `400` unless
+the live claim's playbook is a check, unless the word is exactly `pass` or
+`fail`, and when the findings are over the comment body length; empty findings
+are none. There is one row per claim, and a second call under the same claim
+replaces the first. It answers `204` and moves nothing. `hatch verdict` is the
+CLI, and refuses any other word before sending a request.
+
+**The apply is the runner's, after the session, and is where the ticket
+moves.** `POST /work/{key}/verdict?heldToken=` reads the unapplied verdict
+recorded under that claim. It is a `409` for an issue with no live claim or a
+token that is not the claim's, and a `404` for no unapplied verdict under it —
+which a retry of an applied one also gets. It takes no gate: no dependency, no
+[WIP](#wip) limit, no protected or terminal check on either target, as with
+[a hop](#the-hop), so a check column belongs left of the review column.
+
+- **Pass** moves the issue to where a dispatch from the column it stands in
+  would take it (`Columns.Target`).
+- **A first fail** moves it to the implementation column
+  (`Columns.Implementation`), whatever the check's own columns are.
+- **A second consecutive fail** moves nothing; see below.
+
+A move is a `status_changed` event carrying `verdict` and `playbookId` beside
+the usual payload, and goes to the bottom of its column. Every apply, moved or
+held, also posts the findings as a comment of kind `verdict`
+([Comment, question and answer](#comment-question-and-answer)) and sets the
+row's `AppliedAt`.
+
+**The second consecutive fail asks a person instead.** `VerdictStreak.Count`
+walks the issue's events newest first, before this apply's own move. Events
+that are not a `status_changed` are skipped, and so is every `status_changed`
+with no `verdict` in its payload — a plain advance into the check column, but
+equally a person's drag. A fail of the same playbook adds one. Three things end
+the run: a `pass` of the same playbook, an `answered` event — any answer on the
+issue, not only to this check's question — and a verdict of a *different*
+playbook. When a fail finds one already counted, the apply moves nothing and,
+in one write, records a `verdict_held` event, posts a question comment in prose
+with no options — *"This check has failed twice in a row with nothing passing in
+between. First: "…" Second: "…" - how should KEY proceed?"*, the first being the
+newest earlier verdict comment — and an `asked` event, then the verdict comment
+and `AppliedAt` as above. The open question blocks a dispatch the way any does,
+and the answer ends the run, so the next fail counts as a first.
+
+**After the session, on the runner, the tree comes first.** For a check
+increment the runner looks at every checkout it entered: `git status
+--porcelain` must be empty and `HEAD` must be what the entry left it at — after
+the trunk was merged forward, not the branch's recorded sha. Then:
+
+- **Changed.** Nothing is applied. The increment is stalled, with the reason
+  *"the check changed the tree, so its verdict was not applied"* in the line the
+  runner prints; the comment [a stall](#when-an-increment-does-nothing) writes is
+  its ordinary one, not that sentence.
+- **Clean.** The runner calls the apply. A `404` is *"the check ended without a
+  verdict"*, a stall in the same way. Any other refusal, or a tree check that
+  could not run, is complained about and flagged as not known, with nothing
+  applied.
+
+The verdict alone sets whether the increment moved, so a child filed during a
+check counts for nothing. None of this runs when the lease was lost, on a usage
+limit, when preempted, or when hard-limited. **A held second fail** reads as a
+stall in the outcome line, since the ticket stayed where it was, but the
+question the apply wrote is on the ticket by the time the runner reads the
+questions, so it takes the *asked* branch: no let-go comment and no stall flag,
+and the question is what holds the ticket. `hatch work -i` runs the same two
+steps after the attached session, but with no report, no let-go and none of the
+skip conditions: a changed tree is one plain comment (*"This check session left
+the tree changed, so its verdict was not applied."*), a `404` another (*"This
+check session ended without a verdict."*), and any other refusal is only
+printed.
+
+**The next build increment carries the findings.** `WorkDto.LastCheckFindings`
+is set for an issue standing in the implementation column whose most recent
+event, of any kind, carries `verdict: fail`; its value is the newest `verdict`
+comment's body. The prompt prints it under `## The last check`, in a code fence,
+and over 40 KiB leaves the findings out whole rather than cutting them.
+`WorkDto.FailStatusName` is the implementation column's name, set on every
+dispatch; for a check, `hatch work --dry-run` prints `# check: pass -> X, fail
+-> Y`, with `?` for a missing name.
+
+**Tick the build column.** `Columns.Implementation` is the ticked column, or
+else the column whose next move is into review. On a board with check columns
+between building and review the fallback is the last check column, and a fail
+would send the ticket back to the check. Tick *Code written here* on the build
+column (`PUT /statuses/{id}/implementation`, [a person's](#status)) and a fail
+returns to it; the same column decides which move a [dependency](#dependency)
+gates, so the tick puts that gate back on the build move. The worked example at the end of [Playbooks](#playbooks)
+sets it up in full.
+
+**A check column needs no code of its own.** Dispatch, the WIP gate,
+dependencies, claims and the folds treat it like any other column: the
+playbook that speaks for the move is matched by from, to, type and shape, and
+nothing in `Dispatch` reads `IsCheck` or the claim's playbook. On the server
+only the playbook writes, the verdict record and the move refusal above read
+it. This is decision 8 of epic HA-422.
+
 ### Running an epic
 
 **The pull is for a sub-epic, never a top-level one.** An operator drags a
@@ -4495,7 +4680,7 @@ Every one of the nine either edits the tree or judges it:
 *Judges* here means by instruction only. None of the seven is enforced by
 `IsCheck` or `deniedTools`: each is told in its prompt to specify, verify or
 report rather than to write the code, and nothing but the prompt keeps a
-session to that. Only a check playbook (below) takes the write tools away.
+session to that. Only a [check playbook](#check), paired with denied tools, takes the write tools away.
 
 Nothing re-asserts them afterwards, and nothing overwrites one. `TheFlow` moves
 three of them from `inbox → todo` onto `Breakdown → Backlog`, because that is
@@ -4996,6 +5181,8 @@ One pass, from the board to the release:
      entry in the matched playbook's `DeniedTools` — for every
      playbook-started session, headless, attached, conflict and build alike.
      See [Playbook](#playbook) above.
+   For a [check](#check) dispatch the runner, once the session has ended, looks
+   at the tree in every checkout it entered and only then applies the verdict.
    For a conflict dispatch the runner then **checks the branch again**, before
    it enters it — see [a conflict increment](#a-conflict-increment-is-judged-by-the-branch-not-by-the-column).
 6. **Heartbeat**, carrying the last line the runner printed — and only when it
@@ -5567,6 +5754,12 @@ the transition it was trying to make — with the `claude --resume` command, sin
 resuming the conversation is most of why a stall is worth recording rather than
 merely counting — and, if nothing is already open there, **a mark**:
 `StalledAt` and `StalledWhy`, set by `PUT /issues/{key}/stall`.
+
+**A [check](#check) that did not judge is a stall of its own.** One that left
+the tree changed, or ended with no verdict recorded, has nothing applied and is
+let go of or flagged like any other stall, with its own sentence in the line the
+runner prints; one held on a second consecutive fail has its question to say
+why, and is not counted.
 
 **A hop is never a stall.** No session ran, so there is no session to name and
 nothing was spent on a ticket that did not move - the ticket did move, one
