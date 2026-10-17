@@ -104,6 +104,13 @@ absence starts to hurt:
   server — see [the build half of checking the branches in
   review](#checking-the-branches-in-review). What is still not read: anything
   at all from the server. Nothing in Hatch names a forge or inspects a host.
+  The review decision is drawn beside the pull-request chip
+  (`PullRequestStateChips.tsx`) and that is all it is for: Hatch's own approval,
+  a person moving the issue into a protected column, stays the one gate
+  (HA-558, decided *hatch-still-approves*). The read that carried the build
+  grew two fields, the merge state and the review decision, and nothing on the
+  server acts on either beyond the merge state above - `MergeWork.Judge` takes
+  the merge state and the sha it was read at, and no review decision.
 - **No websockets.** The board refetches on action and on focus, and every 30
   seconds while it is on screen, and at once when it returns to the screen. It
   was once refetched on action and focus alone, on the premise that whoever
@@ -225,6 +232,19 @@ the project's default for whether a story's tasks share the story's branch and
 one pull request, which a story can override either way - see
 [One pull request](#one-pull-request)). A project may also carry an uploaded
 logo, in its own table — see [Logo](#logo).
+
+An owner alone sets how a project's work lands. `Landing`, `ChecksRequired` and
+`OnePullRequest` are written through `PUT /projects/{id}/landing`
+(`ProjectsController.PutLanding`) and nowhere else; `PATCH /projects/{id}`
+carries the name, key, colour and icon and never reads those three. The route
+is plain `[RequireRole(User)]`, so a key cannot call it, and it answers `403`
+naming the project's key to any person who is not one of its owners - the
+`PATCH` row in [the API table](#api-surface) says nothing of why, and this is why. The
+project dialog follows the same guard: where the project's `canAdminister` is
+false it shows a person who is not an owner the choice read out as a sentence
+(*"On the trunk|By pull request, checks required|not required, one pull
+request per story|task."*) in place of the controls
+(`ProjectEditDialog.tsx`).
 
 A project exists so an issue can be called `AER-12` rather than `#4471`, and so
 two efforts can number themselves independently. It is deliberately **not a
@@ -6402,10 +6422,13 @@ code already settles is a round trip through a person for nothing.
   protected column, and the branch update that keeps it current with the trunk
   while it waits — all three through the runner's own `gh`
   ([checking the branches in review](#checking-the-branches-in-review)).
-  Acting on the review decision (nothing on the server reads it yet; the merge
-  state is read by [the merge column's judge list](#the-approval-column)), webhooks and anything else the server would ask a forge itself are
-  deferred: each is a credential on the server, which is what the runner asking
-  `gh` as whoever it is signed in as avoids.
+  A forge-side approval as a second gate was weighed and declined (HA-558,
+  *hatch-still-approves*): Hatch's own approval is the gate in every shape that
+  opens pull requests, so the review decision stays drawn and unread by the
+  server (the merge state is read by [the merge column's judge
+  list](#the-approval-column)). Webhooks and anything else the server would ask
+  a forge itself are deferred: each is a credential on the server, which is
+  what the runner asking `gh` as whoever it is signed in as avoids.
 - **A deleted issue takes its events with it.** Hard delete, confirmed in the
   UI, and an accepted gap.
 - **Pushed updates.** The board polls (see above); a server-sent signal would
