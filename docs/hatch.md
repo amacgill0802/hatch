@@ -3901,10 +3901,14 @@ normal row with a lower `Rank`.
 
 **The head, and why a held row is stepped over.** The head is the first row
 in that order whose `MergeWork.Judge` kind is not `Hold` or `Pushback`
-(`Dispatch.cs:385`) — the first row not stuck on a closed pull request, an
-ambiguous or missing branch, or an unsettled no-checks-yet window (the
-judge's own list, already above in this same section, items 1/4/5/12). Every
-other row in that project's column gets `IsHead: false` plus the head's own
+(`Dispatch.cs:403`). What it steps over, by the judge's own list already
+above in this same section: a closed pull request and a draft, both **hold**;
+a conflicted branch and a failed build, both **pushback**; an ambiguous or
+missing branch, **hold**; and a tip with no checks past the settle window, on
+a project that requires checks, where the forge does not call the pull
+request clean — **hold**, whether the forge says blocked or says nothing. A
+`pending` row is not stepped over: it is the head, and the train waits on it
+until it settles, as it does on `update` and `merge`. Every other row in that project's column gets `IsHead: false` plus the head's own
 key; `Blocked` (`:767-770`) turns that into the sentence an otherwise-
 actionable row shows instead of acting on: `"{judgement} - waiting its turn
 behind {headKey}, position {n} in the train"`. That sentence is also what
@@ -3936,6 +3940,14 @@ reads build and merge-conflict verdicts. Cross-reference
 already says the pull-request, merge and update halves "run on their own
 clock... rather than this poll's" (`:4358-4361`) without naming the clock —
 this new section is that explanation.
+
+**A merge with no checks rides the same train.** A merge judged under the
+last item of the judge's list — a project that requires no checks, or a forge
+that calls the pull request clean on the judged sha with no checks having run
+— is a `merge` like any other: same head, same order, the same `gh pr merge
+--merge --admin --match-head-commit`. Both outcomes are `WorkKinds.Merge`,
+which `MergeTrain` already carried, and `MergeTrain` itself did not change for
+it.
 
 #### Landing on the trunk
 
@@ -4984,6 +4996,23 @@ and before the spawn:
   a branch already merged, say), the same with `-2`, then `-3`, appended. The
   match runs from the key to the branch and never back, so `ha-3-2` is `ha-3`'s
   and not `ha-32`'s.
+- **In a project that [lands on the trunk](#landing-on-the-trunk), a branch is
+  not where the work is meant to end.** With no branch, the tree stays on
+  `<trunk>` at `origin`'s tip and the prompt says to commit there and cut nothing
+  (`Prompt.cs`, `BranchKind.None` with `TrunkLanding`; `Branches.Sentence` says
+  the same on the terminal). With one unmerged branch - a usage-limit push, since
+  `PushForLimit` cuts one from the trunk when it finds work there, or an earlier
+  increment's - it is entered as above, and the prompt adds that the session
+  finishes on it, merges it into `<trunk>`, pushes `<trunk>`, deletes the branch
+  on `origin` and records the landing. Such an increment has no pull request to
+  open, and `## Landing on the trunk` stands in place of `## Opening a pull
+  request`, as a task on its story's branch is told not to open one. It says to
+  `git pull --no-rebase origin <trunk>` (a merge, never a rebase), run the build
+  and tests again if that brought anything in, `git push origin <trunk>` (pull
+  and push again if somebody landed first, never force), then `hatch landed <key>
+  <sha>` for each repository and a comment with the sha. The increment is not
+  finished until the landing is recorded, and `## Where this increment ends`
+  still names review.
 - **The copy on this machine is only a copy.** Behind `origin`, it is
   fast-forwarded. Ahead, it is used as it is. Diverged, the local tip is kept
   under `<branch>-local-<short sha>`, said on the terminal and in the prompt, and
@@ -5052,7 +5081,10 @@ last session left checked out.
   ticket and pushes nothing; turning that state into work for an agent is the
   dispatcher's job, once the step has told the board — see below. This needs git
   2.38 or later; an older one is said once, on the terminal, and the step is
-  skipped.
+  skipped. **A project that [lands on the trunk](#landing-on-the-trunk) has no
+  pull request**, so the step has nothing to bring up to date: `Lifecycle.cs:231-236`
+  never asks the board for one, and `Workspace.Leave` is called with
+  `syncPullRequest` false. The merge check below still runs.
 - **What origin's branch now looks like is reported to the board**, wherever the
   step fetched: a [merge check](#merge-check) for the branch, taken with the
   same `merge-tree` and put under the checkout's remote. That covers every
@@ -5067,14 +5099,44 @@ last session left checked out.
 Everything found goes to the ticket in **one comment**, so a reviewer reads one
 thing. None of it fails the increment: a refused push — the forge, branch
 protection, somebody else's push landing first — is a line on the ticket, and so
-is a stash that would not go. The runner never pushes to the trunk.
+is a stash that would not go.
+
+**An increment that moved, resolved or fixed and ended in review is refused as
+unpublished** (`GoToWork.cs:1590-1596`, `Unpublished.RefuseAsync`; the same guard
+in `WorkCommand.cs:633-637` for `hatch work <key>`) on either of two arms: a
+branch left **unmerged on origin** (`left.BranchOnOrigin && !left.HasPullRequest`,
+where `BranchOnOrigin` is the merge check's verdict being anything but `none`, so
+a branch whose changes are all in the trunk counts as absent), or, in a
+trunk-landing project, **no landing recorded** (`Lifecycle.HasLandingAsync`,
+`LeaveOutcome.HasLanding`). `Lifecycle.LeaveAsync` sets the pull request to false
+there without asking the board, so `LeaveOutcome.HasPullRequest` is always false
+and the first arm has no pull request that could clear it; a session that merged,
+pushed and deleted its branch trips neither arm once `hatch landed` has recorded
+the landing. The comment and the question the guard writes are worded for a pull
+request today (HA-742): the comment says "no pull request recorded for the
+branch it pushed" (or `a branch on origin` where no branch was cut or entered,
+the usual trunk-landing case), the terminal line says "left a branch on origin
+with no pull request", and the second occurrence in a row asks "has one been
+opened?" with the options `pull request recorded` and `no pull request needed
+for this ticket` - neither points at `hatch landed`. Delete this sentence when
+HA-742 is fixed.
+
+**The runner never pushes to the trunk**, in any project. Landing is the
+session's own `git push`; `hatch landed` records it, the poll confirms it
+(`Poll.ConfirmLandingsAsync`, `Poll.cs:290`), and the
+[merge train](#the-merge-train) carries it. A session whose push was refused
+leaves its commits on the local trunk, which the `-rescued-` bullet above names
+(`Workspace.Leave.cs:84-86`).
 
 **The one exception is a session that ran out of Claude usage** (below): before
 any of the above runs, its tree is committed — untracked files included — onto
 the issue's branch (cut first if the tree was still on the trunk) and pushed to
-`origin`, no force. That is the one place a runner pushes a session's own work
-for it, because a session that cannot say whether it is finished never gets to
-say whether it is fit to publish either. `Leave` then runs exactly as above and
+`origin`, no force - unchanged in a trunk-landing project (`PushForLimit`,
+`Workspace.Limit.cs`): it commits onto the issue's own branch, cutting it first
+(`CutName`) when the tree is on the trunk, and never pushes the trunk. That is
+the one place a runner pushes a session's own work for it, because a session
+that cannot say whether it is finished never gets to say whether it is fit to
+publish either. `Leave` then runs exactly as above and
 finds a clean tree, and the ticket gets the usage-limit comment described below
 instead of the ordinary tidy-up note.
 
