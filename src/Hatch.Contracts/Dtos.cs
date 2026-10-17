@@ -1106,6 +1106,15 @@ public record ReviewDto(
 /// towards the badge: the loop already owns these. Defaults to null so an
 /// older client still reads.
 /// </param>
+/// <param name="LandingHeld">
+/// The review column's trunk-landing issues - a project that lands straight on
+/// the trunk, so no pull request - that <c>LandingWork.Judge</c> holds: the
+/// build failed after the work landed, or no checks ran where the project
+/// requires them, with the judge's own sentence saying which. Counted towards
+/// the badge, as <paramref name="ApprovedHeld"/> is: nothing about a landing is
+/// an agent's to fix, so a row here is a person's, every time. Defaults to null
+/// so an older client still reads.
+/// </param>
 public record AttentionDto(
     IReadOnlyList<ReviewDto> Reviews,
     int InReviewWithoutPullRequest,
@@ -1116,7 +1125,8 @@ public record AttentionDto(
     IReadOnlyList<TrunkBuildDto>? TrunkBuilds = null,
     IReadOnlyList<ExhaustedRunnerDto>? ExhaustedRunners = null,
     IReadOnlyList<ApprovedHeldDto>? ApprovedHeld = null,
-    IReadOnlyList<ApprovedWaitingDto>? ApprovedWaiting = null);
+    IReadOnlyList<ApprovedWaitingDto>? ApprovedWaiting = null,
+    IReadOnlyList<LandingHeldDto>? LandingHeld = null);
 
 /// <summary>
 /// One runner out of Claude usage, for the top of the attention panel.
@@ -1162,6 +1172,13 @@ public record ApprovedHeldDto(string Key, string Title, string Type, string? Pul
 /// </summary>
 /// <param name="Kind">One of <see cref="WorkKinds.Merge"/>/<see cref="WorkKinds.Update"/>/<see cref="WorkKinds.Pending"/>.</param>
 public record ApprovedWaitingDto(string Key, string Title, string Type, string? PullRequestUrl, string Kind, string Sentence);
+
+/// <summary>
+/// One review-column issue that landed on the trunk with no pull request and
+/// that the landing judge holds, for a person to look at.
+/// </summary>
+/// <param name="Sentence">The judge's own words for why it is held.</param>
+public record LandingHeldDto(string Key, string Title, string Type, string Sentence);
 
 // ---- The board ----
 
