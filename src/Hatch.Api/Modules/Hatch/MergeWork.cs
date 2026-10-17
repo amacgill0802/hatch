@@ -23,11 +23,17 @@ public static class MergeWork
         IReadOnlyList<EfHatchMergeCheck> merges,
         IReadOnlyList<EfHatchBuildCheck> builds,
         DateTimeOffset? pullRequestClosedAt,
+        bool checksRequired,
+        string? mergeState,
+        string? mergeStateSha,
         DateTimeOffset now,
         string? reviewColumn = null)
     {
         if (pullRequestClosedAt is not null)
             return Hold("its pull request was closed without merging");
+
+        if (mergeState == MergeStates.Draft)
+            return Hold("its pull request is a draft");
 
         var counted = ReviewWork.Counted(bound, merges);
 
@@ -74,9 +80,23 @@ public static class MergeWork
         if (about.All(b => b.Verdict == BuildVerdicts.Passed))
             return new Judgement(WorkKinds.Merge, $"its branch holds {trunk} and its build passes");
 
-        return about.All(b => now - b.ShaSince >= SettleWindow)
-            ? Hold($"its branch holds {trunk} and no checks ran on it")
-            : Pending($"its branch holds {trunk} and no checks ran on it");
+        if (!about.All(b => now - b.ShaSince >= SettleWindow))
+            return Pending($"its branch holds {trunk} and no checks ran on it");
+
+        if (!checksRequired)
+            return new Judgement(WorkKinds.Merge, $"its branch holds {trunk}; this project requires no checks");
+
+        // The forge's state is about one sha; it says nothing of a branch that has moved since.
+        var judgedSha = mergeStateSha is not null
+            && clean.Any(m => string.Equals(m.BranchSha, mergeStateSha, StringComparison.Ordinal));
+
+        if (judgedSha && mergeState == MergeStates.Clean)
+            return new Judgement(WorkKinds.Merge, $"its branch holds {trunk}, no checks ran on it, and nothing is required of it");
+
+        if (judgedSha && mergeState == MergeStates.Blocked)
+            return Hold($"its branch holds {trunk} and no checks ran on it - its pull request is blocked by the repository's rules");
+
+        return Hold($"its branch holds {trunk} and no checks ran on it");
     }
 
     private static Judgement Hold(string why) => new(WorkKinds.Hold, why);

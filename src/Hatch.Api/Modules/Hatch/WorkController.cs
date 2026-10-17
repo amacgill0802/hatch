@@ -331,7 +331,7 @@ public class WorkController(
                 i.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
                 verdicts.TryGetValue(i.Id, out var mv) ? mv : [],
                 builds.TryGetValue(i.Id, out var bv) ? bv : [],
-                i.PullRequestClosedAt, time.GetUtcNow()));
+                i.PullRequestClosedAt, true, null, null, time.GetUtcNow()));
             trainSlots = Dispatch.Train(merging, judged, effective);
         }
 
@@ -342,7 +342,7 @@ public class WorkController(
             var mergeWork = merges is not null && i.StatusId == merges.Id
                 ? MergeWork.Judge(
                     i.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
-                    merged, built, i.PullRequestClosedAt, time.GetUtcNow(), review.Name)
+                    merged, built, i.PullRequestClosedAt, true, null, null, time.GetUtcNow(), review.Name)
                 : (MergeWork.Judgement?)null;
             var landed = landing.Contains(i) ? landings.GetValueOrDefault(i.Id, []) : null;
             var landingWork = landed is null
@@ -523,7 +523,7 @@ public class WorkController(
         {
             var sentence = MergeWork.Judge(
                 issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
-                merged, built, issue.PullRequestClosedAt, now).Sentence;
+                merged, built, issue.PullRequestClosedAt, true, null, null, now).Sentence;
             db.Comments.Add(new EfHatchComment
             {
                 IssueId = issue.Id,
@@ -843,7 +843,7 @@ public class WorkController(
         var builds = (await _dispatch.BuildChecksAsync([issue.Id], ct)).GetValueOrDefault(issue.Id, []);
         var judgement = MergeWork.Judge(
             issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
-            merges, builds, issue.PullRequestClosedAt, now, review.Name);
+            merges, builds, issue.PullRequestClosedAt, true, null, null, now, review.Name);
 
         if (judgement.Kind != WorkKinds.Pushback) return Conflict(judgement.Sentence);
 
@@ -1204,7 +1204,7 @@ public class WorkController(
                 sentBack.Value.Length, sentBack.Value.Limit, EfHatchIssue.LegalParentTypes["task"].Contains(issue.Type)),
             statuses.Select(ToStatusDto).ToList(),
             blocked is null && hopKind == HopKinds.Approve
-                ? MergeWork.Judge(issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(), merged, built, issue.PullRequestClosedAt, claimed.Now).Sentence
+                ? MergeWork.Judge(issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(), merged, built, issue.PullRequestClosedAt, true, null, null, claimed.Now).Sentence
                 : null,
             issue.Project!.Landing,
             issue.Project!.ChecksRequired,
