@@ -138,8 +138,9 @@ public sealed class BranchEntry
             BranchKind.None => TrunkLanding
                 ? $"{where}: {(Planned ? "would stay" : "stays")} on {Trunk} at {Sha} - this project lands on the trunk"
                 : $"{where}: no branch on origin for this issue; {cut} {Cut}",
-            BranchKind.AlreadyMerged =>
-                $"{where}: {string.Join(", ", Merged)} already merged into the trunk; {cut} {Cut}",
+            BranchKind.AlreadyMerged => TrunkLanding
+                ? $"{where}: {(Planned ? "would stay" : "stays")} on {Trunk} at {Sha} - this project lands on the trunk; {string.Join(", ", Merged)} already merged into the trunk"
+                : $"{where}: {string.Join(", ", Merged)} already merged into the trunk; {cut} {Cut}",
             BranchKind.Several => $"{where}: {Candidates.Count} unmerged branches: {string.Join(", ", Candidates)}",
             _ => $"{where}: {Problem}",
         };

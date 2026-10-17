@@ -99,6 +99,43 @@ public sealed class PromptTests
     }
 
     [Fact]
+    public void A_trunk_landing_project_whose_only_branch_has_merged_is_told_to_commit_on_the_trunk()
+    {
+        var branches = new[]
+        {
+            new BranchEntry
+            {
+                Path = "/checkouts/repo", Kind = BranchKind.AlreadyMerged, Merged = ["aer-12-old"], Cut = "aer-12-old-2",
+                TrunkLanding = true, Trunk = "main",
+            },
+        };
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12"), branches: branches);
+
+        Assert.Contains(
+            "this project lands its work on the trunk. origin's `aer-12-old` has already merged into the trunk, and no branch is wanted: the tree is on `main` at origin's tip - commit here, and cut nothing.",
+            prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("aer-12-old-2", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("cut `", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("pull request on it", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_pull_request_project_whose_only_branch_has_merged_is_still_told_to_cut_a_new_one()
+    {
+        var branches = new[]
+        {
+            new BranchEntry
+            {
+                Path = "/checkouts/repo", Kind = BranchKind.AlreadyMerged, Merged = ["aer-12-old"], Cut = "aer-12-old-2",
+                TrunkLanding = false, Trunk = "main",
+            },
+        };
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12"), branches: branches);
+
+        Assert.Contains("has already merged into the trunk. The tree is on the trunk at origin's tip; cut `aer-12-old-2`", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void An_entered_branch_on_a_trunk_landing_project_is_told_to_merge_into_the_trunk()
     {
         var branches = new[]
