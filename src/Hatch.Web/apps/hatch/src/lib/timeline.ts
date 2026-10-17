@@ -22,7 +22,7 @@
    It reads `FROM`, `TO`, `RANGE`, `presetRange` and `dayLabel` from lib/leaderboard.ts
    and copies none of them. */
 
-import type { Status, Timeline, TimelineEntry, TimelineSegment } from '../types';
+import type { Project, Status, Timeline, TimelineEntry, TimelineSegment } from '../types';
 import { statusVars } from './color';
 import { FROM, RANGE, TO, dayLabel, presetRange } from './leaderboard';
 
@@ -142,6 +142,45 @@ export function withWindow(params: URLSearchParams, w: TimelineWindow): URLSearc
   next.set(FROM, w.from);
   next.set(TO, w.to);
   next.delete(RANGE);
+
+  return next;
+}
+
+/** The URL names the two filters hold, beside `from`, `to` and `range`. */
+export const PROJECT = 'project';
+export const CREATOR = 'creator';
+
+/** The project whose `key` the URL names, or null when it names none, is empty
+    or absent. A key, never an id: the key is what a person types or pastes, and
+    a number in its place is a typo like any other. */
+export function resolveProject(params: URLSearchParams, projects: Project[]): Project | null {
+  const key = params.get(PROJECT)?.trim();
+
+  return (key && projects.find((p) => p.key === key)) || null;
+}
+
+/** The creator the URL names, `''` for anyone. A name is free text, so it is
+    kept as typed apart from its edges. */
+export const resolveCreator = (params: URLSearchParams): string => params.get(CREATOR)?.trim() ?? '';
+
+/** `creators` in the order given, with `selected` appended last when it is
+    non-empty and not among them, so a pasted link naming someone the list does
+    not hold still shows who it filters to. Never sorts; the input is never
+    mutated. */
+export function creatorChoices(creators: string[], selected: string): string[] {
+  return selected && !creators.includes(selected) ? [...creators, selected] : [...creators];
+}
+
+/** A copy of `params` with the filter `name` set to `value`, or removed when
+    `value` is `''`. Every other param is kept; the input is never mutated. */
+export function withFilter(
+  params: URLSearchParams,
+  name: typeof PROJECT | typeof CREATOR,
+  value: string,
+): URLSearchParams {
+  const next = new URLSearchParams(params);
+  if (value) next.set(name, value);
+  else next.delete(name);
 
   return next;
 }
