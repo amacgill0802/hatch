@@ -4086,7 +4086,10 @@ link and the lines of its log that lead up to the failure — and the playbook s
 what to do with them: find the failure, fix it and nothing else, build and test
 until green, push to the same branch, and stop, never rebase and never
 force-push. A flaky check is still the session's to report on the ticket, not to
-paper over.
+paper over. It is never a check: no migration in this repository sets `IsCheck`
+on it, and a board that wants a code review adds a check column of its own
+rather than widening this one (see the worked example at the end of this
+section).
 
 The stock text was written for a conflict alone and reworded when failing builds
 were added. A migration (`RewordReviewPlaybook`) rewrites the row **only where it
@@ -4097,16 +4100,41 @@ for a build dispatch it is not: it points at the branch section for the state of
 the tree.
 
 Nine rows are seeded, for the same reason the columns are: a Hatch whose agent
-loop cannot run until somebody fills in a table is a Hatch that ships broken. A
-feature that does nothing until somebody fills in a table is the same failure,
-so the eighth is the stock review playbook, for every type, at `sonnet` and
-`high`. A migration seeds it only where no row from the review column to itself
-exists; an operator who deletes it turns conflict and build work off, and nothing
-puts it back. The other seven cover every transition an agent owns, so `go-to-work` on a fresh install
-needs no configuration beyond an origin and a key. They are joined on column
+loop cannot run until somebody fills in a table is a Hatch that ships broken.
+Seven come from `Playbooks.cs` (20260903204217) directly: the three
+breakdown rows, the epic start, the analysis row, the implementation row and
+the epic verification row. The eighth is the stock review playbook, which
+`SeedConflictPlaybook` (20260928015312) adds, for every type, at `sonnet` and
+`high`. The ninth is the closeout row `SeedCloseoutPlaybook` (20260930235751)
+adds beside the implementation row, which it narrows to `leaf`. A feature that
+does nothing until somebody fills in a table is the same failure as the loop
+that cannot run, so the review migration seeds its row only where no row from
+the review column to itself exists; an operator who deletes it turns conflict
+and build work off, and nothing puts it back. The other eight cover every
+transition an agent owns, so `go-to-work` on a fresh install needs no
+configuration beyond an origin and a key. They are joined on column
 *name*, because a migration cannot know identity-generated ids — so an install
 that renamed its columns first seeds nothing, which is the right failure: a
 playbook wired to the wrong transition is worse than an empty table.
+
+Every one of the nine either edits the tree or judges it:
+
+| Transition | Types / Shape | Name | Edits or judges |
+|---|---|---|---|
+| Breakdown → Backlog | `epic` | breakdown (epic) | judges |
+| Breakdown → Backlog | `story` | breakdown (story) | judges |
+| Breakdown → Backlog | `task,bug` | breakdown (task/bug) | judges |
+| To Do → In Progress | `epic` | epic-start | judges |
+| To Do → In Progress | `''` (any type) | analysis | judges |
+| In Progress → In Review | `''`, shape `leaf` | implementation | **edits** |
+| In Progress → In Review | `''`, shape `parent` | closeout | judges |
+| In Progress → In Review | `epic` | verify-epic | judges |
+| Review → Review | every type | the review row | **edits** |
+
+*Judges* here means by instruction only. None of the seven is enforced by
+`IsCheck` or `deniedTools`: each is told in its prompt to specify, verify or
+report rather than to write the code, and nothing but the prompt keeps a
+session to that. Only a check playbook (below) takes the write tools away.
 
 Nothing re-asserts them afterwards, and nothing overwrites one. `TheFlow` moves
 three of them from `inbox → todo` onto `Breakdown → Backlog`, because that is
@@ -4150,6 +4178,18 @@ and records or opens its pull request, rather than implementing it again.
 `ShrinkStockPlaybooks` rewords all three rows only where each still reads its
 current text byte for byte — the same guard every reword before it has used —
 and leaves an edited row exactly as it is.
+
+**A board that wants a code review adds a check column; it does not widen the
+review row.** Take a six-column board, `To Do, In Progress, In Review, In QA,
+Ready to Merge, Done`. Tick *Code written here* on `In Progress`
+(`PUT /statuses/{id}/implementation`), so the build column is named. Add a
+playbook on `In QA` with `IsCheck: true` and a read-only `DeniedTools` limit —
+the example under [Playbook](#playbook) is the shape, and it is an example, not
+a shipped list. A check's session judges only and cannot move the ticket: it
+records a verdict and the runner applies it, forward on a pass, back to the
+implementation column with the findings on a fail. The review row stays on
+`Ready to Merge → Ready to Merge`, still only fixing conflicts and failed builds
+at the merge gate.
 
 ## The unattended loop
 

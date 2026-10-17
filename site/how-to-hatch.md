@@ -43,7 +43,10 @@ first: it is the whole model.
 
 The order is the point. Backlog is the gate between "somebody wrote a
 paragraph" and "a pull request is open". In Review is the gate before shipped.
-Agents work the columns between the gates; you work the gates.
+Agents work the columns between the gates; you work the gates. For work that
+should only be judged, not changed, you can insert check columns between the
+build column and the merge gate; the worked example under *Playbooks* below
+shows one.
 
 "Whose" is not a setting. A column is the agent's when a **playbook** leads
 out of it for that issue's type, and yours when none does. Delete a playbook
@@ -80,10 +83,20 @@ The rules:
   every project that has none of its own.** On a board running more than one
   project, a row naming the issue's own project is chosen ahead of specificity,
   whatever either row names for type or shape.
-- **Seven rows ship with the board**, covering every transition an agent owns,
+- **Nine rows ship with the board**, covering every transition an agent owns,
   so a fresh install works with no configuration beyond an origin. Nothing
   re-seeds them afterwards. What you edit stays edited, and what you delete
   stays deleted.
+- **The review row fixes conflicts and failed builds, and never reviews
+  code.** It is the one row whose two ends are the same column, on the review
+  column, and it is never a check. A board that wants a code review adds a
+  column for it instead of widening this row.
+- **A check is its own column.** Tick *Code written here* on the build column,
+  add a column after it (say, `In QA`) with a playbook that has `isCheck` set
+  and a read-only `deniedTools` limit, and leave the review row on the merge
+  gate. The check's session judges and records a verdict; the runner moves the
+  ticket forward on a pass and back to the build column, with the findings, on
+  a fail.
 - **Models are aliases**: `haiku`, `sonnet`, `opus`, `fable`. A playbook says
   "the big one" and should still mean it a year from now. A full model id is
   accepted for an operator with a reason to pin.
