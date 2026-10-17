@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { marked } from 'marked';
 import source from '../../public/hatch-at-home.md?raw';
-import { createSlugger, renderDocs } from './docs';
+import { createSlugger, docLinkTarget, hashId, isPlainPrimaryClick, renderDocs } from './docs';
 
 /** The document's lines outside fenced blocks, which is where its headings are. */
 function proseLines(): string[] {
@@ -107,5 +107,73 @@ describe('createSlugger', () => {
 
   it('keeps letters, digits, underscores and hyphens', () => {
     expect(createSlugger()('Ünï_c0de: a-b?')).toBe('ünï_c0de-a-b');
+  });
+});
+
+describe('docLinkTarget', () => {
+  it('reads a fragment, decoded', () => {
+    expect(docLinkTarget('#x')).toEqual({ kind: 'fragment', id: 'x' });
+    expect(docLinkTarget('#a%20b')).toEqual({ kind: 'fragment', id: 'a b' });
+  });
+
+  it('strips the app prefix from an app path', () => {
+    expect(docLinkTarget('/apps/hatch/runner')).toEqual({ kind: 'app', to: '/runner' });
+    expect(docLinkTarget('/apps/hatch')).toEqual({ kind: 'app', to: '/' });
+    expect(docLinkTarget('/apps/hatch/')).toEqual({ kind: 'app', to: '/' });
+    expect(docLinkTarget('/apps/hatch?a=1')).toEqual({ kind: 'app', to: '/?a=1' });
+    expect(docLinkTarget('/apps/hatch/issues/HA-1?x=1#y')).toEqual({
+      kind: 'app',
+      to: '/issues/HA-1?x=1#y',
+    });
+  });
+
+  it('leaves everything else to the browser', () => {
+    expect(docLinkTarget('/apps/hatchery/x')).toEqual({ kind: 'external' });
+    expect(docLinkTarget('https://cli.github.com/')).toEqual({ kind: 'external' });
+    expect(docLinkTarget('//example.com/apps/hatch/x')).toEqual({ kind: 'external' });
+    expect(docLinkTarget(null)).toEqual({ kind: 'external' });
+    expect(docLinkTarget('')).toEqual({ kind: 'external' });
+  });
+
+  it('classifies every link in the real document', () => {
+    const hrefs = [...renderDocs(source).html.matchAll(/<a (?![^>]*hatch-docs-anchor)[^>]*href="([^"]*)"/g)].map(
+      (m) => m[1],
+    );
+    expect(hrefs.length).toBeGreaterThan(0);
+    for (const href of hrefs) {
+      const kind = docLinkTarget(href).kind;
+      expect(['fragment', 'app', 'external']).toContain(kind);
+      if (href.startsWith('/apps/hatch/')) expect(kind).toBe('app');
+    }
+  });
+});
+
+describe('hashId', () => {
+  it('is empty for no fragment', () => {
+    expect(hashId('')).toBe('');
+    expect(hashId('#')).toBe('');
+  });
+
+  it('returns a malformed escape as written', () => {
+    expect(hashId('#%E0%A4%A')).toBe('%E0%A4%A');
+  });
+});
+
+describe('isPlainPrimaryClick', () => {
+  const click = { button: 0, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, defaultPrevented: false };
+
+  it('takes an unmodified left click', () => {
+    expect(isPlainPrimaryClick(click)).toBe(true);
+  });
+
+  it.each([
+    { metaKey: true },
+    { ctrlKey: true },
+    { shiftKey: true },
+    { altKey: true },
+    { button: 1 },
+    { defaultPrevented: true },
+  ])('leaves %o to the browser', (change) => {
+    expect(isPlainPrimaryClick({ ...click, ...change })).toBe(false);
   });
 });
