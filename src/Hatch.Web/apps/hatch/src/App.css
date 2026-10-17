@@ -4246,6 +4246,11 @@ button.hatch-option.chosen {
   pointer-events: none;
 }
 
+/* What the server could not place, said once under the chart. */
+.hatch-timeline-footnote {
+  margin-top: var(--sp-3);
+}
+
 /* A phone keeps the key and the toggle and scrolls the chart. */
 @media (max-width: 40rem) {
   .hatch-timeline-title,
