@@ -3901,10 +3901,14 @@ normal row with a lower `Rank`.
 
 **The head, and why a held row is stepped over.** The head is the first row
 in that order whose `MergeWork.Judge` kind is not `Hold` or `Pushback`
-(`Dispatch.cs:385`) — the first row not stuck on a closed pull request, an
-ambiguous or missing branch, or an unsettled no-checks-yet window (the
-judge's own list, already above in this same section, items 1/4/5/12). Every
-other row in that project's column gets `IsHead: false` plus the head's own
+(`Dispatch.cs:403`). What it steps over, by the judge's own list already
+above in this same section: a closed pull request and a draft, both **hold**;
+a conflicted branch and a failed build, both **pushback**; an ambiguous or
+missing branch, **hold**; and a tip with no checks past the settle window, on
+a project that requires checks, where the forge does not call the pull
+request clean — **hold**, whether the forge says blocked or says nothing. A
+`pending` row is not stepped over: it is the head, and the train waits on it
+until it settles, as it does on `update` and `merge`. Every other row in that project's column gets `IsHead: false` plus the head's own
 key; `Blocked` (`:767-770`) turns that into the sentence an otherwise-
 actionable row shows instead of acting on: `"{judgement} - waiting its turn
 behind {headKey}, position {n} in the train"`. That sentence is also what
@@ -3936,6 +3940,14 @@ reads build and merge-conflict verdicts. Cross-reference
 already says the pull-request, merge and update halves "run on their own
 clock... rather than this poll's" (`:4358-4361`) without naming the clock —
 this new section is that explanation.
+
+**A merge with no checks rides the same train.** A merge judged under the
+last item of the judge's list — a project that requires no checks, or a forge
+that calls the pull request clean on the judged sha with no checks having run
+— is a `merge` like any other: same head, same order, the same `gh pr merge
+--merge --admin --match-head-commit`. Both outcomes are `WorkKinds.Merge`,
+which `MergeTrain` already carried, and `MergeTrain` itself did not change for
+it.
 
 #### Landing on the trunk
 
