@@ -476,17 +476,15 @@ public class WorkController(
 
         var payload = hopKind switch
         {
-            HopKinds.Parent => JsonSerializer.Serialize(new { from = from.Name, to = target.Name, pulled = true }),
-            HopKinds.Epic => JsonSerializer.Serialize(new { from = from.Name, to = target.Name, epic = true }),
-            HopKinds.Under => JsonSerializer.Serialize(new { from = from.Name, to = target.Name, under = parent?.Key }),
-            HopKinds.SendBack => JsonSerializer.Serialize(new
-            {
-                from = from.Name, to = target.Name, sendback = true,
-                length = issue.Description.Length, limit = playbook?.BriefLimit,
-            }),
-            HopKinds.Approve => JsonSerializer.Serialize(new { from = from.Name, to = target.Name, preapproved = true }),
-            HopKinds.Close => JsonSerializer.Serialize(new { from = from.Name, to = target.Name, preapproved = true }),
-            _ => JsonSerializer.Serialize(new { from = from.Name, to = target.Name, express = true }),
+            HopKinds.Parent => JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, target, ("pulled", true))),
+            HopKinds.Epic => JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, target, ("epic", true))),
+            HopKinds.Under => JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, target, ("under", parent?.Key))),
+            HopKinds.SendBack => JsonSerializer.Serialize(IssueEventPayload.StatusChanged(
+                from, target, ("sendback", true),
+                ("length", issue.Description.Length), ("limit", playbook?.BriefLimit))),
+            HopKinds.Approve => JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, target, ("preapproved", true))),
+            HopKinds.Close => JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, target, ("preapproved", true))),
+            _ => JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, target, ("express", true))),
         };
 
         issue.Events.Add(new EfHatchIssueEvent
@@ -591,7 +589,7 @@ public class WorkController(
             {
                 Actor = actor,
                 Kind = EfHatchIssueEvent.StatusChanged,
-                Payload = JsonSerializer.Serialize(new { from = from.Name, to = target.Name, verdict = CheckVerdicts.Pass, playbookId }),
+                Payload = JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, target, ("verdict", CheckVerdicts.Pass), ("playbookId", playbookId))),
                 At = now,
             });
             issue.Rank = await ranks.BottomAsync(target.Id, ct);
@@ -604,7 +602,7 @@ public class WorkController(
             {
                 Actor = actor,
                 Kind = EfHatchIssueEvent.StatusChanged,
-                Payload = JsonSerializer.Serialize(new { from = from.Name, to = target.Name, verdict = CheckVerdicts.Fail, playbookId }),
+                Payload = JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, target, ("verdict", CheckVerdicts.Fail), ("playbookId", playbookId))),
                 At = now,
             });
             issue.Rank = await ranks.BottomAsync(target.Id, ct);
@@ -710,7 +708,7 @@ public class WorkController(
         {
             Actor = actor,
             Kind = EfHatchIssueEvent.StatusChanged,
-            Payload = JsonSerializer.Serialize(new { from = from.Name, to = to.Name, merged = true }),
+            Payload = JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, to, ("merged", true))),
             At = now,
         });
         issue.Rank = await ranks.BottomAsync(to.Id, ct);
@@ -746,7 +744,7 @@ public class WorkController(
                     {
                         Actor = actor,
                         Kind = EfHatchIssueEvent.StatusChanged,
-                        Payload = JsonSerializer.Serialize(new { from = taskFrom.Name, to = to.Name, merged = true, with = storyKey }),
+                        Payload = JsonSerializer.Serialize(IssueEventPayload.StatusChanged(taskFrom, to, ("merged", true), ("with", storyKey))),
                         At = now,
                     });
 
@@ -833,7 +831,7 @@ public class WorkController(
         {
             Actor = actor,
             Kind = EfHatchIssueEvent.StatusChanged,
-            Payload = JsonSerializer.Serialize(new { from = from.Name, to = review.Name, pushback = true }),
+            Payload = JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, review, ("pushback", true))),
             At = now,
         });
 
