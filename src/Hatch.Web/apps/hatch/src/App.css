@@ -2965,6 +2965,214 @@ input.hatch-inline-title-input {
   height: auto;
 }
 
+/* ---- The docs page ----
+
+   A wiki page: a reading column, long-form type, and an outline that sticks
+   beside the column on the desk. 68ch is the prose measure (.hatch-question-body
+   has it too); --measure is the page's width, not a reading width. No margin
+   here: .hatch-page > * centres it, and the two share a specificity. The outline
+   comes first in the markup, so both children name their grid cell. top: 0 is
+   the sticky edge because .hatch-page is the scrollport. Heading sizes come from
+   base.css and are not restated. */
+.hatch-docs {
+  display: grid;
+  grid-template-columns: minmax(0, 68ch) minmax(12rem, 16rem);
+  gap: var(--sp-8);
+  justify-content: center;
+  align-items: start;
+}
+
+.hatch-docs-body {
+  grid-column: 1;
+  grid-row: 1;
+  font-size: var(--t-section);
+  line-height: 1.6;
+}
+
+.hatch-docs-outline {
+  grid-column: 2;
+  grid-row: 1;
+  position: sticky;
+  top: 0;
+  max-height: calc(100dvh - 10rem);
+  overflow-y: auto;
+  font-size: var(--t-label);
+}
+
+.hatch-docs-body h2,
+.hatch-docs-body h3,
+.hatch-docs-body h4 {
+  scroll-margin-top: var(--sp-6);
+}
+
+.hatch-docs-body h2 {
+  margin: var(--sp-10) 0 var(--sp-3);
+  border-bottom: thin solid var(--line);
+  padding-bottom: var(--sp-2);
+}
+
+.hatch-docs-body h3 {
+  margin: var(--sp-8) 0 var(--sp-2);
+}
+
+.hatch-docs-body h4 {
+  margin: var(--sp-6) 0 var(--sp-2);
+}
+
+.hatch-docs-body h2:first-child,
+.hatch-docs-body h3:first-child,
+.hatch-docs-body h4:first-child {
+  margin-top: 0;
+}
+
+.hatch-docs-body p,
+.hatch-docs-body ul,
+.hatch-docs-body ol,
+.hatch-docs-body pre,
+.hatch-docs-body blockquote,
+.hatch-docs-body table {
+  margin: 0 0 var(--sp-4);
+}
+
+.hatch-docs-body li + li {
+  margin-top: var(--sp-1);
+}
+
+.hatch-docs-body ul,
+.hatch-docs-body ol {
+  padding-left: var(--sp-6);
+}
+
+.hatch-docs-body pre {
+  overflow-x: auto;
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--bg);
+  border: thin solid var(--line);
+  border-radius: var(--r-in);
+}
+
+.hatch-docs-body code {
+  background: var(--bg);
+  padding: 0 var(--sp-1);
+  border-radius: var(--r-chip);
+  font-size: var(--t-body);
+}
+
+.hatch-docs-body pre code {
+  background: none;
+  padding: 0;
+  font-size: var(--t-label);
+}
+
+.hatch-docs-body blockquote {
+  border-left: var(--sp-1) solid var(--line-strong);
+  padding-left: var(--sp-4);
+  color: var(--muted);
+}
+
+.hatch-docs-body table {
+  border-collapse: collapse;
+  display: block;
+  overflow-x: auto;
+}
+
+.hatch-docs-body th,
+.hatch-docs-body td {
+  border: thin solid var(--line);
+  padding: var(--sp-1-5) var(--sp-3);
+  text-align: left;
+}
+
+.hatch-docs-body th {
+  background: var(--bg);
+}
+
+.hatch-docs-body img {
+  max-width: 100%;
+  height: auto;
+}
+
+.hatch-docs-body a:not(.hatch-docs-anchor) {
+  color: var(--primary-ink);
+}
+
+.hatch-docs-body a:not(.hatch-docs-anchor):hover {
+  text-decoration: underline;
+}
+
+.hatch-docs-body hr {
+  border: 0;
+  border-top: thin solid var(--line);
+}
+
+/* Shown on hover or keyboard focus; a finger has no hover, so it always shows. */
+.hatch-docs-anchor {
+  margin-left: var(--sp-2);
+  opacity: 0;
+  color: var(--muted);
+  text-decoration: none;
+  font-weight: 400;
+}
+
+.hatch-docs-body :is(h2, h3, h4):hover .hatch-docs-anchor,
+.hatch-docs-anchor:focus-visible {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .hatch-docs-anchor {
+    opacity: 1;
+  }
+}
+
+.hatch-docs-outline-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.hatch-docs-outline-item--d3 {
+  padding-left: var(--sp-4);
+}
+
+.hatch-docs-outline-list a {
+  display: block;
+  padding: var(--sp-1) 0;
+  color: var(--muted);
+}
+
+.hatch-docs-outline-list a:hover {
+  color: var(--ink);
+}
+
+.hatch-docs-outline-title {
+  font-size: var(--t-label);
+  font-weight: 600;
+  color: var(--muted);
+  margin: 0 0 var(--sp-2);
+}
+
+/* Folded above the text on a phone: the outline is a <details> there. */
+@media (max-width: 40rem) {
+  .hatch-docs {
+    display: block;
+  }
+
+  .hatch-docs-outline {
+    position: static;
+    max-height: none;
+    margin-bottom: var(--sp-4);
+    border: thin solid var(--line);
+    border-radius: var(--r-ctl);
+    padding: var(--sp-2) var(--sp-3);
+  }
+
+  .hatch-docs-outline summary {
+    cursor: pointer;
+    font-weight: 600;
+  }
+}
+
 /* The three-block preview (HA-332) - a coarse pointer only, set up by the
    caller passing ProseClamp a limit. The fade is the newspaper-paywall look:
    the last block trails off rather than stopping square. */
