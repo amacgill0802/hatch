@@ -535,3 +535,97 @@ Docker Engine on
 [Docker Desktop troubleshooting](https://docs.docker.com/desktop/troubleshoot-and-support/troubleshoot/);
 [WSL](https://learn.microsoft.com/windows/wsl/install);
 [Homebrew's Docker cask](https://formulae.brew.sh/cask/docker-desktop).
+
+### 4. Clone Hatch
+
+**What this is.** Cloning is downloading a repository, the folder git keeps
+a project's files and history in, so there is a copy of it on this machine.
+Hatch is delivered as a repository, and it holds the file that tells Docker
+how to start the board.
+
+**Tell the person.** "Next I am going to download Hatch into a folder called
+`hatch` in your home folder, which is the folder that holds your documents
+and downloads. It is one command and takes about a minute. If that folder is
+already there, I will look at it first and I will not delete or overwrite
+anything."
+
+**Do it.** The folder is `~/hatch` (`$HOME/hatch`; `$env:USERPROFILE\hatch`
+in PowerShell). Look at it first and take the first case that fits.
+
+(a) The folder is absent. Clone it. Each command starts from the home
+folder, so it works in a fresh terminal.
+
+macOS and Linux:
+
+```
+cd "$HOME" && git clone {{ site.github.clone_url | default: "<the repository's clone URL>" }} hatch
+```
+
+Windows PowerShell, with the same address as the line above:
+
+```
+Set-Location $env:USERPROFILE; git clone <the same address> hatch
+```
+
+If the command above still shows two opening curly braces in a row, the page
+was read unrendered. The owner and the repository are in the address the page
+was fetched from (`https://<host>/<owner>/<repo>/...` or
+`https://<owner>.github.io/<repo>/setup/`), so build `https://github.com/<owner>/<repo>.git` from it. If that cannot be
+worked out, ask the person for the repository's address instead of guessing.
+
+(b) The folder exists, `git -C <folder> remote get-url origin` succeeds and
+`compose.yaml` is in it. It is already a Hatch checkout, so reuse it. Do not
+clone again. Then look at what has changed in it:
+
+```
+git -C ~/hatch status --short
+```
+
+On Windows PowerShell:
+
+```
+git -C $env:USERPROFILE\hatch status --short
+```
+
+If that prints anything, the person has changes in the folder: say so, and do
+not pull.
+
+(c) Anything else, such as a folder that exists but is not a git checkout or
+has no `compose.yaml`. Stop and ask the person which folder to use. Never
+delete or overwrite a folder.
+
+**Check.** Run this. It prints a short sha, a few letters and digits such as
+`a1b2c3d`:
+
+```
+git -C ~/hatch rev-parse --short HEAD
+```
+
+On Windows PowerShell:
+
+```
+git -C $env:USERPROFILE\hatch rev-parse --short HEAD
+```
+
+And `compose.yaml` must exist in the folder:
+
+```
+test -f ~/hatch/compose.yaml && echo present
+```
+
+On Windows PowerShell, which prints `True`:
+
+```
+Test-Path $env:USERPROFILE\hatch\compose.yaml
+```
+
+Tell the person Hatch is downloaded and where.
+
+**If you see** `Repository not found`, or a prompt for a username and
+password, the address is wrong or the repository is private. Stop. Never type
+a password at the command and never ask the person for one; say what you saw.
+
+**If you see** `git: command not found`, step 2 did not take. Open a new
+terminal and run step 2's check.
+
+Reference: [git clone](https://git-scm.com/docs/git-clone).
