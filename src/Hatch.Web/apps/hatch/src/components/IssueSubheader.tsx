@@ -7,6 +7,7 @@ import { MergeConflictChips } from './MergeConflictChips';
 import { MergeHoldChip } from './MergeHoldChip';
 import { MomentChip } from './MomentChip';
 import { PullRequestLink } from './PullRequestLink';
+import { PullRequestStateChips } from './PullRequestStateChips';
 import { TypeBadge } from './TypeBadge';
 import { fullHref } from '../lib/basename';
 import { projectLogoUrl } from '../lib/projectLogo';
@@ -55,6 +56,14 @@ export function IssueSubheader({
         <MomentChip kind="ready" value={issue.readyAt} expandable />
         <MomentChip kind="due" value={issue.dueAt} muted={stopped} expandable />
         <PullRequestLink url={issue.pullRequestUrl} />
+        {issue.pullRequestUrl && (
+          <PullRequestStateChips
+            mergeState={issue.pullRequestMergeState}
+            reviewDecision={issue.pullRequestReviewDecision}
+            headSha={issue.pullRequestHeadSha}
+            readAt={issue.pullRequestReadAt}
+          />
+        )}
         <LandingChips landings={issue.landings} />
         <MergeConflictChips checks={issue.mergeChecks} />
         <BuildCheckChips checks={issue.buildChecks} />

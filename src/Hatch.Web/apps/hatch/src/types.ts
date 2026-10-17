@@ -496,6 +496,21 @@ export interface Issue {
   /** The judge's answer for a row in the merges column, or null for a row
       anywhere else. See MergeHoldChip and IssueDto.MergeWork. */
   mergeWork?: MergeWork | null;
+  /** What the forge last said of the pull request's standing against the
+      trunk and the repository's rules - one of MergeStates - or null where none
+      has been read. See PullRequestStateChips and
+      IssueDto.PullRequestMergeState. Absent from a board that predates it. */
+  pullRequestMergeState?: string | null;
+  /** What the forge last said the pull request's reviews add up to - one of
+      ReviewDecisions - or null where none has been read. See
+      IssueDto.PullRequestReviewDecision. Absent from a board that predates it. */
+  pullRequestReviewDecision?: string | null;
+  /** The head sha the forge's answer was about, or null. See
+      IssueDto.PullRequestHeadSha. */
+  pullRequestHeadSha?: string | null;
+  /** When the forge's answer was read, or null. See
+      IssueDto.PullRequestReadAt. */
+  pullRequestReadAt?: string | null;
   /** How many of an epic's stories may be in progress at once, or null for
       DEFAULT_EPIC_WIP_LIMIT - meaningful on an epic and on nothing else.
       Readable by anybody a dispatch reaches and writable only by a person,
@@ -575,6 +590,7 @@ export type IssueEventKind =
   | 'claim_released'
   | 'claim_cleared'
   | 'merge_check_changed'
+  | 'pull_request_state_changed'
   | 'build_check_changed'
   | 'wip_overridden'
   | 'stalled'
