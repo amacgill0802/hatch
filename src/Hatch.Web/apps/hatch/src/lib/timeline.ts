@@ -1,4 +1,6 @@
-/* The timeline's window, its scale, its tick marks and its today marker, apart
+/* The timeline's window, its scale, its tick marks and its today marker, and
+   the row fold that turns the answer into drawable rows - with a segment's
+   title and colour and the unresolved footnote's sentence - apart
    from the page the way lib/leaderboard.ts and lib/spend.ts are apart from
    theirs: this app has no DOM test setup, so what can be wrong lives in a
    function with a test beside it, and the component is left thin enough to
@@ -13,10 +15,16 @@
    the same reason; `dayLabel` formats in the runtime's zone and would name the
    wrong day for anyone whose offset is not the machine's.
 
-   It reads `FROM`, `TO` and `presetRange` from lib/leaderboard.ts and copies
-   none of them. */
+   The fold is the same idea as `orderPlan` in lib/plan.ts: the component only
+   maps over what `foldRows` returns, and which rows are open is a set of issue
+   keys the page keeps in state and `toggled` returns a new copy of.
 
-import { FROM, TO, presetRange } from './leaderboard';
+   It reads `FROM`, `TO`, `presetRange` and `dayLabel` from lib/leaderboard.ts
+   and copies none of them. */
+
+import type { Status, Timeline, TimelineEntry, TimelineSegment } from '../types';
+import { statusVars } from './color';
+import { FROM, TO, dayLabel, presetRange } from './leaderboard';
 
 /** Ninety days: a quarter, which is wide enough to see a project's shape and
     narrow enough that the week ticks stay readable. */
@@ -182,4 +190,87 @@ export function todayX(scale: Scale, now: Date): number | null {
   const t = now.getTime();
 
   return t >= scale.from && t < scale.to ? xOf(scale, t) : null;
+}
+
+/** The `issue.key` of the synthetic entry the server answers for work under no
+    epic. A real key is `HA-12`, so it cannot collide. */
+export const OTHER_KEY = 'other';
+
+/** One line of the chart: an entry, how deep it sits, and whether it can open. */
+export interface TimelineRow {
+  entry: TimelineEntry;
+  depth: number;
+  /** It has children in the answer to open. Not `isLeaf`: a story whose
+      children were all inactive has none here and must not show a toggle. */
+  expandable: boolean;
+  /** Expandable and in the set, so its children follow it. */
+  expanded: boolean;
+  isOther: boolean;
+}
+
+/**
+ * The answer as rows, depth first: each epic in the order answered, then Other
+ * when there is one, and an entry's children straight after it - at one more
+ * depth, recursively - only when its key is in `expanded`. Everything is
+ * collapsed when the set is empty. A row carries its entry untouched, so its
+ * `segments` are its own and never a merge of its children's.
+ */
+export function foldRows(timeline: Timeline, expanded: ReadonlySet<string>): TimelineRow[] {
+  const rows: TimelineRow[] = [];
+
+  const visit = (entry: TimelineEntry, depth: number) => {
+    const key = entry.issue.key;
+    const expandable = entry.children.length > 0;
+    const open = expandable && expanded.has(key);
+
+    rows.push({ entry, depth, expandable, expanded: open, isOther: key === OTHER_KEY });
+    if (open) for (const child of entry.children) visit(child, depth + 1);
+  };
+
+  for (const epic of timeline.epics) visit(epic, 0);
+  if (timeline.other) visit(timeline.other, 0);
+
+  return rows;
+}
+
+/** The set with `key` added if it was absent, removed if it was there. A new
+    set; the one passed in is never touched. */
+export function toggled(expanded: ReadonlySet<string>, key: string): Set<string> {
+  const next = new Set(expanded);
+  if (!next.delete(key)) next.add(key);
+
+  return next;
+}
+
+/** What a segment says on hover: `In Progress, 3 Oct to 9 Oct`, or `In
+    Progress, 3 Oct onward` while it has not ended. Days are in the reader's
+    own zone, which is right for a title and not for a tick. */
+export function segmentTitle(statusName: string, segment: TimelineSegment, locale?: string): string {
+  const from = dayLabel(segment.from, locale);
+  const end = segment.to === null ? 'onward' : `to ${dayLabel(segment.to, locale)}`;
+
+  return `${statusName}, ${from} ${end}`;
+}
+
+/** The custom properties a segment is painted with - its status's colour, or
+    the default grey for a column that is not in `statuses` - and null on the
+    Other row, which CSS paints neutrally. */
+export function segmentStyle(
+  statuses: Status[],
+  segment: TimelineSegment,
+  isOther: boolean,
+): Record<string, string> | null {
+  if (isOther) return null;
+
+  return statusVars(statuses.find((status) => status.id === segment.statusId)?.color);
+}
+
+/** The footnote for stretches the server could not place, or null when there
+    are none. */
+export function unresolvedPhrase(count: number): string | null {
+  if (count <= 0) return null;
+
+  const what = count === 1 ? '1 column change' : `${count} column changes`;
+
+  return `${what} could not be placed, because the column has since been renamed.`;
 }
