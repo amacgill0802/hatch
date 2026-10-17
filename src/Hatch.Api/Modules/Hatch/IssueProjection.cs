@@ -234,7 +234,11 @@ public static class IssueProjection
                 landings.TryGetValue(issue.Id, out var landed) ? landed : [],
                 onePr,
                 onePrOwn,
-                onePrFrom);
+                onePrFrom,
+                issue.PullRequestMergeState,
+                issue.PullRequestReviewDecision,
+                issue.PullRequestHeadSha,
+                issue.PullRequestReadAt);
         });
     }
 

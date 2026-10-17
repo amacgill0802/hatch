@@ -71,6 +71,41 @@ public class IssueProjectionPullRequestUrlTests
         Assert.Equal("https://forge.example/owner/repo/pull/4", top.Issue.PullRequestUrl);
     }
 
+    [Fact]
+    public async Task TheIssue_CarriesThePullRequestStateTheForgeLastReported()
+    {
+        var h = await NewAsync();
+        var filed = await h.FileAsync("task", "ship it");
+        await h.SetPullRequestAsync(filed.Key, "https://forge.example/owner/repo/pull/5");
+        var row = await h.Db.Issues.FirstAsync();
+        row.PullRequestMergeState = MergeStates.Dirty;
+        row.PullRequestReviewDecision = ReviewDecisions.Approved;
+        row.PullRequestHeadSha = "0123456789abcdef0123456789abcdef01234567";
+        row.PullRequestReadAt = Now;
+        await h.Db.SaveChangesAsync();
+
+        var issue = Value(await h.Issues.GetIssue(filed.Key, default));
+
+        Assert.Equal(MergeStates.Dirty, issue.PullRequestMergeState);
+        Assert.Equal(ReviewDecisions.Approved, issue.PullRequestReviewDecision);
+        Assert.Equal("0123456789abcdef0123456789abcdef01234567", issue.PullRequestHeadSha);
+        Assert.Equal(Now, issue.PullRequestReadAt);
+    }
+
+    [Fact]
+    public async Task AnIssueNobodyHasReadAPullRequestFor_CarriesNoPullRequestState()
+    {
+        var h = await NewAsync();
+        var filed = await h.FileAsync("task", "ship it");
+
+        var issue = Value(await h.Issues.GetIssue(filed.Key, default));
+
+        Assert.Null(issue.PullRequestMergeState);
+        Assert.Null(issue.PullRequestReviewDecision);
+        Assert.Null(issue.PullRequestHeadSha);
+        Assert.Null(issue.PullRequestReadAt);
+    }
+
     // ---- Harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 10, 11, 12, 0, 0, TimeSpan.Zero);

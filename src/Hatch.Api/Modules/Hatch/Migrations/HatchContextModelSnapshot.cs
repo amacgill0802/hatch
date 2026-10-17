@@ -253,6 +253,21 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<DateTimeOffset?>("PullRequestClosedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("PullRequestHeadSha")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("PullRequestMergeState")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<DateTimeOffset?>("PullRequestReadAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PullRequestReviewDecision")
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
                     b.Property<string>("PullRequestUrl")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
