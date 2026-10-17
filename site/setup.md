@@ -1044,6 +1044,168 @@ Reference: [Claude Code setup](https://code.claude.com/docs/en/setup),
 [troubleshooting](https://code.claude.com/docs/en/troubleshoot-install),
 [Desktop quickstart](https://code.claude.com/docs/en/desktop-quickstart).
 
+### 8. Where the code lives
+
+**What this is.** A forge is a website that stores repositories and lets
+people review changes to them: GitHub, GitLab, Bitbucket, or a server run by
+a company. `gh` is GitHub's own command-line program. Hatch's runner uses it
+to read whether a pull request's checks passed, to notice that one was
+merged, and to merge approved ones. It only works for code on GitHub.
+
+**Tell the person.** "Next I need to know where the code you want agents to
+work on is kept: on GitHub, somewhere else, or nowhere yet? If it is on
+GitHub, I will make sure the `gh` program is installed and signed in to your
+account, which takes a few minutes. The sign-in is yours to do, in your own
+terminal and browser; I cannot do it for you." Record the answer as **gh
+signed in: yes / no / not applicable**. Keep it: step 10 and your closing
+summary use it.
+
+**Do it.** Take the first case that fits.
+
+(a) The code is on GitHub and the person has no GitHub account. They make one
+in their browser, following GitHub's own page, "Creating an account on
+GitHub" (linked below). Never fill in the form for them and never set a
+password. Wait for them to say it is done, then go to (b).
+
+(b) The code is on GitHub and the person has an account. First look:
+
+```
+gh --version
+gh auth status
+```
+
+If `gh auth status` already exits 0, `gh` is installed and signed in: say so
+and go to the check below. Otherwise install `gh`, if `gh --version` did not
+print a version.
+
+macOS. If `brew --version` works, use Homebrew:
+
+```
+brew install gh
+```
+
+If `brew` is not found, this is the later step that needs it. Homebrew is
+installed by the hand-off in step 2, which asks for the person's password;
+use that one and do not write a second installer block.
+
+Windows PowerShell:
+
+```
+winget install --id GitHub.cli --source winget
+```
+
+When it finishes, `gh` is not yet on this terminal's search path. Tell the
+person to open a new terminal window, or restart Claude Code in one, and
+carry on from there.
+
+Linux. On Debian, Raspberry Pi OS and Ubuntu, the vendor's install is one
+block that uses `sudo`, so do not run it yourself.
+
+> **Hand this to the person.** "Please paste this whole block into your own
+> terminal window, type your password when it asks, and tell me when it
+> finishes."
+>
+> ```
+> (type -p wget >/dev/null || (sudo apt update && sudo apt install wget -y)) \
+>   && sudo mkdir -p -m 755 /etc/apt/keyrings \
+>   && out=$(mktemp) && wget -nv -O$out https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+>   && cat $out | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null \
+>   && sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+>   && sudo mkdir -p -m 755 /etc/apt/sources.list.d \
+>   && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+>   && sudo apt update \
+>   && sudo apt install gh -y
+> ```
+
+On Fedora, the vendor's install is three lines that use `sudo`. Hand them
+over the same way:
+
+> **Hand this to the person.** "Please paste these three lines into your own
+> terminal window, one after another, type your password when it asks, and
+> tell me when they finish."
+>
+> ```
+> sudo dnf install dnf5-plugins
+> sudo dnf config-manager addrepo --from-repofile=https://cli.github.com/packages/rpm/gh-cli.repo
+> sudo dnf install gh
+> ```
+
+On any other distribution, stop and ask the person how they install
+programs, as step 3 does. Run `gh --version` again once it is installed.
+
+Then the sign-in, which is the person's:
+
+> **Hand this to the person.** "Please run this line in your own terminal
+> window (not this one). When it asks, choose GitHub.com, then HTTPS, and say
+> yes to signing git in with GitHub too, then choose to log in with a web
+> browser. It shows a short code: copy it, press Enter, paste the code into
+> the page that opens, and approve. Tell me when the terminal says you are
+> logged in."
+>
+> ```
+> gh auth login
+> ```
+
+HTTPS is the choice here on purpose: the next command is for HTTPS. When they
+say it is done, run it:
+
+```
+gh auth setup-git
+```
+
+It is safe to run again. It edits `~/.gitconfig`, the person's own git
+settings file, so that git uses the `gh` sign-in when it pushes to GitHub:
+say so, and remember it for the closing summary. If it says there are no
+authenticated hosts, the sign-in was not finished: hand them `gh auth login`
+again. Record **gh signed in: yes**.
+
+(c) The code is anywhere else: GitLab, Bitbucket, a company server, GitHub
+Enterprise at the person's own address, or nowhere yet. Skip `gh`. Say
+plainly what that turns off: the runner still works on tickets, but it will
+not read whether a build passed, notice that a pull request was merged, or
+merge approved ones. Pushing is the forge's own business: the person follows
+its instructions for a token or an SSH key, in their own terminal. Record
+**gh signed in: not applicable**.
+
+**Check.** For (b), `gh auth status` must exit 0 and print a line such as
+`Logged in to github.com account <name>`, with the person's account name in
+place of `<name>`. Quote that line only. Do not use `gh auth status --json`,
+which exits 0 whether or not anyone is signed in. Then this must list a line
+that includes `gh auth git-credential`:
+
+```
+git config --global --get-regexp "credential.*helper"
+```
+
+Tell the person `gh` is signed in and that git will push with it. For (c)
+there is nothing to run: the check is the person's own words and the recorded
+answer, and step 10's `git push --dry-run` is the real test.
+
+**If you see** `gh: command not found` after the install, the terminal has
+not picked up the new program: on Windows open a new terminal; on macOS after
+Homebrew, run the `shellenv` line from step 2. If it still fails, stop and
+say what you saw.
+
+**If you see** that the person wants SSH instead of HTTPS, that is allowed.
+Skip `gh auth setup-git`; the check is `gh auth status` alone.
+
+**If you see** the code rejected, or the sign-in timed out, hand them
+`gh auth login` again and check again. Do this at most twice, then stop and
+say what you saw.
+
+**If you see** that the code is in a work or school organization that asks
+for single sign-on, stop. Authorising `gh` for that organization is the
+person's, or their administrator's, to do. Say so, and do not try to get
+around it.
+
+Reference: [GitHub CLI](https://cli.github.com/),
+[gh auth login](https://cli.github.com/manual/gh_auth_login),
+[gh auth status](https://cli.github.com/manual/gh_auth_status),
+[gh auth setup-git](https://cli.github.com/manual/gh_auth_setup-git),
+[Linux install](https://github.com/cli/cli/blob/trunk/docs/install_linux.md),
+[Windows install](https://github.com/cli/cli/blob/trunk/docs/install_windows.md),
+[creating an account on GitHub](https://docs.github.com/en/get-started/start-your-journey/creating-an-account-on-github).
+
 ## Where this guide stops for now
 
 The steps above are all that is published so far. Tell the person what is now
