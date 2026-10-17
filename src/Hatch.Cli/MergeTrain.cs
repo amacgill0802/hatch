@@ -5,7 +5,8 @@ namespace Hatch.Cli;
 /// closed advances or comments its issue, one judged <see cref="WorkKinds.Merge"/>
 /// is merged, one judged <see cref="WorkKinds.Update"/> is brought current with
 /// the trunk, and one judged <see cref="WorkKinds.Pushback"/> is carried back to
-/// review - all four told to the board.
+/// review, and a trunk-landing row the board judged <see cref="WorkKinds.Land"/>
+/// is landed - all five told to the board.
 /// </summary>
 /// <remarks>
 /// The clock is optional and lives apart from <see cref="TickAsync"/> itself:
@@ -65,8 +66,8 @@ public sealed class MergeTrain : IAsyncDisposable
     }
 
     /// <summary>
-    /// Takes the pull request, merge, update and pushback halves in that
-    /// order, against what is in review right now. Nothing it does throws
+    /// Takes the pull request, merge, update, pushback and landing halves in
+    /// that order, against what is in review right now. Nothing it does throws
     /// out: a cause that persists across calls is said once and not every
     /// call.
     /// </summary>
@@ -127,6 +128,10 @@ public sealed class MergeTrain : IAsyncDisposable
         // one 409, walked on the same way Board.PushbackAsync documents, and
         // never a wrong move either way.
         await PushbackApprovedAsync(runtime, complain, review, ct);
+
+        // Last, and for the same reason: it writes to nothing but the board,
+        // whose route re-judges the row itself.
+        await CarryLandedAsync(runtime, complain, review, ct);
     }
 
     /// <summary>
@@ -492,6 +497,57 @@ public sealed class MergeTrain : IAsyncDisposable
         catch (Exception e) when (e is not OperationCanceledException)
         {
             complain($"hatch: could not push back approved pull requests - {e.Message}");
+        }
+    }
+
+    /// <summary>
+    /// The landing half: for every trunk-landing issue in review the board
+    /// judged <see cref="WorkKinds.Land"/>, call the route that carries it to
+    /// its next column. Rows judged <see cref="WorkKinds.Pending"/> or
+    /// <see cref="WorkKinds.Hold"/>, and rows with no <c>LandingWork</c> at all
+    /// (every pull-request row), are left alone.
+    /// </summary>
+    /// <remarks>
+    /// Like <see cref="PushbackApprovedAsync"/> this asks nothing of <c>gh</c>
+    /// and keeps nothing across ticks: the route re-judges the row, writes the
+    /// ticket's comment itself (so this half writes none), and a landed row
+    /// leaves review. A <c>409</c> says the row moved under this call and is
+    /// walked past silently; a genuine refusal is a line the outer
+    /// <c>complain</c> keeps from repeating verbatim, and the next tick tries
+    /// again. The outer try/catch keeps anything unanticipated here from
+    /// propagating into <see cref="TickAsync"/>.
+    /// </remarks>
+    private async Task CarryLandedAsync(
+        Runtime runtime, Action<string> complain, IReadOnlyList<ReviewCheckDto> review, CancellationToken ct)
+    {
+        try
+        {
+            foreach (var issue in review)
+            {
+                if (issue.LandingWork?.Kind != WorkKinds.Land || !runtime.Readout.Drives(issue.ProjectKey)) continue;
+                ct.ThrowIfCancellationRequested();
+
+                (IssueDto? Issue, string? WalkOn) result;
+                try
+                {
+                    result = await runtime.QuietBoard.LandWorkAsync(issue.Key, ct);
+                }
+                catch (HatchException e)
+                {
+                    complain($"hatch: {issue.Key} - the board would not take the landing - {e.Message}");
+                    continue;
+                }
+
+                if (result.WalkOn is not null) continue;
+
+                var trunk = issue.Landings?.FirstOrDefault()?.Trunk ?? "the trunk";
+                var to = await ResolvedColumnNameAsync(runtime, result.Issue!.StatusId, ct);
+                runtime.Say.Line($"hatch: {issue.Key} landed on {trunk} -> {to}");
+            }
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            complain($"hatch: could not land approved issues - {e.Message}");
         }
     }
 

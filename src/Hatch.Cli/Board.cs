@@ -216,6 +216,27 @@ public sealed class Board(HatchClient client)
     }
 
     /// <summary>
+    /// Asks the board to land a trunk-landing issue in review that it has
+    /// judged <see cref="WorkKinds.Land"/>: the route takes no body, re-judges
+    /// the row itself, and writes the status move and the ticket's comment. Not
+    /// named <c>LandedAsync</c> - that is the existing <c>PUT .../landing</c>.
+    /// A <c>409</c> is not a fault, the same as <see cref="HopAsync"/>
+    /// documents: the row moved, or the judgement changed, between the poll's
+    /// read and this write, and the caller walks on rather than treating it as
+    /// a refusal.
+    /// </summary>
+    public async Task<(IssueDto? Issue, string? WalkOn)> LandWorkAsync(string key, CancellationToken ct)
+    {
+        var answer = await Client.Send(HttpMethod.Post, $"/api/hatch/work/{key}/landed", null, ct);
+
+        if (answer.Conflict) return (null, answer.Sentence);
+        if (!answer.Ok) throw new HatchException(Client.Refusal(answer, $"/api/hatch/work/{key}/landed"));
+        if (answer.Body.Trim().Length == 0) return (null, null);
+
+        return (System.Text.Json.JsonSerializer.Deserialize(answer.Body, HatchJson.Default.IssueDto), null);
+    }
+
+    /// <summary>
     /// What a pass would take, without taking it.
     /// </summary>
     /// <remarks>

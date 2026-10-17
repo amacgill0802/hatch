@@ -706,6 +706,99 @@ public sealed class MergeTrainTests
         Assert.Empty(rig.H.Say.Said);
     }
 
+    // ---- The landing half ----
+
+    private static string Landed(string key) => $"/api/hatch/work/{key}/landed";
+
+    /// <summary>
+    /// A trunk-landing row in review, judged <paramref name="kind"/> (<see
+    /// cref="WorkKinds.Land"/> unless said otherwise). It carries no pull
+    /// request and no <c>MergeWork</c>, so no other half acts on it.
+    /// </summary>
+    private static ReviewCheckDto LandingRow(string key, string? kind = WorkKinds.Land, bool landings = true) =>
+        Fixtures.Review(key) with
+        {
+            LandingWork = kind is null ? null : new LandingWorkDto(kind, "landed and green"),
+            Landings = landings
+                ? [new LandingDto("https://example.test/repo.git", MergeCanonical, "main", Trunk, null, DateTimeOffset.UnixEpoch, null)]
+                : null,
+        };
+
+    [Fact]
+    public async Task A_land_row_is_landed_once_and_announced()
+    {
+        using var rig = new Rig().Board(LandingRow("AER-1"));
+        rig.H.Wire.Json("POST", Landed("AER-1"), Fixtures.Issue("AER-1") with { StatusId = 4 });
+        rig.H.Wire.Json("GET", Statuses, new[] { Fixtures.Status(4, "Done") });
+
+        await rig.RunAsync();
+
+        Assert.Single(rig.H.Wire.To("POST", Landed("AER-1")));
+        Assert.Contains("hatch: AER-1 landed on main -> Done", rig.H.Say.Said);
+    }
+
+    [Fact]
+    public async Task A_land_row_without_landings_is_announced_on_the_trunk()
+    {
+        using var rig = new Rig().Board(LandingRow("AER-1", landings: false));
+        rig.H.Wire.Json("POST", Landed("AER-1"), Fixtures.Issue("AER-1") with { StatusId = 4 });
+        rig.H.Wire.Json("GET", Statuses, new[] { Fixtures.Status(4, "Done") });
+
+        await rig.RunAsync();
+
+        Assert.Contains("hatch: AER-1 landed on the trunk -> Done", rig.H.Say.Said);
+    }
+
+    [Fact]
+    public async Task A_land_row_whose_project_is_not_driven_is_never_landed()
+    {
+        using var rig = new Rig().Board(LandingRow("AER-1"));
+        rig.Runtime.Readout.SetDrives([]);
+
+        await rig.RunAsync();
+
+        Assert.Empty(rig.H.Wire.To("POST", Landed("AER-1")));
+    }
+
+    [Theory]
+    [InlineData(WorkKinds.Pending)]
+    [InlineData(WorkKinds.Hold)]
+    [InlineData(null)]
+    public async Task A_row_not_judged_land_is_never_landed(string? kind)
+    {
+        using var rig = new Rig().Board(LandingRow("AER-1", kind));
+
+        await rig.RunAsync();
+
+        Assert.Empty(rig.H.Wire.To("POST", Landed("AER-1")));
+    }
+
+    [Fact]
+    public async Task A_409_from_the_landed_route_is_a_silent_walk_on()
+    {
+        using var rig = new Rig().Board(LandingRow("AER-1"));
+        rig.H.Wire.Reply("POST", Landed("AER-1"), HttpStatusCode.Conflict, "\"AER-1 moved\"");
+
+        await rig.RunAsync();
+
+        Assert.Empty(rig.H.Say.Complained);
+        Assert.Empty(rig.H.Say.Said);
+    }
+
+    [Fact]
+    public async Task A_500_from_the_landed_route_is_complained_of_once_and_tried_again_next_tick()
+    {
+        using var rig = new Rig().Board(LandingRow("AER-1"));
+        rig.H.Wire.Reply("POST", Landed("AER-1"), HttpStatusCode.InternalServerError, "boom");
+
+        await rig.RunAsync();
+        await rig.Later().RunAsync();
+
+        Assert.Equal(2, rig.H.Wire.To("POST", Landed("AER-1")).Count);
+        var line = Assert.Single(rig.H.Say.Complained);
+        Assert.StartsWith("hatch: AER-1 - the board would not take the landing - ", line);
+    }
+
     // ---- The driven gate ----
 
     [Fact]
