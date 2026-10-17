@@ -96,8 +96,9 @@ absence starts to hurt:
   is the build on the tip of a branch in review, and with it the pull request's
   merge state and review decision — the forge's own answer to whether it can
   merge and whether it is approved. Those two are stored on the issue, with the
-  head sha they were read at and when, and drawn; nothing on the server acts on
-  them yet. What is written, once a pull request stands approved in a protected
+  head sha they were read at and when, and drawn; the merge state is read by
+  [the merge column's judge list](#the-approval-column) and nothing else on the server, and the review
+  decision by nothing. What is written, once a pull request stands approved in a protected
   column, is the merge itself and the branch update that keeps it current with
   the trunk while it waits. All three are the runner's own `gh`, never the
   server — see [the build half of checking the branches in
@@ -216,8 +217,10 @@ backfill, so the browser paints `--muted` when none is set), `Icon` (a slug
 into a closed set the browser owns, not the server, nullable the same way),
 `Landing` (`"pull-request"` default, or `"trunk"` - how a project's finished
 work reaches the trunk, by pull request or pushed straight to it), and
-`ChecksRequired` (`bool`, default `true` - whether a trunk tip with no checks
-run on it yet counts as green), and `OnePullRequest` (`bool`, default `false` -
+`ChecksRequired` (`bool`, default `true` - whether a trunk tip, or a
+merge-column branch, with no checks run on it counts as green; see
+[the merge column's judge list](#the-approval-column) and [the trunk-landing
+list](#landing-on-the-trunk)), and `OnePullRequest` (`bool`, default `false` -
 the project's default for whether a story's tasks share the story's branch and
 one pull request, which a story can override either way - see
 [One pull request](#one-pull-request)). A project may also carry an uploaded
@@ -620,8 +623,10 @@ means *not read* — which is not `unknown` or `none`, both of which are things
 the forge can say. Only `PUT /api/hatch/issues/{key}/pull-request-state` writes
 them, and when the url changes they are cleared together with
 `PullRequestClosedAt`, since a state read of one pull request says nothing of
-another. **Nothing acts on them yet**: they are stored and drawn, and no gate,
-move or merge decision reads them. The issue page draws a chip beside the pull
+another. They are stored and drawn, and `MergeWork.Judge` reads
+the merge state and the head sha - see [the merge column's judge list](#the-approval-column) - and
+nothing else on the server does: no gate or move reads them, and the review
+decision, the read-at time and the url are still read by nothing. The issue page draws a chip beside the pull
 request's link saying what the forge calls it, and the review decision beside
 that where there is one; nothing is drawn while the state is unread or
 `unknown`.
@@ -2049,7 +2054,9 @@ forge's last word on the recorded pull request - its merge state, its review
 decision, or the head sha they were read at - differs from what the board
 held, the first read counting; payload `{ from, to }`, each side `{ mergeState,
 reviewDecision, headSha }` and `from` null on the first read. The board stores
-them and nothing acts on them yet; a read that repeats all three writes no
+them; `MergeWork.Judge` reads the merge state and head sha (see
+[the merge column's judge list](#the-approval-column)) and nothing else on the server does, and
+the review decision is read by nothing. A read that repeats all three writes no
 event and refreshes only when it was read), `wip_overridden` (a move into a
 full [WIP](#wip) section, or past [an epic's own
 limit](#an-epics-own-limit), let through because a person said *move
@@ -2472,7 +2479,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/issues/{key}/claim/heartbeat` | POST | `{ token, chatter? }` — refreshes it, `204`. `409` on a token that is not the row's, on a lease that is over, and on one that has gone quiet — see [Claim](#claim). `chatter` absent leaves the carried line alone, `""` clears it, anything longer than the column is truncated rather than refused |
 | `/issues/{key}/claim?token=…&outcome=…` | DELETE | Releases it, `204`. A mismatched token is `409` and clears nothing; an issue holding no claim is `204` and writes nothing. `outcome` (`dropped` or `worked`) is read only where `token` is given and is otherwise optional — an older CLI names none — and a value that is neither is `400`. **With no token at all it is person-only** — an agent that could clear another runner's claim could take a ticket off it mid-increment |
 | `/issues/{key}/merge-check` | PUT | Keeps a runner's [verdict](#merge-check) for one repository. `{ remote, trunk, trunkSha, verdict, branch?, branchSha?, files?, runner, holdsTrunk? }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an unknown verdict, `conflicted` with no files, and `clean` or `conflicted` with no branch sha; `404` on an unknown key. The column is not checked. A verdict that repeats the stored one writes no event, and neither does a change to `holdsTrunk` alone |
-| `/issues/{key}/pull-request-state` | PUT | Keeps what the forge last said of the pull request recorded on an issue: its merge state (`clean`, `blocked`, `behind`, `dirty`, `unstable`, `draft` or `unknown`) and its review decision (`none`, `approved`, `changes-requested` or `review-required`), with the head sha it was read at and when. `{ url, headSha, mergeState, reviewDecision, runner }`; answers `204`. Refused, in a sentence, with `409` for an issue with no pull request recorded or a `url` that is not the recorded one, and `400` for a merge state or review decision outside those lists, an empty head sha, or one longer than a sha can be; `404` on an unknown key. The column is not checked, and `runner` is neither checked nor kept. The board stores them and nothing acts on them yet. A read that repeats the stored merge state, review decision and head sha writes no event and refreshes only when it was read |
+| `/issues/{key}/pull-request-state` | PUT | Keeps what the forge last said of the pull request recorded on an issue: its merge state (`clean`, `blocked`, `behind`, `dirty`, `unstable`, `draft` or `unknown`) and its review decision (`none`, `approved`, `changes-requested` or `review-required`), with the head sha it was read at and when. `{ url, headSha, mergeState, reviewDecision, runner }`; answers `204`. Refused, in a sentence, with `409` for an issue with no pull request recorded or a `url` that is not the recorded one, and `400` for a merge state or review decision outside those lists, an empty head sha, or one longer than a sha can be; `404` on an unknown key. The column is not checked, and `runner` is neither checked nor kept. The board stores them; `MergeWork.Judge` reads the merge state and head sha (see [the merge column's judge list](#the-approval-column)) and nothing else on the server does, and the review decision is read by nothing. A read that repeats the stored merge state, review decision and head sha writes no event and refreshes only when it was read |
 | `/issues/{key}/landing` | PUT | Keeps what a repository holds for an issue's branch — see [landing](#landing). `{ remote, sha, trunk?, containedBy?, runner? }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an empty or non-hex sha, and `containedBy` given without a `trunk`; `404` on an unknown key. The column is not checked. A write that repeats the stored sha and `containedBy` writes no event |
 | `/questions` | GET | Every open question in the house |
 | `/plan`, `/plan/{key}` | GET | See [the level above the board](#the-level-above-the-board) |
@@ -3798,32 +3805,46 @@ the order the judge checks them:
 
 1. Its pull request already closed without merging: **hold**, *"its pull
    request was closed without merging"*.
-2. No runner has checked its branch against the trunk yet: **pending**,
+2. Its pull request is a draft, by the forge's merge state: **hold**, *"its
+   pull request is a draft"*.
+3. No runner has checked its branch against the trunk yet: **pending**,
    *"no runner has checked its branch against `<trunk>` yet"*.
-3. Any counted verdict `conflicted`: **pushback**, *"its branch conflicts
+4. Any counted verdict `conflicted`: **pushback**, *"its branch conflicts
    with the trunk - back to `<review>` to fix it"*.
-4. Any counted verdict `ambiguous` — more than one branch on origin named for
+5. Any counted verdict `ambiguous` — more than one branch on origin named for
    it: **hold**, *"more than one branch on origin is named for it - delete
    the ones that are not its branch"*.
-5. Every counted verdict `none` — no branch on origin named for it at all:
+6. Every counted verdict `none` — no branch on origin named for it at all:
    **hold**, *"no branch on origin is named for it"*.
-6. A clean branch whose build, read about that same merge check's own sha,
+7. A clean branch whose build, read about that same merge check's own sha,
    is `failed`: **pushback**, *"its build on `<sha>` failed - back to
    `<review>` to fix it"*.
-7. Clean but not holding the trunk: **update**, *"bringing its branch
+8. Clean but not holding the trunk: **update**, *"bringing its branch
    current from `<trunk>`"*.
-8. A build about that sha still `pending`: **pending**, *"its build on
+9. A build about that sha still `pending`: **pending**, *"its build on
    `<sha>` is still running"*.
-9. A build read, but about a different sha than the merge check's own:
-   **pending**, *"no runner has read its build on `<sha>` yet"*.
-10. Holding the trunk, with no build checks at all yet: **pending**, *"its
+10. A build read, but about a different sha than the merge check's own:
+    **pending**, *"no runner has read its build on `<sha>` yet"*.
+11. Holding the trunk, with no build checks at all yet: **pending**, *"its
     branch holds `<trunk>` - no checks have run on it yet"*.
-11. Every counted build `passed`: **merge**, *"its branch holds `<trunk>`
+12. Every counted build `passed`: **merge**, *"its branch holds `<trunk>`
     and its build passes"*.
-12. Holding the trunk with no checks run at all: **pending** inside
+13. What is left is a build that read no checks at all. Inside
     `MergeWork.SettleWindow` (ten minutes, the same settling a push's checks
-    are given elsewhere), **hold** past it — both *"its branch holds
-    `<trunk>` and no checks ran on it"*.
+    are given elsewhere): **pending**, *"its branch holds `<trunk>` and no
+    checks ran on it"*. Past it, in this order:
+    **merge**, *"its branch holds `<trunk>`; this project requires no
+    checks"*, where the project's `checksRequired` is off; **merge**, *"its
+    branch holds `<trunk>`, no checks ran on it, and nothing is required of
+    it"*, where the forge's merge state is `clean`; **hold**, *"its branch
+    holds `<trunk>` and no checks ran on it - its pull request is blocked by
+    the repository's rules"*, where it is `blocked`; and otherwise **hold**,
+    *"its branch holds `<trunk>` and no checks ran on it"*. The forge's
+    state counts only when the head sha it was read at is the branch sha the
+    merge check read: a branch that has moved since is a branch the state
+    says nothing about, and falls to the last hold. `unstable`, `behind` and
+    `dirty` are not read, since the build check and git's merge check already
+    answer those. This item qualifies HA-289's *"Zero checks is not green"*.
 
 **Pushback is built, not deferred.** `POST /work/{key}/pushback`
 (`WorkController.cs:575-642`, `WorkController.PushbackWork`) carries an issue
@@ -5206,7 +5227,9 @@ differs from what `/work/review` carried for that row, so a quiet pull request
 costs no call after the first; it does this for a review-column row and a
 merge-column row alike, and an answer missing any of the three writes nothing.
 The route answers `204` and the board stores what it was given, with the head
-sha and when it was read; nothing on the server acts on it yet. A `404` is a
+sha and when it was read; `MergeWork.Judge` reads the merge state and head sha (see
+[the merge column's judge list](#the-approval-column)) and nothing else on the server does, and the
+review decision is read by nothing. A `404` is a
 board that predates the route, and reads as one line - "the board does not know
 pull request state yet - it will be asked again next tick"; a `409` is the row
 having moved, and is silent; any other refusal is one line. `merged` and
@@ -6362,8 +6385,8 @@ code already settles is a round trip through a person for nothing.
   protected column, and the branch update that keeps it current with the trunk
   while it waits — all three through the runner's own `gh`
   ([checking the branches in review](#checking-the-branches-in-review)).
-  Acting on the merge state and review decision (nothing on the server does
-  yet), webhooks and anything else the server would ask a forge itself are
+  Acting on the review decision (nothing on the server reads it yet; the merge
+  state is read by [the merge column's judge list](#the-approval-column)), webhooks and anything else the server would ask a forge itself are
   deferred: each is a credential on the server, which is what the runner asking
   `gh` as whoever it is signed in as avoids.
 - **A deleted issue takes its events with it.** Hard delete, confirmed in the
