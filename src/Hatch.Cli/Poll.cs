@@ -3,9 +3,11 @@ namespace Hatch.Cli;
 /// <summary>
 /// The loop's look at every branch in review: whether it still merges with the
 /// trunk, asked of git, and what the build on its tip came to, asked of the
-/// runner's own <c>gh</c> - both told to the board. Alongside it, for every
-/// checkout with an origin whether or not anything of its is in review, the
-/// build on the trunk's own tip (HA-95).
+/// runner's own <c>gh</c> - both told to the board. For an issue that lands
+/// straight on the trunk it asks something else of git instead: whether each
+/// landing's sha is in origin's trunk, and which trunk tip holds it. Alongside
+/// it, for every checkout with an origin whether or not anything of its is in
+/// review, the build on the trunk's own tip (HA-95).
 /// </summary>
 /// <remarks>
 /// <para><b>An idle loop must not fetch all night.</b> So the poll asks
@@ -37,6 +39,13 @@ namespace Hatch.Cli;
 /// cannot read builds says so once and reads nothing, and nothing about it fails
 /// the merge half, a pass or a night.</para>
 ///
+/// <para><b>The landing half</b> has no branch to fingerprint: a landing is
+/// looked at again only when the trunk's sha is not the one the board's stored
+/// <c>ContainedBy</c> names or this runner last looked at, so a quiet trunk
+/// costs the <c>ls-remote</c> alone. A landing that is not in the trunk is
+/// remembered at that sha too, and nothing is written for it. It writes no
+/// merge check and no build check.</para>
+///
 /// <para><b>The trunk half runs whether or not anything is in review.</b> The
 /// merge and build halves above visit only a checkout whose review issues name
 /// it, because their targets come from <c>/api/hatch/work/review</c> - a quiet
@@ -62,12 +71,15 @@ public sealed class Poll
 
     private readonly Dictionary<(string Path, string Key), string> _seen = [];
     private readonly Dictionary<(string Path, string Key), string> _seenBuild = [];
+    private readonly Dictionary<(string Path, string Key), string> _seenLanding = [];
     private readonly Dictionary<string, string> _seenTrunk = [];
     private DateTimeOffset? _last;
     private HashSet<string> _saidBefore = [];
 
     /// <summary>One issue in one checkout, and what the board already holds for it.</summary>
-    private sealed record Target(string Key, Checkouts.Polled Where, MergeCheckDto? Stored, BuildCheckDto? StoredBuild);
+    /// <remarks>A target with <paramref name="Landing"/> set is a landing target: one landing of a trunk-landing issue, asked of git and never merge- or build-checked.</remarks>
+    private sealed record Target(
+        string Key, Checkouts.Polled Where, MergeCheckDto? Stored, BuildCheckDto? StoredBuild, LandingDto? Landing = null);
 
     /// <summary>
     /// Takes the verdicts that are due, if this interval's poll is - once per
@@ -129,6 +141,20 @@ public sealed class Poll
                     continue;
                 }
 
+                // A trunk-landing issue has no branch to merge-check or build:
+                // what is asked of git is whether each landing is in the trunk.
+                if (issue.LandingWork is not null)
+                {
+                    var landingKey = (where.Path, where.BaseBranch);
+                    if (!targets.TryGetValue(landingKey, out var landingList)) targets[landingKey] = landingList = [];
+
+                    foreach (var landing in (issue.Landings ?? []).Where(l =>
+                        where.Canonical is not null ? l.Canonical == where.Canonical : l.Remote == where.Remote))
+                        landingList.Add(new Target(issue.Key, where, null, null, landing));
+
+                    continue;
+                }
+
                 // The board's verdict for this repository: by the identity it
                 // gave where the project binds one, and by the spelling this
                 // runner used where it does not - a different spelling costs
@@ -172,8 +198,11 @@ public sealed class Poll
             // The merge half, and then the build half whatever it did: a build
             // that is still pending is asked about again on a branch that has
             // not moved, and neither half is the other's reason to stop.
-            await CheckMergesAsync(runtime, complain, path, name, workspace, heads, issues, ct);
-            await ReadBuildsAsync(runtime, complain, path, name, heads, issues, ct);
+            var branches = issues.Where(t => t.Landing is null).ToList();
+            await CheckMergesAsync(runtime, complain, path, name, workspace, heads, branches, ct);
+            await ReadBuildsAsync(runtime, complain, path, name, heads, branches, ct);
+            await ConfirmLandingsAsync(
+                runtime, complain, path, name, workspace, heads, issues.Where(t => t.Landing is not null).ToList(), ct);
         }
 
         // The trunk half: every checkout with an origin, whether or not
@@ -246,6 +275,77 @@ public sealed class Poll
 
         if (unknown > 0)
             complain($"hatch: {unknown} branch(es) in review in {name} could not be checked against {heads.Trunk}");
+    }
+
+    /// <summary>
+    /// The landing half for one checkout: for each landing of a trunk-landing
+    /// issue, ask git whether its sha is in origin's trunk, and tell the board
+    /// which trunk tip holds it. Fetches once if any landing needs a look.
+    /// </summary>
+    /// <remarks>
+    /// A landing needs a look only when the trunk has moved since the board
+    /// last confirmed it or this runner last looked - a sha that is not on the
+    /// trunk is remembered too, so an idle loop does not fetch all night for it.
+    /// </remarks>
+    private async Task ConfirmLandingsAsync(
+        Runtime runtime, Action<string> complain, string path, string name, IWorkspace workspace,
+        RemoteHeads heads, List<Target> targets, CancellationToken ct)
+    {
+        var due = new List<(Target Target, LandingDto Landing, string TrunkSha)>();
+        foreach (var target in targets)
+        {
+            var landing = target.Landing!;
+            if (!heads.Shas.TryGetValue(landing.Trunk, out var trunkSha))
+            {
+                complain($"hatch: origin has no {landing.Trunk} for {name}, so its landings in review were not checked");
+                return;
+            }
+
+            if (landing.ContainedBy == trunkSha) continue;
+            if (_seenLanding.TryGetValue((path, target.Key), out var seen) && seen == trunkSha) continue;
+
+            due.Add((target, landing, trunkSha));
+        }
+
+        if (due.Count == 0) return;
+
+        // Once, however many of the checkout's landings are due.
+        if (!workspace.Fetch())
+        {
+            complain($"hatch: could not fetch from origin for {name}, so its landings in review were not checked");
+            return;
+        }
+
+        foreach (var (target, landing, trunkSha) in due)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            if (!workspace.ResolveOnTrunk(landing.Sha, landing.Trunk).OnTrunk)
+            {
+                _seenLanding[(path, target.Key)] = trunkSha;
+                continue;
+            }
+
+            try
+            {
+                await runtime.QuietBoard.LandedAsync(
+                    target.Key,
+                    new LandingWriteRequest(target.Where.Remote!, landing.Sha, landing.Trunk, trunkSha, runtime.RunnerName),
+                    ct);
+            }
+            catch (HatchException e)
+            {
+                // Not remembered: a landing the board refused is asked
+                // again next interval.
+                complain($"hatch: {target.Key} - the board would not take the landing on {landing.Trunk} - {e.Message}");
+                continue;
+            }
+
+            _seenLanding[(path, target.Key)] = trunkSha;
+
+            if (landing.ContainedBy is null)
+                runtime.Say.Line($"hatch: {target.Key} is on {landing.Trunk} at {Short(landing.Sha)}");
+        }
     }
 
     /// <summary>
