@@ -73,6 +73,13 @@ public interface IWorkspace
     bool Fetch();
 
     /// <summary>
+    /// Whether <paramref name="sha"/> is on origin's <paramref name="trunk"/>, read
+    /// from the refs as they stand - a sha that does not resolve is
+    /// <c>(null, false)</c>. Does not fetch.
+    /// </summary>
+    (string? Full, bool OnTrunk) ResolveOnTrunk(string sha, string trunk);
+
+    /// <summary>
     /// Whether the issue's branch on origin still merges with the trunk on
     /// origin, read from the refs as they stand. Does not fetch, and touches no
     /// worktree or index. Null when it cannot be said.

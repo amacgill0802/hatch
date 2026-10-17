@@ -1103,4 +1103,160 @@ public sealed class PollTests
         Assert.Single(rig.H.Wire.To("PUT", Put("AER-1")));
         Assert.Contains("could not read the board's trunk builds", Assert.Single(rig.H.Say.Complained), StringComparison.Ordinal);
     }
+
+    // ---- Landings ----
+
+    private const string Remote = "https://example.test/repo.git";
+    private static readonly string Landed = new('e', 40);
+
+    private static string PutLanding(string key) => $"/api/hatch/issues/{key}/landing";
+
+    /// <summary>A trunk-landing row in review, holding one landing as the unbound checkout spells it.</summary>
+    private static ReviewCheckDto LandingRow(string key, string? containedBy = null, string? sha = null) =>
+        Fixtures.Review(key) with
+        {
+            Landings = [Fixtures.Landing(sha: sha ?? Landed, containedBy: containedBy) with { Remote = Remote }],
+            LandingWork = new("pending", "waiting on the trunk"),
+        };
+
+    private static Rig LandingBoard(params ReviewCheckDto[] rows)
+    {
+        var rig = new Rig();
+        rig.H.Wire.Json("GET", Review, rows);
+        foreach (var row in rows) rig.H.Wire.Json("PUT", PutLanding(row.Key), Fixtures.Landing());
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads();
+        return rig;
+    }
+
+    [Fact]
+    public async Task A_landing_in_the_trunk_is_told_to_the_board_with_the_tip_that_holds_it_and_nothing_else_is_written()
+    {
+        using var rig = LandingBoard(LandingRow("AER-1"));
+        rig.H.Workspace.OnTrunkFor[(rig.H.Root, Landed)] = true;
+
+        await rig.RunAsync();
+
+        var put = Assert.Single(rig.H.Wire.To("PUT", PutLanding("AER-1"))).Read<LandingWriteRequest>();
+        Assert.Equal(Remote, put.Remote);
+        Assert.Equal(Landed, put.Sha);
+        Assert.Equal("main", put.Trunk);
+        Assert.Equal(Trunk, put.ContainedBy);
+        Assert.Empty(rig.H.Wire.To("PUT", Put("AER-1")));
+        Assert.Empty(rig.H.Wire.To("PUT", PutBuild("AER-1")));
+        Assert.Equal(0, rig.Count("check"));
+        Assert.Equal([$"AER-1 is on main at {Landed[..7]}"], rig.H.Say.Said.Select(l => l.Replace("hatch: ", "")));
+    }
+
+    [Fact]
+    public async Task Two_landing_rows_in_one_checkout_are_one_fetch()
+    {
+        using var rig = LandingBoard(LandingRow("AER-1"), LandingRow("AER-2"));
+        rig.H.Workspace.OnTrunkFor[(rig.H.Root, Landed)] = true;
+
+        await rig.RunAsync();
+
+        Assert.Equal(1, rig.Count("fetch"));
+        Assert.Single(rig.H.Wire.To("PUT", PutLanding("AER-1")));
+        Assert.Single(rig.H.Wire.To("PUT", PutLanding("AER-2")));
+    }
+
+    [Fact]
+    public async Task Landings_the_board_already_holds_at_the_trunks_tip_are_not_fetched_for()
+    {
+        using var rig = LandingBoard(LandingRow("AER-1", containedBy: Trunk), LandingRow("AER-2", containedBy: Trunk));
+
+        await rig.RunAsync();
+
+        Assert.Equal(0, rig.Count("fetch"));
+        Assert.Equal(0, rig.Count("resolve"));
+        Assert.Empty(rig.H.Wire.To("PUT", PutLanding("AER-1")));
+    }
+
+    [Fact]
+    public async Task A_trunk_that_moved_since_the_stored_tip_is_told_again_with_the_new_tip_and_not_announced()
+    {
+        using var rig = LandingBoard(LandingRow("AER-1", containedBy: Moved));
+        rig.H.Workspace.OnTrunkFor[(rig.H.Root, Landed)] = true;
+
+        await rig.RunAsync();
+
+        var put = Assert.Single(rig.H.Wire.To("PUT", PutLanding("AER-1"))).Read<LandingWriteRequest>();
+        Assert.Equal(Trunk, put.ContainedBy);
+        Assert.Empty(rig.H.Say.Said);
+    }
+
+    [Fact]
+    public async Task A_landing_not_in_the_trunk_writes_nothing_and_is_not_fetched_for_again_until_the_trunk_moves()
+    {
+        using var rig = LandingBoard(LandingRow("AER-1"));
+
+        await rig.RunAsync();
+        await rig.Later().RunAsync();
+
+        Assert.Equal(1, rig.Count("fetch"));
+        Assert.Empty(rig.H.Wire.To("PUT", PutLanding("AER-1")));
+
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(trunk: Moved);
+        await rig.Later().RunAsync();
+
+        Assert.Equal(2, rig.Count("fetch"));
+        Assert.Empty(rig.H.Wire.To("PUT", PutLanding("AER-1")));
+    }
+
+    [Fact]
+    public async Task A_landing_the_board_refused_is_one_line_across_two_polls_and_is_asked_again()
+    {
+        using var rig = LandingBoard(LandingRow("AER-1"));
+        rig.H.Workspace.OnTrunkFor[(rig.H.Root, Landed)] = true;
+        rig.H.Wire.Replace("PUT", PutLanding("AER-1"), HttpStatusCode.BadRequest, "\"no such landing\"");
+
+        await rig.RunAsync();
+        await rig.Later().RunAsync();
+
+        Assert.Equal(2, rig.H.Wire.To("PUT", PutLanding("AER-1")).Count);
+        Assert.Contains("would not take the landing on main", Assert.Single(rig.H.Say.Complained), StringComparison.Ordinal);
+        Assert.Empty(rig.H.Say.Said);
+    }
+
+    [Fact]
+    public async Task An_origin_without_the_landings_trunk_is_one_line_and_nothing_is_written()
+    {
+        using var rig = LandingBoard(LandingRow("AER-1"));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = new RemoteHeads("main", new Dictionary<string, string>());
+
+        await rig.RunAsync();
+
+        Assert.Contains("origin has no main", Assert.Single(rig.H.Say.Complained), StringComparison.Ordinal);
+        Assert.Equal(0, rig.Count("fetch"));
+        Assert.Empty(rig.H.Wire.To("PUT", PutLanding("AER-1")));
+    }
+
+    [Fact]
+    public async Task A_failed_fetch_is_one_line_and_nothing_is_written()
+    {
+        using var rig = LandingBoard(LandingRow("AER-1"));
+        rig.H.Workspace.FetchAnswer = false;
+        rig.H.Workspace.OnTrunkFor[(rig.H.Root, Landed)] = true;
+
+        await rig.RunAsync();
+
+        Assert.Contains("could not fetch from origin", Assert.Single(rig.H.Say.Complained), StringComparison.Ordinal);
+        Assert.Equal(0, rig.Count("resolve"));
+        Assert.Empty(rig.H.Wire.To("PUT", PutLanding("AER-1")));
+    }
+
+    [Fact]
+    public async Task A_pull_request_row_is_still_merge_checked_beside_a_landing_row()
+    {
+        using var rig = LandingBoard(LandingRow("AER-1"), Fixtures.Review("AER-2"));
+        rig.H.Wire.Json("PUT", Put("AER-2"), Fixtures.MergeCheck());
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-2-thing", Tip));
+        rig.H.Workspace.Verdicts[(rig.H.Root, "AER-2")] = Clean();
+
+        await rig.RunAsync();
+
+        Assert.Single(rig.H.Wire.To("PUT", Put("AER-2")));
+        Assert.Empty(rig.H.Wire.To("PUT", Put("AER-1")));
+        Assert.Equal(1, rig.Count("check"));
+    }
 }

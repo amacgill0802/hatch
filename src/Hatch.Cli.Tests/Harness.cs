@@ -143,6 +143,9 @@ public sealed class FakeWorkspace
     /// <summary>What <c>Fetch</c> answers, for every checkout.</summary>
     public bool FetchAnswer { get; set; } = true;
 
+    /// <summary>Whether a sha is on the trunk in one checkout. Absent is not on the trunk.</summary>
+    public Dictionary<(string Path, string Sha), bool> OnTrunkFor { get; } = [];
+
     /// <summary>What <c>Check</c> answers for one issue in one checkout. Absent is a check that could not be made.</summary>
     public Dictionary<(string Path, string Key), Verdict?> Verdicts { get; } = [];
 
@@ -245,6 +248,12 @@ public sealed class FakeWorkspace
         {
             owner.Calls.Add($"fetch {path}");
             return owner.FetchAnswer;
+        }
+
+        public (string? Full, bool OnTrunk) ResolveOnTrunk(string sha, string trunk)
+        {
+            owner.Calls.Add($"resolve {path} {sha}");
+            return (sha, owner.OnTrunkFor.GetValueOrDefault((path, sha)));
         }
 
         public Verdict? Check(string key)
