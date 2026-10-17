@@ -1,4 +1,7 @@
 using Hatch.Api.Modules.Hatch;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Time.Testing;
 
 namespace Hatch.Api.Tests.Hatch;
 
@@ -757,5 +760,143 @@ public class TimelineReportTests
         Assert.Equal([new TimelineReport.Segment(4, Day(-4), null)], byCreator.Segments);
 
         Assert.Null(Fold(rows, projectId: 2, createdBy: "ann").Other);
+    }
+}
+
+/// <summary>
+/// The route over the fold: the range it resolves, and what it refuses. The
+/// fold's own rules are pinned in <see cref="TimelineReportTests"/>.
+/// </summary>
+public class TimelineReportControllerTests
+{
+    private static readonly DateTimeOffset Now = new(2026, 1, 31, 12, 0, 0, TimeSpan.Zero);
+
+    private static readonly TimeSpan Ninety = TimeSpan.FromDays(90);
+
+    private sealed class Harness
+    {
+        public required ReportsController Reports { get; init; }
+        public required int ProjectId { get; init; }
+    }
+
+    /// <summary>One project, and a board of five columns: first, two active, terminal, deferred.</summary>
+    private static async Task<Harness> NewAsync()
+    {
+        var db = new HatchContext(
+            new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+
+        var project = new EfHatchProject { Key = "AER", Name = "Hatch", CreatedAt = Now };
+        db.AddRange(
+            project,
+            new EfHatchStatus { Name = "backlog", SortOrder = 10 },
+            new EfHatchStatus { Name = "todo", SortOrder = 20 },
+            new EfHatchStatus { Name = "doing", SortOrder = 30 },
+            new EfHatchStatus { Name = "done", SortOrder = 40, IsTerminal = true },
+            new EfHatchStatus { Name = "parked", SortOrder = 50, IsDeferred = true });
+        await db.SaveChangesAsync();
+
+        return new Harness
+        {
+            Reports = new ReportsController(
+                db, new StubActorDirectory(), TestClaims.With(), new FakeTimeProvider(Now)),
+            ProjectId = project.Id,
+        };
+    }
+
+    private static T Value<T>(ActionResult<T> result) =>
+        result.Value ?? throw new InvalidOperationException($"expected a value, got {result.Result?.GetType().Name ?? "nothing"}");
+
+    private static string Refusal<T>(ActionResult<T> result) =>
+        Assert.IsType<string>(Assert.IsType<BadRequestObjectResult>(result.Result).Value);
+
+    [Fact]
+    public async Task NoRange_IsTheNinetyDaysEndingNow()
+    {
+        var h = await NewAsync();
+
+        var timeline = Value(await h.Reports.GetTimeline(null, null, null, null, default));
+
+        Assert.Equal(Now, timeline.To);
+        Assert.Equal(Now - Ninety, timeline.From);
+    }
+
+    [Fact]
+    public async Task FromOnly_EndsNow()
+    {
+        var h = await NewAsync();
+        var from = Now.AddDays(-5);
+
+        var timeline = Value(await h.Reports.GetTimeline(from.ToString("O"), null, null, null, default));
+
+        Assert.Equal(from, timeline.From);
+        Assert.Equal(Now, timeline.To);
+    }
+
+    [Fact]
+    public async Task ToOnly_BeginsNinetyDaysBeforeIt()
+    {
+        var h = await NewAsync();
+        var to = Now.AddDays(-10);
+
+        var timeline = Value(await h.Reports.GetTimeline(null, to.ToString("O"), null, null, default));
+
+        Assert.Equal(to, timeline.To);
+        Assert.Equal(to - Ninety, timeline.From);
+    }
+
+    [Fact]
+    public async Task AnInvertedRange_IsRefused()
+    {
+        var h = await NewAsync();
+
+        var result = await h.Reports.GetTimeline(Now.ToString("O"), Now.AddDays(-1).ToString("O"), null, null, default);
+
+        Assert.Equal("a range ends before it begins", Refusal(result));
+    }
+
+    [Theory]
+    [InlineData("yesterday", null)]
+    [InlineData(null, "next week")]
+    public async Task AnUnparseableBound_IsRefusedByName(string? from, string? to)
+    {
+        var h = await NewAsync();
+
+        var result = await h.Reports.GetTimeline(from, to, null, null, default);
+
+        Assert.Equal(RangeBounds.NotAnInstant(from ?? to), Refusal(result));
+    }
+
+    [Fact]
+    public async Task AnEqualRange_IsLegalAndEmpty()
+    {
+        var h = await NewAsync();
+        var at = Now.ToString("O");
+
+        var timeline = Value(await h.Reports.GetTimeline(at, at, null, null, default));
+
+        Assert.Equal(Now, timeline.From);
+        Assert.Equal(Now, timeline.To);
+        Assert.Empty(timeline.Epics);
+        Assert.Null(timeline.Other);
+    }
+
+    [Fact]
+    public async Task AnUnknownProject_IsRefusedByNumber()
+    {
+        var h = await NewAsync();
+
+        var result = await h.Reports.GetTimeline(null, null, 999, null, default);
+
+        Assert.Equal("there is no project 999", Refusal(result));
+    }
+
+    [Fact]
+    public async Task AKnownProject_IsNotRefused()
+    {
+        var h = await NewAsync();
+
+        var timeline = Value(await h.Reports.GetTimeline(null, null, h.ProjectId, null, default));
+
+        Assert.Empty(timeline.Epics);
     }
 }
