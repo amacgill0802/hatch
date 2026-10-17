@@ -552,8 +552,10 @@ through the gate that was supposed to stop it.
 
 `EfHatchIssue` — `ProjectId`, `Number`, `Type`, `Title`, `Description`,
 `StatusId`, `ParentId`, `Rank`, `ReadyAt`/`ReadyAtHasTime`,
-`DueAt`/`DueAtHasTime`, `PullRequestUrl`, `ModelOverride`, `EffortOverride`,
-`AssigneePersonId`/`AssigneeApiKeyId`, `CreatedBy`, `CreatedAt`, `UpdatedAt`.
+`DueAt`/`DueAtHasTime`, `PullRequestUrl`, `PullRequestMergeState`,
+`PullRequestReviewDecision`, `PullRequestHeadSha`, `PullRequestReadAt`,
+`ModelOverride`, `EffortOverride`, `AssigneePersonId`/`AssigneeApiKeyId`,
+`CreatedBy`, `CreatedAt`, `UpdatedAt`.
 
 The display key `AER-12` is **computed** (`Project.Key + "-" + Number`) and
 never stored, so there is exactly one fact about a key anywhere and no chance of
@@ -606,6 +608,21 @@ not read from it**: the runner asks `gh` about the checkout's repository, at the
 board's own identity for it (see [checking the branches in
 review](#checking-the-branches-in-review)), so a pull request nobody recorded
 still has its build read.
+
+**The four fields after it are what the forge last said of that pull request.**
+`PullRequestMergeState` is `clean`, `blocked`, `behind`, `dirty`, `unstable`,
+`draft` or `unknown`; `PullRequestReviewDecision` is `none`, `approved`,
+`changes-requested` or `review-required`; `PullRequestHeadSha` is the commit
+that was read, and `PullRequestReadAt` is when. All four are nullable, and null
+means *not read* — which is not `unknown` or `none`, both of which are things
+the forge can say. Only `PUT /api/hatch/issues/{key}/pull-request-state` writes
+them, and when the url changes they are cleared together with
+`PullRequestClosedAt`, since a state read of one pull request says nothing of
+another. **Nothing acts on them yet**: they are stored and drawn, and no gate,
+move or merge decision reads them. The issue page draws a chip beside the pull
+request's link saying what the forge calls it, and the review decision beside
+that where there is one; nothing is drawn while the state is unread or
+`unknown`.
 
 #### Assignee
 

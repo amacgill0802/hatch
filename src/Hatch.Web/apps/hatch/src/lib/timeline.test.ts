@@ -1,12 +1,20 @@
 import { describe, expect, it } from 'vitest';
+import type { IssueCard, Status, Timeline, TimelineEntry, TimelineSegment } from '../types';
+import { DEFAULT_STATUS_COLOR } from './color';
 import {
   CHART_UNITS,
   DEFAULT_DAYS,
+  OTHER_KEY,
+  foldRows,
   makeScale,
   resolveWindow,
+  segmentStyle,
+  segmentTitle,
   tickUnit,
   ticks,
   todayX,
+  toggled,
+  unresolvedPhrase,
   xOf,
 } from './timeline';
 
@@ -243,5 +251,169 @@ describe('todayX', () => {
     expect(todayX(scale, new Date('2026-10-11T00:00:00Z'))).toBeNull();
     expect(todayX(scale, new Date('2026-09-30T23:59:59Z'))).toBeNull();
     expect(todayX(scale, new Date('2026-12-01T00:00:00Z'))).toBeNull();
+  });
+});
+
+const entry = (
+  key: string,
+  children: TimelineEntry[] = [],
+  extra: Partial<TimelineEntry> = {},
+): TimelineEntry => ({
+  issue: { key, title: `title ${key}` } as IssueCard,
+  createdBy: 'someone',
+  isLeaf: children.length === 0,
+  segments: [],
+  children,
+  ...extra,
+});
+
+const timeline = (epics: TimelineEntry[], other: TimelineEntry | null = null): Timeline => ({
+  from: '2026-07-12T00:00:00.000Z',
+  to: '2026-10-10T00:00:00.000Z',
+  epics,
+  other,
+  creators: [],
+  unresolved: 0,
+});
+
+const keys = (rows: { entry: TimelineEntry }[]) => rows.map((row) => row.entry.issue.key);
+
+const segment = (statusId: number, from: string, to: string | null): TimelineSegment => ({ statusId, from, to });
+
+describe('foldRows', () => {
+  const tree = timeline(
+    [entry('E-2', [entry('S-1', [entry('T-1')]), entry('S-2')]), entry('E-1')],
+    entry(OTHER_KEY, [entry('L-1')]),
+  );
+
+  it('keeps the epics in the order answered and puts Other last', () => {
+    expect(keys(foldRows(tree, new Set()))).toEqual(['E-2', 'E-1', OTHER_KEY]);
+  });
+
+  it('draws no Other row when other is null', () => {
+    const rows = foldRows(timeline([entry('E-1')]), new Set());
+
+    expect(keys(rows)).toEqual(['E-1']);
+    expect(rows.some((row) => row.isOther)).toBe(false);
+  });
+
+  it('shows top-level rows only when everything is collapsed', () => {
+    const rows = foldRows(tree, new Set());
+
+    expect(rows.map((row) => row.depth)).toEqual([0, 0, 0]);
+    expect(rows.map((row) => row.expanded)).toEqual([false, false, false]);
+  });
+
+  it('reveals an expanded epic\'s children at depth 1, and a grandchild only when its parent is open too', () => {
+    const one = foldRows(tree, new Set(['E-2']));
+
+    expect(keys(one)).toEqual(['E-2', 'S-1', 'S-2', 'E-1', OTHER_KEY]);
+    expect(one.map((row) => row.depth)).toEqual([0, 1, 1, 0, 0]);
+
+    const two = foldRows(tree, new Set(['E-2', 'S-1']));
+
+    expect(keys(two)).toEqual(['E-2', 'S-1', 'T-1', 'S-2', 'E-1', OTHER_KEY]);
+    expect(two.map((row) => row.depth)).toEqual([0, 1, 2, 1, 0, 0]);
+  });
+
+  it('does not reveal a grandchild when only the child is in the set', () => {
+    expect(keys(foldRows(tree, new Set(['S-1'])))).toEqual(['E-2', 'E-1', OTHER_KEY]);
+  });
+
+  it('reveals the loose roots when other is expanded, and marks the row', () => {
+    const rows = foldRows(tree, new Set([OTHER_KEY]));
+
+    expect(keys(rows)).toEqual(['E-2', 'E-1', OTHER_KEY, 'L-1']);
+    expect(rows.map((row) => row.isOther)).toEqual([false, false, true, false]);
+    expect(rows[3].depth).toBe(1);
+  });
+
+  it('is expandable by children present, not by isLeaf', () => {
+    const quiet = entry('S-9', [], { isLeaf: false });
+    const rows = foldRows(timeline([entry('E-1', [quiet])]), new Set(['E-1', 'S-9']));
+
+    expect(rows[1].expandable).toBe(false);
+    expect(rows[1].expanded).toBe(false);
+    expect(rows[0].expandable).toBe(true);
+    expect(rows[0].expanded).toBe(true);
+  });
+
+  it('carries each entry untouched, so a parent keeps only its own segments', () => {
+    const own = [segment(1, '2026-10-01T12:00:00Z', '2026-10-02T12:00:00Z')];
+    const child = entry('S-1', [], { segments: [segment(2, '2026-10-03T12:00:00Z', null)] });
+    const epic = entry('E-1', [child], { segments: own });
+    const rows = foldRows(timeline([epic]), new Set(['E-1']));
+
+    expect(rows[0].entry).toBe(epic);
+    expect(rows[0].entry.segments).toEqual(own);
+    expect(rows[1].entry).toBe(child);
+  });
+});
+
+describe('toggled', () => {
+  it('adds a key that is absent', () => {
+    expect([...toggled(new Set(['a']), 'b')].sort()).toEqual(['a', 'b']);
+  });
+
+  it('removes a key that is present', () => {
+    expect([...toggled(new Set(['a', 'b']), 'a')]).toEqual(['b']);
+  });
+
+  it('leaves the input unchanged and returns a new set', () => {
+    const before = new Set(['a']);
+    const added = toggled(before, 'b');
+    const removed = toggled(before, 'a');
+
+    expect([...before]).toEqual(['a']);
+    expect(added).not.toBe(before);
+    expect(removed).not.toBe(before);
+  });
+});
+
+describe('segmentTitle', () => {
+  it('names a closed segment from and to', () => {
+    const closed = segment(1, '2026-10-03T12:00:00Z', '2026-10-09T12:00:00Z');
+
+    expect(segmentTitle('In Progress', closed, LOCALE)).toBe('In Progress, 3 Oct to 9 Oct');
+  });
+
+  it('says onward while the segment is open', () => {
+    const open = segment(1, '2026-10-03T12:00:00Z', null);
+
+    expect(segmentTitle('In Progress', open, LOCALE)).toBe('In Progress, 3 Oct onward');
+  });
+});
+
+describe('segmentStyle', () => {
+  const statuses = [{ id: 4, name: 'In Progress', color: '#2563eb' }] as Status[];
+  const at = (statusId: number) => segment(statusId, '2026-10-03T12:00:00Z', null);
+
+  it("gives a known status's colour and ink", () => {
+    const style = segmentStyle(statuses, at(4), false);
+
+    expect(style?.['--status-color']).toBe('#2563eb');
+    expect(style?.['--status-ink']).toBeTruthy();
+  });
+
+  it('falls back to the default grey for an unknown id', () => {
+    expect(segmentStyle(statuses, at(99), false)?.['--status-color']).toBe(DEFAULT_STATUS_COLOR);
+  });
+
+  it('is null on Other, whatever the status', () => {
+    expect(segmentStyle(statuses, at(4), true)).toBeNull();
+  });
+});
+
+describe('unresolvedPhrase', () => {
+  it('is null at zero', () => {
+    expect(unresolvedPhrase(0)).toBeNull();
+  });
+
+  it('is singular at one', () => {
+    expect(unresolvedPhrase(1)).toBe('1 column change could not be placed, because the column has since been renamed.');
+  });
+
+  it('is plural above one', () => {
+    expect(unresolvedPhrase(2)).toBe('2 column changes could not be placed, because the column has since been renamed.');
   });
 });
