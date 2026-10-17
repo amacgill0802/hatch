@@ -81,10 +81,11 @@ the same line there.
 
 ### Where this page ends
 
-At a repository on the machine that agents can work in, with `claude` signed
-in, `gh` signed in where the person's code is on GitHub, and git knowing who
-they are. The runner and the board's first project come after that and are
-added to this guide once they are written. If the steps below stop before
+At the end of step 15 the board is open with the person's name and a first
+project on it. `hatch` is installed, on the `PATH` and pointed at the board,
+and `hatch queue` has answered from the repository folder from step 10, with
+`claude` signed in, `gh` signed in where the person's code is on GitHub, and
+git knowing who they are (steps 7 to 10). If the steps below stop before
 then, the guide is not finished yet: do the steps that are there, then tell
 the person plainly that the rest is not published yet, and stop.
 
@@ -575,7 +576,7 @@ was fetched from (`https://<host>/<owner>/<repo>/...` or
 `https://<owner>.github.io/<repo>/setup/`), so build `https://github.com/<owner>/<repo>.git` from it. If that cannot be
 worked out, ask the person for the repository's address instead of guessing.
 
-(b) The folder exists, `git -C <folder> remote get-url origin` succeeds and
+(b) The folder exists, `git -C ~/hatch remote get-url origin` succeeds and
 `compose.yaml` is in it. It is already a Hatch checkout, so reuse it. Do not
 clone again. Then look at what has changed in it:
 
@@ -1286,9 +1287,9 @@ never inside it, because that one is the board's own source."
 
 **Do it.** Ask which, and ask for a folder name made of letters, digits and
 hyphens, other than `hatch`. Suggest `agent-playground`. The folder is
-`$HOME/<name>` (`$env:USERPROFILE\<name>` in PowerShell), with the person's
-name in place of `<name>`. Look at it first, and never delete or overwrite
-it. If `git -C <folder> remote get-url origin` succeeds, it is a checkout
+`$HOME/<folder-name>` (`$env:USERPROFILE\<folder-name>` in PowerShell),
+with the person's folder name in place of `<folder-name>`. Look at it first,
+and never delete or overwrite it. If `git -C <folder> remote get-url origin` succeeds, it is a checkout
 already: reuse it, do not clone again, and go to the check. If the folder
 exists and that fails, stop and ask for another name.
 
@@ -1850,12 +1851,3 @@ is theirs to do) and the three actions (a) to (c), and that the person says
 they understood or asks a question. Answer any question, and do not start
 (c) for them. There is no failure to name in this step, so it has no **If you
 see** and no **Reference**.
-
-## Where this guide stops for now
-
-The steps above are all that is published so far. Tell the person what is now
-true from the steps you completed: the board is open at `http://localhost:`
-followed by the port, then `/apps/hatch/`; `claude` is installed and signed
-in; the repository folder from step 10 is at the path the check there
-printed; and so on for each later step above. Then tell them plainly that the
-rest of this guide is not published yet, and stop.
