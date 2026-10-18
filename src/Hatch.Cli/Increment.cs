@@ -258,7 +258,8 @@ public sealed record ConflictRun(Rechecked Found, Func<CancellationToken, Task<R
 /// </param>
 public sealed class Increment(
     Board board, ISessionRunner sessions, Settings settings, Terminal say, IReadOnlyList<CheckoutEntry> checkouts,
-    ReadoutState? readout = null, string? tempDirectory = null, Controls? controls = null)
+    ReadoutState? readout = null, string? tempDirectory = null, Controls? controls = null,
+    Func<string, string?, IWorkspace>? workspace = null, Board? quietBoard = null)
 {
     private readonly ReadoutState _readout = readout ?? new();
     private readonly string _temp = tempDirectory ?? Path.GetTempPath();
