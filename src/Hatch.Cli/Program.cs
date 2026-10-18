@@ -89,7 +89,7 @@ if (command == "inbox")
 {
     var inboxRunnerName = await ResolveRunnerAsync(settings.Base, settings.Key, settings.Runner, root ?? here, CancellationToken.None);
     using var hooked = new HatchClient(settings, inboxRunnerName);
-    return await new InboxCommand(new Board(hooked), say, Console.In, TimeProvider.System)
+    return await new InboxCommand(new Board(hooked), say, Console.In, TimeProvider.System, new ClaudeHookOutputWriter())
         .RunAsync(rest, CancellationToken.None);
 }
 
