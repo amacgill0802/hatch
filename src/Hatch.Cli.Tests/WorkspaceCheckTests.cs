@@ -285,6 +285,36 @@ public sealed class WorkspaceCheckTests : RepoFixture
         Assert.False(File.Exists(Path.Combine(_work, ".git", "MERGE_HEAD")));
     }
 
+    [Fact]
+    public void A_branch_that_changes_the_flagged_path_is_reported()
+    {
+        Publish("ha-31-thing", "playbooks.yaml", "changed");
+        var ws = Ws();
+        ws.Fetch();
+
+        Assert.Equal("playbooks.yaml", ws.Check("HA-31", "playbooks.yaml")!.PlaybookFilePath);
+    }
+
+    [Fact]
+    public void A_branch_that_does_not_change_the_flagged_path_reads_null()
+    {
+        Publish("ha-31-thing", "other.txt", "changed");
+        var ws = Ws();
+        ws.Fetch();
+
+        Assert.Null(ws.Check("HA-31", "playbooks.yaml")!.PlaybookFilePath);
+    }
+
+    [Fact]
+    public void Checked_with_no_path_it_reads_null_though_the_branch_does_change_it()
+    {
+        Publish("ha-31-thing", "playbooks.yaml", "changed");
+        var ws = Ws();
+        ws.Fetch();
+
+        Assert.Null(ws.Check("HA-31")!.PlaybookFilePath);
+    }
+
     // ---- What leaving reports ----
 
     [Fact]

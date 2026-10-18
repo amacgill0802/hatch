@@ -46,13 +46,14 @@ public sealed record RemoteHeads(string Trunk, IReadOnlyDictionary<string, strin
 /// <param name="TrunkSha">Full, so that two runners looking at the same two shas agree.</param>
 /// <param name="BranchSha">Full. Null for the two verdicts that are not about one branch.</param>
 /// <param name="HoldsTrunk">See <see cref="MergeCheckRequest.HoldsTrunk"/>.</param>
+/// <param name="PlaybookFilePath">See <see cref="MergeCheckRequest.PlaybookFilePath"/>.</param>
 public sealed record Verdict(
     string Kind, string Trunk, string TrunkSha, string? Branch, string? BranchSha, IReadOnlyList<string> Files,
-    bool? HoldsTrunk = null)
+    bool? HoldsTrunk = null, string? PlaybookFilePath = null)
 {
     /// <summary>The wire form, under the remote as this runner spells it.</summary>
     public MergeCheckRequest ToRequest(string remote, string runner) =>
-        new(remote, Trunk, TrunkSha, Kind, Branch, BranchSha, Files, runner, HoldsTrunk);
+        new(remote, Trunk, TrunkSha, Kind, Branch, BranchSha, Files, runner, HoldsTrunk, PlaybookFilePath);
 
     /// <summary>
     /// The one line the terminal says when a verdict changes: <c>HA-12 conflicts
@@ -169,7 +170,13 @@ public sealed partial class Workspace
     /// stand - so it does not fetch. Null when it cannot be said: git older
     /// than <see cref="MergeTree"/>, no trunk, or a merge git would not answer.
     /// </summary>
-    public Verdict? Check(string key)
+    /// <param name="playbookFilePath">
+    /// The path to check for a change between the trunk's tip and the branch's
+    /// tip, reported back on the verdict when it changed. Null reports nothing,
+    /// even when the branch does change it - only a caller that is asked
+    /// reports it at all.
+    /// </param>
+    public Verdict? Check(string key, string? playbookFilePath = null)
     {
         if (!AtLeast(MergeTree))
         {
@@ -195,10 +202,15 @@ public sealed partial class Workspace
         // says so without asking for the merge - the test Sync makes, so the
         // two cannot disagree about which branches need a merge commit.
         if (Git("merge-base", "--is-ancestor", trunkRef, branchRef).Ok)
-            return new Verdict(MergeVerdicts.Clean, trunk, trunkSha, branch, branchSha, [], true);
+            return new Verdict(
+                MergeVerdicts.Clean, trunk, trunkSha, branch, branchSha, [], true,
+                ChangedPlaybookFile(trunkSha, branchSha, playbookFilePath));
 
         var merge = Git("merge-tree", "--write-tree", "--name-only", trunkRef, branchRef);
-        if (merge.Ok) return new Verdict(MergeVerdicts.Clean, trunk, trunkSha, branch, branchSha, [], false);
+        if (merge.Ok)
+            return new Verdict(
+                MergeVerdicts.Clean, trunk, trunkSha, branch, branchSha, [], false,
+                ChangedPlaybookFile(trunkSha, branchSha, playbookFilePath));
 
         // Exit 1 is a conflict and the only exit that says so. A conflict with
         // no file named would be refused by the board and is not one to guess
@@ -208,7 +220,9 @@ public sealed partial class Workspace
         var files = ConflictedFiles(merge.Out);
         return files.Count == 0
             ? null
-            : new Verdict(MergeVerdicts.Conflicted, trunk, trunkSha, branch, branchSha, files, false);
+            : new Verdict(
+                MergeVerdicts.Conflicted, trunk, trunkSha, branch, branchSha, files, false,
+                ChangedPlaybookFile(trunkSha, branchSha, playbookFilePath));
     }
 
     private string? FullSha(string reference)
@@ -216,4 +230,15 @@ public sealed partial class Workspace
         var sha = Git("rev-parse", "--verify", "--quiet", reference);
         return sha.Ok && sha.Out.Trim() is { Length: > 0 } text ? text : null;
     }
+
+    /// <summary>
+    /// <paramref name="path"/> itself when the branch's tip differs from the
+    /// trunk's tip there, read from the two shas already in hand - no worktree
+    /// touched, no second fetch. Null when no path was asked for, proving the
+    /// caller and not the branch's own content decides whether anything is
+    /// reported.
+    /// </summary>
+    private string? ChangedPlaybookFile(string trunkSha, string branchSha, string? path) =>
+        path is not null && Git("diff", "--name-only", trunkSha, branchSha, "--", path).Out.Trim().Length > 0
+            ? path : null;
 }

@@ -84,7 +84,7 @@ public interface IWorkspace
     /// origin, read from the refs as they stand. Does not fetch, and touches no
     /// worktree or index. Null when it cannot be said.
     /// </summary>
-    Verdict? Check(string key);
+    Verdict? Check(string key, string? playbookFilePath = null);
 
     /// <summary>
     /// A path's exact bytes, read from the refs as they stand - does not fetch;

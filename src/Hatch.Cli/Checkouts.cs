@@ -366,7 +366,12 @@ public static class Checkouts
     /// The board's own identity for the repository, where the project binds it.
     /// Null for a project that binds nothing, where the board has none to give.
     /// </param>
-    public sealed record Polled(string Path, string? BaseBranch, string? Remote, string? Canonical);
+    /// <param name="PlaybookFilePath">
+    /// The repository's own <see cref="WorkRepositoryDto.PlaybookFilePath"/>,
+    /// passed to <see cref="IWorkspace.Check"/> for this checkout. Null for the
+    /// standing checkout, which binds no repository to carry one.
+    /// </param>
+    public sealed record Polled(string Path, string? BaseBranch, string? Remote, string? Canonical, string? PlaybookFilePath = null);
 
     /// <summary>
     /// Every checkout of this runner's that a poll of the issue looks in: each
@@ -406,7 +411,8 @@ public static class Checkouts
                 matched.Path,
                 matched.Standing ? standingBaseBranch ?? r.BaseBranch : r.BaseBranch,
                 matched.Remote,
-                r.Canonical));
+                r.Canonical,
+                r.PlaybookFilePath));
         }
 
         return found;

@@ -264,7 +264,7 @@ public sealed class Poll
         var unknown = 0;
         foreach (var (target, fingerprint) in moved)
         {
-            if (workspace.Check(target.Key) is not { } verdict)
+            if (workspace.Check(target.Key, target.Where.PlaybookFilePath) is not { } verdict)
             {
                 unknown++;
                 continue;
