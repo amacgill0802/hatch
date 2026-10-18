@@ -477,10 +477,12 @@ server as well.
 
 ## What the session is told
 
-Every increment's prompt is assembled from the playbook row for that column
-transition and issue type, then the ticket (key, type, title, the move it is
-making, dates, description), its children, the questions already answered
-under **Decisions already made**, and a fixed tail: how to reach Hatch from
+Every increment's prompt is assembled from the playbook matched for that
+column transition and issue type - a repo-sourced project's file row, where
+it has one, standing in for its own table row - then the ticket (key, type,
+title, the move it is making, dates, description), its children, the
+questions already answered under **Decisions already made**, and a fixed
+tail: how to reach Hatch from
 inside the session, how to ask when it cannot decide, where the increment
 ends, and the instruction to finish with a `work-log` block. `hatch work
 --dry-run` prints the whole thing.
