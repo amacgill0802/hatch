@@ -87,6 +87,12 @@ public interface IWorkspace
     Verdict? Check(string key);
 
     /// <summary>
+    /// A path's exact bytes, read from the refs as they stand - does not fetch;
+    /// the caller brings <c>origin/&lt;trunk&gt;</c> current first.
+    /// </summary>
+    BlobRead ReadBlob(string trunk, string path);
+
+    /// <summary>
     /// Whether the tree is exactly as a check session was given it: nothing
     /// uncommitted, and <c>HEAD</c> still at <paramref name="head"/> - which is
     /// <see cref="BranchEntry.Head"/>, what <see cref="Enter"/> left it at, not
@@ -175,12 +181,20 @@ public sealed record LimitPushed(LimitPush Outcome, string? Branch, string? Sha,
 /// How git is run, where something other than a process apiece is wanted - a
 /// test host that is slow to fork, chiefly. Null, which is every runner, spawns.
 /// </param>
+/// <param name="gitBytes">
+/// The same seam as <paramref name="git"/>, for the raw-byte read - a test that
+/// wants fixed bytes back with no process. Null, which is every runner, spawns.
+/// </param>
 public sealed partial class Workspace(
-    string root, string? configuredBase, Action<string> say, Action<string> complain, Workspace.GitRunner? git = null)
+    string root, string? configuredBase, Action<string> say, Action<string> complain, Workspace.GitRunner? git = null,
+    Workspace.GitBytesRunner? gitBytes = null)
     : IWorkspace
 {
     /// <summary>Git in a directory: its exit code, standard output and standard error.</summary>
     public delegate (int Code, string Out, string Err) GitRunner(string dir, string[] args);
+
+    /// <summary>Git in a directory, where the output is bytes rather than text.</summary>
+    public delegate (int Code, byte[] Out, string Err) GitBytesRunner(string dir, string[] args);
 
     /// <summary>
     /// What a branch is cut from, and the one thing about it that cannot be
@@ -510,6 +524,50 @@ public sealed partial class Workspace(
         catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException)
         {
             return new Ran(-1, "", "");
+        }
+    }
+
+    /// <summary>
+    /// Git in a directory, read as bytes rather than text - for the one caller
+    /// that cannot afford <see cref="Git"/>'s decode. Reads
+    /// <see cref="Process.StandardOutput"/>'s <c>BaseStream</c> directly, and
+    /// never a read method on <see cref="Process.StandardOutput"/> itself: the
+    /// first of those triggers the <c>StreamReader</c>'s BOM/encoding detection,
+    /// which can consume leading bytes before <c>BaseStream</c> is ever touched.
+    /// </summary>
+    private (int Code, byte[] Out, string Err) GitBytes(params string[] args)
+    {
+        if (gitBytes is not null) return gitBytes(root, args);
+
+        var start = new ProcessStartInfo
+        {
+            FileName = "git",
+            WorkingDirectory = root,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        foreach (var arg in args) start.ArgumentList.Add(arg);
+
+        try
+        {
+            using var process = Process.Start(start);
+            if (process is null) return (-1, [], "");
+
+            // Both at once, as Git does: a command with more to say on stderr
+            // than a pipe holds would otherwise wait for a reader that is busy
+            // on stdout.
+            var stderr = process.StandardError.ReadToEndAsync();
+
+            using var buffer = new MemoryStream();
+            process.StandardOutput.BaseStream.CopyTo(buffer);
+
+            process.WaitForExit();
+            return (process.ExitCode, buffer.ToArray(), stderr.GetAwaiter().GetResult());
+        }
+        catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            return (-1, [], "");
         }
     }
 }
