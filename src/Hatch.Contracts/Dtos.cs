@@ -2426,6 +2426,7 @@ public static class Landings
 /// or when it conflicts. Null for <c>none</c> and <c>ambiguous</c>, which name no
 /// branch.
 /// </param>
+/// <param name="PlaybookFilePath">The path of the project's playbook file (<c>.hatch/playbooks.yaml</c>) this branch's pull request changes, as the runner found it in the branch's diff. Null when it does not, or for <c>none</c> and <c>ambiguous</c>, which name no branch.</param>
 public record MergeCheckRequest(
     string Remote,
     string Trunk,
@@ -2435,7 +2436,8 @@ public record MergeCheckRequest(
     string? BranchSha,
     IReadOnlyList<string>? Files,
     string Runner,
-    bool? HoldsTrunk = null);
+    bool? HoldsTrunk = null,
+    string? PlaybookFilePath = null);
 
 /// <summary>
 /// A runner reporting that the pull request recorded on an issue has merged.
@@ -2477,6 +2479,7 @@ public record PullRequestPushbackRequest(string Url, string Runner);
 /// <param name="HoldsTrunk">See <see cref="MergeCheckRequest.HoldsTrunk"/>.</param>
 /// <param name="CheckedAt">When the board took it.</param>
 /// <param name="CheckedBy">The name of the credential it arrived under.</param>
+/// <param name="PlaybookFilePath">See <see cref="MergeCheckRequest.PlaybookFilePath"/>.</param>
 public record MergeCheckDto(
     string Remote,
     string Canonical,
@@ -2489,7 +2492,8 @@ public record MergeCheckDto(
     bool? HoldsTrunk,
     DateTimeOffset CheckedAt,
     string Runner,
-    string CheckedBy);
+    string CheckedBy,
+    string? PlaybookFilePath = null);
 
 /// <summary>
 /// A landing write, as a session's own report or a runner's poll of a

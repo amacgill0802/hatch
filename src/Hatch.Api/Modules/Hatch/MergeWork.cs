@@ -52,6 +52,11 @@ public static class MergeWork
         var clean = counted.Where(v => v.Verdict == MergeVerdicts.Clean).ToList();
         var trunk = clean[0].Trunk;
 
+        Judgement MergeOr(string sentence) =>
+            clean.FirstOrDefault(m => m.PlaybookFilePath is not null) is { PlaybookFilePath: { } path }
+                ? Hold($"its pull request changes {path} - a person merges it on the forge after reading it")
+                : new Judgement(WorkKinds.Merge, sentence);
+
         // The builds that are about the branch as the merge check read it. A
         // repository with no build verdict at all is not in either list: it
         // says nothing, which is the sentence it has always had.
@@ -78,20 +83,20 @@ public static class MergeWork
             return Pending($"its branch holds {trunk} - no checks have run on it yet");
 
         if (about.All(b => b.Verdict == BuildVerdicts.Passed))
-            return new Judgement(WorkKinds.Merge, $"its branch holds {trunk} and its build passes");
+            return MergeOr($"its branch holds {trunk} and its build passes");
 
         if (!about.All(b => now - b.ShaSince >= SettleWindow))
             return Pending($"its branch holds {trunk} and no checks ran on it");
 
         if (!checksRequired)
-            return new Judgement(WorkKinds.Merge, $"its branch holds {trunk}; this project requires no checks");
+            return MergeOr($"its branch holds {trunk}; this project requires no checks");
 
         // The forge's state is about one sha; it says nothing of a branch that has moved since.
         var judgedSha = mergeStateSha is not null
             && clean.Any(m => string.Equals(m.BranchSha, mergeStateSha, StringComparison.Ordinal));
 
         if (judgedSha && mergeState == MergeStates.Clean)
-            return new Judgement(WorkKinds.Merge, $"its branch holds {trunk}, no checks ran on it, and nothing is required of it");
+            return MergeOr($"its branch holds {trunk}, no checks ran on it, and nothing is required of it");
 
         if (judgedSha && mergeState == MergeStates.Blocked)
             return Hold($"its branch holds {trunk} and no checks ran on it - its pull request is blocked by the repository's rules");

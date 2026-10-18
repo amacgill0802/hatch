@@ -482,6 +482,10 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<long>("IssueId")
                         .HasColumnType("bigint");
 
+                    b.Property<string>("PlaybookFilePath")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<string>("Remote")
                         .IsRequired()
                         .HasMaxLength(500)

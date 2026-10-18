@@ -86,12 +86,15 @@ public class MergeCheckController(
         var branch = hasBranch ? request.Branch?.Trim() : null;
         var branchSha = hasBranch ? request.BranchSha?.Trim() : null;
         var holdsTrunk = hasBranch ? request.HoldsTrunk : null;
+        var playbookFilePath = hasBranch ? request.PlaybookFilePath?.Trim() : null;
         if (hasBranch && string.IsNullOrEmpty(branchSha))
             return BadRequest($"a {verdict} verdict names the sha the branch stood at");
         if (branch is { Length: > EfHatchMergeCheck.MaxRefLength })
             return BadRequest($"a branch is at most {EfHatchMergeCheck.MaxRefLength} characters");
         if (branchSha is { Length: > EfHatchMergeCheck.MaxShaLength })
             return BadRequest($"a sha is at most {EfHatchMergeCheck.MaxShaLength} characters");
+        if (playbookFilePath is { Length: > EfHatchMergeCheck.MaxRefLength })
+            return BadRequest($"a playbook file path is at most {EfHatchMergeCheck.MaxRefLength} characters");
 
         // Sorted, so that the same conflict listed in another order by another
         // runner's git is the same verdict and not a change.
@@ -146,6 +149,7 @@ public class MergeCheckController(
         row.Branch = branch;
         row.BranchSha = branchSha;
         row.HoldsTrunk = holdsTrunk;
+        row.PlaybookFilePath = playbookFilePath;
         row.Verdict = verdict;
         row.Files = EfHatchMergeCheck.JoinFiles(files);
         row.CheckedAt = now;
@@ -180,5 +184,5 @@ public static class IssueMergeChecks
 {
     public static MergeCheckDto Project(EfHatchMergeCheck m) => new(
         m.Remote, m.Canonical, m.Trunk, m.TrunkSha, m.Verdict, m.Branch, m.BranchSha,
-        EfHatchMergeCheck.SplitFiles(m.Files), m.HoldsTrunk, m.CheckedAt, m.Runner, m.CheckedBy);
+        EfHatchMergeCheck.SplitFiles(m.Files), m.HoldsTrunk, m.CheckedAt, m.Runner, m.CheckedBy, m.PlaybookFilePath);
 }
