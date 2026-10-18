@@ -384,8 +384,10 @@ account has left. Without one there is simply no battery.
 1. **Morning.** Open the board. Review the pull requests in In Review and merge
    the ones that are right; the merge is what clears the dependencies waiting
    on them. A `gh pr merge` from the terminal, in any mode, counts the same as
-   a click on the forge's own button. Answer the questions. Move merged work
-   to Done.
+   a click on the forge's own button. A pull request flagged as changing
+   `.hatch/playbooks.yaml` is held on purpose, and is merged from the forge by
+   a person who has read it, not by a press here. Answer the questions. Move
+   merged work to Done.
 2. **Write.** Put new ideas in Draft. When one is ready to be specified, move it
    to Breakdown and an agent turns it into an epic with stories under it. Read
    what came back; move what you want built to Backlog, and drag the rest of

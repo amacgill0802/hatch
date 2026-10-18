@@ -1010,4 +1010,10 @@ mistake and says so.
 | PowerShell 5.1 or newer | `scripts\hatch.ps1` only | Windows PowerShell or PowerShell 7. Where the execution policy refuses scripts, see `running-the-agent.md`. |
 | Docker | the board, and the container runner | |
 
+An agent other than the loop's own merge train, asked by the operator to run
+`gh pr merge` on their behalf, checks the issue's merge checks first, and
+where a clean one carries `PlaybookFilePath`, stops and asks instead of
+merging - the same reason `MergeWork.Judge` holds it: a person who has read
+the diff merges it, which is the one thing Hatch cannot and does not refuse.
+
 Not used anywhere: Node, `jq`, `curl`, `python`, `openssl`.
