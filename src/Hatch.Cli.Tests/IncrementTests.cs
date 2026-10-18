@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Net;
+using System.Security.Cryptography;
 using Microsoft.Extensions.Time.Testing;
 
 namespace Hatch.Cli.Tests;
@@ -1535,5 +1536,191 @@ public sealed class IncrementTests
         {
             Directory.Delete(dir, recursive: true);
         }
+    }
+
+    // ---- The spawn-time playbook-file read (HA-809) ----
+
+    private const string PlaybookPath = ".hatch/playbooks.yaml";
+    private static readonly string JudgedSha = new('a', 40);
+    private static readonly string TrunkTip = new('b', 40);
+    private static readonly byte[] PlaybookBytes = "playbooks: []"u8.ToArray();
+    private static readonly string PlaybookHash = Convert.ToHexStringLower(SHA256.HashData(PlaybookBytes));
+
+    private static async Task<(IncrementReport Report, Harness H)> RunPlaybookCheckAsync(
+        PlaybookFileReferenceDto? reference, Action<Harness>? arrange = null)
+    {
+        var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("PUT", "/api/hatch/playbook-files", Fixtures.PlaybookFile());
+
+        arrange?.Invoke(h);
+
+        var repositories = new[] { new Checkouts.RepositoryLine(h.Root, "git@example.test:o/r.git", true, null) };
+        var work = Fixtures.Work("AER-1", playbookFile: reference);
+
+        var report = await h.Runtime.Increment().RunAsync(
+            work, h.Root, "opus", "high", quiet: false, claim, default,
+            repositories: repositories, runnerName: h.Runtime.RunnerName);
+
+        await claim.ReleaseAsync();
+        return (report, h);
+    }
+
+    [Fact]
+    public async Task The_spawn_time_read_matches_hash_and_spawns_as_today()
+    {
+        var (report, h) = await RunPlaybookCheckAsync(
+            Fixtures.PlaybookFileReference(path: PlaybookPath, trunk: "main", sha: JudgedSha, hash: PlaybookHash),
+            arrange: h =>
+            {
+                h.Workspace.HeadsFor[h.Root] = new RemoteHeads("main", new Dictionary<string, string> { ["main"] = TrunkTip });
+                h.Workspace.BlobsFor[(h.Root, "main", PlaybookPath)] = new BlobRead(BlobOutcome.Found, PlaybookBytes, null);
+            });
+        using var _h = h;
+
+        Assert.False(report.PlaybookStale);
+        Assert.True(report.Moved);
+        Assert.Single(h.Sessions.Spawned);
+        Assert.Contains($"heads {h.Root}", h.Workspace.Calls);
+        Assert.Contains($"fetch {h.Root}", h.Workspace.Calls);
+        Assert.Contains($"read-blob {h.Root} main {PlaybookPath}", h.Workspace.Calls);
+    }
+
+    [Fact]
+    public async Task The_spawn_time_read_refuses_a_moved_file_without_counting_a_stall()
+    {
+        var (report, h) = await RunPlaybookCheckAsync(
+            Fixtures.PlaybookFileReference(path: PlaybookPath, trunk: "main", sha: JudgedSha, hash: "stale-hash"),
+            arrange: h =>
+            {
+                h.Workspace.HeadsFor[h.Root] = new RemoteHeads("main", new Dictionary<string, string> { ["main"] = TrunkTip });
+                h.Workspace.BlobsFor[(h.Root, "main", PlaybookPath)] = new BlobRead(BlobOutcome.Found, PlaybookBytes, null);
+            });
+        using var _h = h;
+
+        Assert.True(report.PlaybookStale);
+        Assert.Contains(PlaybookPath, report.Flag);
+        Assert.Contains("main", report.Flag);
+        Assert.Contains(JudgedSha, report.Flag);
+        Assert.Contains(TrunkTip, report.Flag);
+        Assert.Empty(h.Sessions.Spawned);
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/work-log"));
+        Assert.Empty(h.Wire.To("PUT", "/api/hatch/issues/AER-1/stall"));
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+
+        var put = Assert.Single(h.Wire.To("PUT", "/api/hatch/playbook-files"));
+        var request = put.Read<PlaybookFileRequest>();
+        Assert.Equal("git@example.test:o/r.git", request.Remote);
+        Assert.Equal("main", request.Trunk);
+        Assert.Equal(TrunkTip, request.Sha);
+        Assert.Equal(Convert.ToBase64String(PlaybookBytes), request.Content);
+        Assert.Null(request.Url);
+        Assert.Equal(h.Runtime.RunnerName, request.Runner);
+    }
+
+    [Fact]
+    public async Task The_spawn_time_read_compares_hashes_not_shas_so_a_moved_trunk_with_the_same_bytes_still_spawns()
+    {
+        var (report, h) = await RunPlaybookCheckAsync(
+            Fixtures.PlaybookFileReference(path: PlaybookPath, trunk: "main", sha: JudgedSha, hash: PlaybookHash),
+            arrange: h =>
+            {
+                // TrunkTip differs from JudgedSha, but the bytes behind it do not.
+                h.Workspace.HeadsFor[h.Root] = new RemoteHeads("main", new Dictionary<string, string> { ["main"] = TrunkTip });
+                h.Workspace.BlobsFor[(h.Root, "main", PlaybookPath)] = new BlobRead(BlobOutcome.Found, PlaybookBytes, null);
+            });
+        using var _h = h;
+
+        Assert.False(report.PlaybookStale);
+        Assert.Single(h.Sessions.Spawned);
+        Assert.Empty(h.Wire.To("PUT", "/api/hatch/playbook-files"));
+    }
+
+    [Fact]
+    public async Task The_spawn_time_read_refuses_when_the_file_is_missing_where_the_reference_expected_content()
+    {
+        var (report, h) = await RunPlaybookCheckAsync(
+            Fixtures.PlaybookFileReference(path: PlaybookPath, trunk: "main", sha: JudgedSha, hash: PlaybookHash),
+            arrange: h =>
+            {
+                h.Workspace.HeadsFor[h.Root] = new RemoteHeads("main", new Dictionary<string, string> { ["main"] = TrunkTip });
+                // BlobsFor left unset: FakeWorkspace.ReadBlob defaults to BlobOutcome.Absent.
+            });
+        using var _h = h;
+
+        Assert.True(report.PlaybookStale);
+        Assert.Contains("is missing", report.Flag);
+        Assert.Empty(h.Sessions.Spawned);
+
+        var put = Assert.Single(h.Wire.To("PUT", "/api/hatch/playbook-files"));
+        Assert.Null(put.Read<PlaybookFileRequest>().Content);
+    }
+
+    [Fact]
+    public async Task The_spawn_time_read_spawns_anyway_when_origin_does_not_answer_the_heads_call()
+    {
+        var (report, h) = await RunPlaybookCheckAsync(
+            Fixtures.PlaybookFileReference(path: PlaybookPath, trunk: "main", sha: JudgedSha, hash: PlaybookHash));
+        // HeadsFor left unset: FakeWorkspace.Heads() defaults to null.
+        using var _h = h;
+
+        Assert.False(report.PlaybookStale);
+        Assert.Single(h.Sessions.Spawned);
+        Assert.Empty(h.Wire.To("PUT", "/api/hatch/playbook-files"));
+        Assert.True(h.Say.Mentions("origin did not answer"));
+    }
+
+    [Fact]
+    public async Task The_spawn_time_read_spawns_anyway_when_the_fetch_fails()
+    {
+        var (report, h) = await RunPlaybookCheckAsync(
+            Fixtures.PlaybookFileReference(path: PlaybookPath, trunk: "main", sha: JudgedSha, hash: PlaybookHash),
+            arrange: h =>
+            {
+                h.Workspace.HeadsFor[h.Root] = new RemoteHeads("main", new Dictionary<string, string> { ["main"] = TrunkTip });
+                h.Workspace.FetchAnswer = false;
+            });
+        using var _h = h;
+
+        Assert.False(report.PlaybookStale);
+        Assert.Single(h.Sessions.Spawned);
+        Assert.Empty(h.Wire.To("PUT", "/api/hatch/playbook-files"));
+        Assert.True(h.Say.Mentions("could not fetch"));
+    }
+
+    [Fact]
+    public async Task The_spawn_time_read_spawns_anyway_when_the_blob_read_fails()
+    {
+        var (report, h) = await RunPlaybookCheckAsync(
+            Fixtures.PlaybookFileReference(path: PlaybookPath, trunk: "main", sha: JudgedSha, hash: PlaybookHash),
+            arrange: h =>
+            {
+                h.Workspace.HeadsFor[h.Root] = new RemoteHeads("main", new Dictionary<string, string> { ["main"] = TrunkTip });
+                h.Workspace.BlobsFor[(h.Root, "main", PlaybookPath)] = new BlobRead(BlobOutcome.Failed, null, "git exited 128");
+            });
+        using var _h = h;
+
+        Assert.False(report.PlaybookStale);
+        Assert.Single(h.Sessions.Spawned);
+        Assert.Empty(h.Wire.To("PUT", "/api/hatch/playbook-files"));
+        Assert.True(h.Say.Mentions("could not read"));
+    }
+
+    [Fact]
+    public async Task The_spawn_time_read_is_skipped_entirely_for_a_table_sourced_project()
+    {
+        var (report, h) = await RunPlaybookCheckAsync(reference: null);
+        using var _h = h;
+
+        Assert.False(report.PlaybookStale);
+        Assert.Single(h.Sessions.Spawned);
+        Assert.DoesNotContain(h.Workspace.Calls, c => c.StartsWith("heads ", StringComparison.Ordinal));
+        Assert.DoesNotContain(h.Workspace.Calls, c => c.StartsWith("fetch ", StringComparison.Ordinal));
+        Assert.DoesNotContain(h.Workspace.Calls, c => c.StartsWith("read-blob ", StringComparison.Ordinal));
     }
 }
