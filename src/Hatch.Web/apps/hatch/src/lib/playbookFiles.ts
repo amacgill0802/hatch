@@ -86,3 +86,12 @@ export function repoSourcedReason(project: Project): string | null {
     ? `${project.key} reads its own playbooks from .hatch/playbooks.yaml on its trunk, not from a row here`
     : null;
 }
+
+/** What the issue page says beside the model and effort override fields for
+    a repo-sourced project's issue - see HA-460. Null when the project is not
+    repo-sourced, in which case the page says nothing extra there. */
+export function repoSourcedOverrideHint(project: Pick<Project, 'repoSourced'>): string | null {
+  return project.repoSourced
+    ? "This project's playbooks come from .hatch/playbooks.yaml on its trunk; a board-wide row speaks where that file is silent."
+    : null;
+}
