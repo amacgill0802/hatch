@@ -5466,23 +5466,28 @@ is a stash that would not go.
 
 **An increment that moved, resolved or fixed and ended in review is refused as
 unpublished** (`GoToWork.cs:1590-1596`, `Unpublished.RefuseAsync`; the same guard
-in `WorkCommand.cs:633-637` for `hatch work <key>`) on either of two arms: a
+in `WorkCommand.cs:632-639` for `hatch work <key>`) on either of two arms: a
 branch left **unmerged on origin** (`left.BranchOnOrigin && !left.HasPullRequest`,
 where `BranchOnOrigin` is the merge check's verdict being anything but `none`, so
 a branch whose changes are all in the trunk counts as absent), or, in a
 trunk-landing project, **no landing recorded** (`Lifecycle.HasLandingAsync`,
-`LeaveOutcome.HasLanding`). `Lifecycle.LeaveAsync` sets the pull request to false
-there without asking the board, so `LeaveOutcome.HasPullRequest` is always false
-and the first arm has no pull request that could clear it; a session that merged,
-pushed and deleted its branch trips neither arm once `hatch landed` has recorded
-the landing. The comment and the question the guard writes are worded for a pull
-request today (HA-742): the comment says "no pull request recorded for the
-branch it pushed" (or `a branch on origin` where no branch was cut or entered,
-the usual trunk-landing case), the terminal line says "left a branch on origin
-with no pull request", and the second occurrence in a row asks "has one been
-opened?" with the options `pull request recorded` and `no pull request needed
-for this ticket` - neither points at `hatch landed`. Delete this sentence when
-HA-742 is fixed.
+`LeaveOutcome.HasLanding`). The two call sites pick exactly one of those arms by
+`work.Landing` (`var trunkLanding = work.Landing == Landings.Trunk`) rather than
+evaluating both and OR'ing them, so a trunk-landing project is judged by
+`!left.HasLanding` alone - never by `BranchOnOrigin` - and a trunk-landing issue
+that already has a landing recorded no longer trips the guard merely because a
+stray branch is still on origin; `RefuseAsync` takes that choice as a
+`trunkLanding` parameter and words its comment, terminal line and question
+around whichever arm fired. For a pull-request project the comment, terminal
+line and question read exactly as before: the comment says "no pull request
+recorded for the branch it pushed" (or `a branch on origin` where no branch was
+cut or entered), the terminal line says "left a branch on origin with no pull
+request", and the second occurrence in a row asks "has one been opened?" with
+the options `pull request recorded` and `no pull request needed for this
+ticket`. For a trunk-landing project the comment says "no landing recorded" and
+names `hatch landed <key> <sha>`, the terminal line says "left no landing
+recorded", and the second occurrence asks whether the work has landed, with the
+options `landing recorded` and `no landing needed for this ticket`.
 
 **The runner never pushes to the trunk**, in any project. Landing is the
 session's own `git push`; `hatch landed` records it, the poll confirms it
