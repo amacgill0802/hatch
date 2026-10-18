@@ -4658,6 +4658,21 @@ public class WorkControllerTests
     }
 
     [Fact]
+    public async Task HopWork_OnACloseRow_StampsClosedAt()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "ready to close", h.Review);
+        await h.PreApprovedAsync(issue);
+        await h.FileAsync("task", "the only child", h.Done, parentId: issue.Id);
+
+        await h.Work.HopWork(Key(issue), null, null, null, default);
+
+        var row = await h.Db.Issues.AsNoTracking().FirstAsync(i => i.Id == issue.Id);
+        Assert.Equal(h.Done, row.StatusId);
+        Assert.Equal(Now, row.ClosedAt);
+    }
+
+    [Fact]
     public async Task HopWork_OnACloseRow_WritesTheClosedCommentNamingItsOwnRow()
     {
         var h = await NewAsync();
@@ -7362,6 +7377,25 @@ public class WorkControllerTests
     }
 
     [Fact]
+    public async Task PushbackWork_LeavesClosedAtNull_BecauseTheMergeColumnIsNeverTerminal()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("task", "its branch conflicts", approved.Id);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+        await h.VerdictAsync(issue, MergeVerdicts.Conflicted);
+
+        await h.Work.PushbackWork(
+            Key(issue), new PullRequestPushbackRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default);
+
+        var row = await h.Db.Issues.AsNoTracking().FirstAsync(i => i.Id == issue.Id);
+        Assert.Equal(h.Review, row.StatusId);
+        Assert.Null(row.ClosedAt);
+    }
+
+    [Fact]
     public async Task PushbackWork_ForAFailedBuild_MovesToReviewRankedAtItsBottomWithACommentAndAnEvent()
     {
         var h = await NewAsync();
@@ -7667,6 +7701,22 @@ public class WorkControllerTests
 
         var comment = Assert.Single(await h.Db.Comments.Where(c => c.IssueId == issue.Id).ToListAsync());
         Assert.Equal("Landed on main at ccccccc; the trunk's build passes.", comment.Body);
+    }
+
+    [Fact]
+    public async Task LandedWork_StampsClosedAt()
+    {
+        var h = await NewAsync();
+        await h.SetLandingAsync(Landings.Trunk);
+        var issue = await h.FileAsync("story", "direct", h.Review);
+        await h.LandingAsync(issue, Landed, containedBy: Landed);
+        await h.TrunkBuildAsync("main", Landed, BuildVerdicts.Passed);
+
+        await h.Work.LandedWork(Key(issue), default);
+
+        var row = await h.Db.Issues.AsNoTracking().FirstAsync(i => i.Id == issue.Id);
+        Assert.Equal(h.Done, row.StatusId);
+        Assert.Equal(Now, row.ClosedAt);
     }
 
     [Fact]
@@ -9722,6 +9772,25 @@ public class WorkControllerTests
         h.Db.ChangeTracker.Clear();
         foreach (var id in new[] { story.Id, waiting.Id, alsoWaiting.Id })
             Assert.Equal(h.Done, (await h.Db.Issues.FirstAsync(i => i.Id == id)).StatusId);
+    }
+
+    [Fact]
+    public async Task OnePr_AMergedStory_StampsClosedAtOnItselfAndOnEveryTaskItCarries()
+    {
+        var h = await NewAsync();
+        var (story, waiting) = await OnePrStoryAsync(h);
+        story.StatusId = h.Review;
+        await h.SetPullRequestAsync(story, StoryPr);
+
+        await h.Work.MergedWork(Key(story), new PullRequestMergedRequest(StoryPr, "somewhere:/checkouts/one"), default);
+
+        h.Db.ChangeTracker.Clear();
+        foreach (var id in new[] { story.Id, waiting.Id })
+        {
+            var row = await h.Db.Issues.FirstAsync(i => i.Id == id);
+            Assert.Equal(h.Done, row.StatusId);
+            Assert.Equal(Now, row.ClosedAt);
+        }
     }
 
     [Fact]
