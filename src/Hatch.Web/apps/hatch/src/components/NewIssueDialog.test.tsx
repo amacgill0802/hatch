@@ -61,6 +61,10 @@ const PROJECT: Project = {
   landing: 'pull-request',
   checksRequired: true,
   onePullRequest: false,
+  autoHealBugEnabled: false,
+  autoHealBugPriority: 'emergency',
+  autoHealBugPreApproval: 'express',
+  autoHealBugStatusId: null,
 };
 
 const OTHER: Project = {
@@ -79,6 +83,10 @@ const OTHER: Project = {
   landing: 'pull-request',
   checksRequired: true,
   onePullRequest: false,
+  autoHealBugEnabled: false,
+  autoHealBugPriority: 'emergency',
+  autoHealBugPreApproval: 'express',
+  autoHealBugStatusId: null,
 };
 
 const noop = () => undefined;

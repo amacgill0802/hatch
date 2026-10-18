@@ -19,6 +19,10 @@ const projectOf = (key: string, name: string): Project => ({
   landing: 'pull-request',
   checksRequired: false,
   onePullRequest: false,
+  autoHealBugEnabled: false,
+  autoHealBugPriority: 'emergency',
+  autoHealBugPreApproval: 'express',
+  autoHealBugStatusId: null,
 });
 
 const ONE = [projectOf('AER', 'Aero')];

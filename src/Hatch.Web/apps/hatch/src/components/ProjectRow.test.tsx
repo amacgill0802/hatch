@@ -19,6 +19,10 @@ const BASE: Project = {
   landing: 'pull-request',
   checksRequired: true,
   onePullRequest: false,
+  autoHealBugEnabled: false,
+  autoHealBugPriority: 'emergency',
+  autoHealBugPreApproval: 'express',
+  autoHealBugStatusId: null,
 };
 
 const noop = () => undefined;
