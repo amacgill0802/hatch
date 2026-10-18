@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
+using NpgsqlTypes;
 
 #nullable disable
 
@@ -130,9 +131,19 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<string>("Options")
                         .HasColumnType("jsonb");
 
+                    b.Property<NpgsqlTsVector>("SearchVector")
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("tsvector")
+                        .HasComputedColumnSql("setweight(to_tsvector('english', \"Body\"), 'C')", true);
+
                     b.HasKey("Id");
 
                     b.HasIndex("AnswersId");
+
+                    b.HasIndex("SearchVector");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("SearchVector"), "GIN");
 
                     b.HasIndex("IssueId", "CreatedAt");
 
@@ -284,6 +295,12 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<bool>("ReadyAtHasTime")
                         .HasColumnType("boolean");
 
+                    b.Property<NpgsqlTsVector>("SearchVector")
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("tsvector")
+                        .HasComputedColumnSql("setweight(to_tsvector('english', \"Title\"), 'A') || setweight(to_tsvector('english', \"Description\"), 'B')", true);
+
                     b.Property<DateTimeOffset?>("StalledAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -313,6 +330,10 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ParentId");
+
+                    b.HasIndex("SearchVector");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("SearchVector"), "GIN");
 
                     b.HasIndex("ProjectId", "Number")
                         .IsUnique();
@@ -1223,6 +1244,12 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<int?>("Requests")
                         .HasColumnType("integer");
 
+                    b.Property<NpgsqlTsVector>("SearchVector")
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("tsvector")
+                        .HasComputedColumnSql("setweight(to_tsvector('english', coalesce(\"Title\", '')), 'D') || setweight(to_tsvector('english', coalesce(\"Summary\", '')), 'D')", true);
+
                     b.Property<string>("SessionId")
                         .IsRequired()
                         .HasMaxLength(64)
@@ -1243,6 +1270,10 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("SearchVector");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("SearchVector"), "GIN");
 
                     b.HasIndex("IssueId", "EndedAt");
 

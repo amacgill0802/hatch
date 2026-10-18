@@ -256,6 +256,22 @@ public class HatchContextTests
         Assert.Equal("jsonb", payload.FindAnnotation(RelationalAnnotationNames.ColumnType)?.Value);
     }
 
+    /// <summary>
+    /// SearchVector is a Postgres-only computed column (HatchContext's own
+    /// provider guard, next to Storage's precedent) - proves the Ignore branch
+    /// actually ran rather than InMemory silently mapping a tsvector it has no
+    /// support for.
+    /// </summary>
+    [Theory]
+    [InlineData(typeof(EfHatchIssue))]
+    [InlineData(typeof(EfHatchComment))]
+    [InlineData(typeof(EfHatchWorkLogEntry))]
+    public void SearchVector_IsIgnoredUnderInMemory(Type entity)
+    {
+        using var db = NewContext();
+        Assert.Null(db.Model.FindEntityType(entity)!.FindProperty("SearchVector"));
+    }
+
     [Fact]
     public void AWorkLogEntry_IsUniquePerSessionAndIssue()
     {

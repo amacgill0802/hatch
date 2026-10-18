@@ -335,6 +335,50 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
             e.Property(f => f.Rows).HasColumnType("jsonb");
         });
 
+        // Search documents, the same STORED-generated-column shape
+        // StorageContext.OnModelCreating uses for Item.SearchVector - except
+        // these three carry a weight per source column, which
+        // HasGeneratedTsVectorColumn has no overload to express, so the SQL is
+        // spelled out rather than built from a lambda.
+        //
+        // Guarded by provider for the same reason as Storage's: a tsvector has
+        // no InMemory equivalent, and this module's unit tests run on InMemory.
+        if (Database.IsNpgsql())
+        {
+            modelBuilder.Entity<EfHatchIssue>()
+                .Property(i => i.SearchVector)
+                .HasComputedColumnSql(
+                    """setweight(to_tsvector('english', "Title"), 'A') || setweight(to_tsvector('english', "Description"), 'B')""",
+                    stored: true);
+            modelBuilder.Entity<EfHatchIssue>()
+                .HasIndex(i => i.SearchVector)
+                .HasMethod("GIN");
+
+            modelBuilder.Entity<EfHatchComment>()
+                .Property(c => c.SearchVector)
+                .HasComputedColumnSql(
+                    """setweight(to_tsvector('english', "Body"), 'C')""",
+                    stored: true);
+            modelBuilder.Entity<EfHatchComment>()
+                .HasIndex(c => c.SearchVector)
+                .HasMethod("GIN");
+
+            modelBuilder.Entity<EfHatchWorkLogEntry>()
+                .Property(w => w.SearchVector)
+                .HasComputedColumnSql(
+                    """setweight(to_tsvector('english', coalesce("Title", '')), 'D') || setweight(to_tsvector('english', coalesce("Summary", '')), 'D')""",
+                    stored: true);
+            modelBuilder.Entity<EfHatchWorkLogEntry>()
+                .HasIndex(w => w.SearchVector)
+                .HasMethod("GIN");
+        }
+        else
+        {
+            modelBuilder.Entity<EfHatchIssue>().Ignore(i => i.SearchVector);
+            modelBuilder.Entity<EfHatchComment>().Ignore(c => c.SearchVector);
+            modelBuilder.Entity<EfHatchWorkLogEntry>().Ignore(w => w.SearchVector);
+        }
+
         base.OnModelCreating(modelBuilder);
     }
 }
