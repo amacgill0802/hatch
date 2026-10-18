@@ -1,0 +1,127 @@
+import { describe, expect, it } from 'vitest';
+import {
+  absentSentence,
+  boundCanonicals,
+  shortSha,
+  sortedFiles,
+  stateLabel,
+  visibleFiles,
+} from './playbookFiles';
+import type { PlaybookFileDto, Project } from '../types';
+
+const file = (over: Partial<PlaybookFileDto> = {}): PlaybookFileDto => ({
+  id: 1,
+  remote: 'git@forge.example:owner/repo.git',
+  canonical: 'forge.example/owner/repo',
+  trunk: 'main',
+  sha: '1'.repeat(40),
+  state: 'parsed',
+  hash: 'deadbeef',
+  rows: [],
+  problem: null,
+  lastGoodSha: null,
+  lastGoodHash: null,
+  url: null,
+  checkedAt: '2026-09-09T12:00:00Z',
+  runner: 'box:/work/repo',
+  checkedBy: 'runner',
+  ...over,
+});
+
+const project = (over: Partial<Project> = {}): Project => ({
+  id: 1,
+  key: 'HA',
+  name: 'Hatch',
+  issueCount: 0,
+  createdAt: '2026-09-09T12:00:00Z',
+  color: null,
+  icon: null,
+  logoUpdatedAt: null,
+  repositories: [],
+  members: [],
+  canApprove: false,
+  canAdminister: false,
+  landing: 'pull-request',
+  checksRequired: false,
+  onePullRequest: false,
+  ...over,
+});
+
+describe('stateLabel', () => {
+  it('names parsed', () => {
+    expect(stateLabel('parsed')).toBe('Parsed');
+  });
+
+  it('names invalid', () => {
+    expect(stateLabel('invalid')).toBe('Invalid');
+  });
+
+  it('names absent', () => {
+    expect(stateLabel('absent')).toBe('Absent');
+  });
+});
+
+describe('absentSentence', () => {
+  it('interpolates the trunk exactly', () => {
+    expect(absentSentence('main')).toBe('no .hatch/playbooks.yaml on main');
+  });
+});
+
+describe('shortSha', () => {
+  it('slices a full sha to 7 characters', () => {
+    expect(shortSha('a'.repeat(40))).toBe('aaaaaaa');
+  });
+
+  it('passes a shorter sha through unchanged', () => {
+    expect(shortSha('abc')).toBe('abc');
+  });
+});
+
+describe('boundCanonicals', () => {
+  it('collects every repository across every project', () => {
+    const projects = [
+      project({ repositories: [{ remote: 'r1', canonical: 'forge.example/owner/one', baseBranch: null }] }),
+      project({ repositories: [{ remote: 'r2', canonical: 'forge.example/owner/two', baseBranch: null }] }),
+    ];
+
+    expect(boundCanonicals(projects)).toEqual(
+      new Set(['forge.example/owner/one', 'forge.example/owner/two']),
+    );
+  });
+
+  it('answers an empty set for no projects', () => {
+    expect(boundCanonicals([])).toEqual(new Set());
+  });
+});
+
+describe('visibleFiles', () => {
+  it('drops an absent file whose canonical is not bound', () => {
+    const bound = new Set(['forge.example/owner/bound']);
+    const files = [file({ canonical: 'forge.example/owner/unbound', state: 'absent' })];
+
+    expect(visibleFiles(files, bound)).toEqual([]);
+  });
+
+  it('keeps an absent file whose canonical is bound', () => {
+    const bound = new Set(['forge.example/owner/bound']);
+    const files = [file({ canonical: 'forge.example/owner/bound', state: 'absent' })];
+
+    expect(visibleFiles(files, bound)).toEqual(files);
+  });
+
+  it.each(['parsed', 'invalid'])('keeps a %s file regardless of binding', (state) => {
+    const files = [file({ canonical: 'forge.example/owner/unbound', state })];
+
+    expect(visibleFiles(files, new Set())).toEqual(files);
+  });
+});
+
+describe('sortedFiles', () => {
+  it('orders by canonical then by trunk on a tie', () => {
+    const b = file({ canonical: 'forge.example/owner/b', trunk: 'main' });
+    const aMain = file({ canonical: 'forge.example/owner/a', trunk: 'main' });
+    const aDevelop = file({ canonical: 'forge.example/owner/a', trunk: 'develop' });
+
+    expect(sortedFiles([b, aMain, aDevelop])).toEqual([aDevelop, aMain, b]);
+  });
+});

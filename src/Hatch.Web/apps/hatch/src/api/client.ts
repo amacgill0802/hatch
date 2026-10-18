@@ -39,6 +39,7 @@ import type {
   PersonWriteRequest,
   Playbook,
   PlaybookCreateRequest,
+  PlaybookFilesDto,
   PlaybookPatchRequest,
   HatchImage,
   Project,
@@ -219,6 +220,8 @@ export const patchPlaybook = (id: number, request: PlaybookPatchRequest) =>
   fetchJson<Playbook>(`/api/hatch/playbooks/${id}`, { method: 'PATCH', body: JSON.stringify(request) });
 export const deletePlaybook = (id: number) =>
   fetchJson<void>(`/api/hatch/playbooks/${id}`, { method: 'DELETE' });
+
+export const getPlaybookFiles = () => fetchJson<PlaybookFilesDto>('/api/hatch/playbook-files');
 
 // ---- Runners ----
 //
