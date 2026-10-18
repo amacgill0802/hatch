@@ -26,9 +26,12 @@ public sealed record Settings
     /// <summary>Everything a settings file may carry. A line naming anything else is skipped, loudly.</summary>
     public static readonly string[] FileNames =
     [
-        "HATCH_BASE", "HATCH_KEY", "HATCH_CLAUDE_BIN", "HATCH_BASE_BRANCH", "HATCH_RUNNER", "HATCH_REPOS",
-        "HATCH_WORKSPACE",
+        "HATCH_BASE", "HATCH_KEY", "HATCH_CLAUDE_BIN", "HATCH_AGENT", "HATCH_BASE_BRANCH", "HATCH_RUNNER",
+        "HATCH_REPOS", "HATCH_WORKSPACE",
     ];
+
+    /// <summary>The agent ids <see cref="Agents"/> knows how to resolve.</summary>
+    public static readonly string[] KnownAgentIds = ["claude"];
 
     /// <summary>Which of the three layers a value came from, for <c>config --show</c>.</summary>
     public enum Layer
@@ -57,6 +60,9 @@ public sealed record Settings
 
     /// <summary>The claude CLI, if it is not simply on PATH.</summary>
     public string? ClaudeBin { get; init; }
+
+    /// <summary>Which agent spawns a session - one of <see cref="KnownAgentIds"/>, <c>claude</c> when unset.</summary>
+    public string Agent { get; init; } = "claude";
 
     /// <summary>The trunk the loop resets to, when it is not the one origin calls its default.</summary>
     public string? BaseBranch { get; init; }
@@ -193,6 +199,7 @@ public sealed record Settings
         var origin = Read("HATCH_BASE");
         var key = Read("HATCH_KEY");
         var claudeBin = Read("HATCH_CLAUDE_BIN");
+        var agentRaw = Read("HATCH_AGENT");
         var baseBranch = Read("HATCH_BASE_BRANCH");
         var runner = Read("HATCH_RUNNER");
         var heartbeat = Read("HATCH_HEARTBEAT");
@@ -234,6 +241,7 @@ public sealed record Settings
             Base = origin.TrimEnd('/'),
             Key = key?.Trim() ?? "",
             ClaudeBin = claudeBin,
+            Agent = string.IsNullOrWhiteSpace(agentRaw) ? "claude" : agentRaw,
             BaseBranch = baseBranch,
             Runner = runner,
             HeartbeatSeconds = pulse,

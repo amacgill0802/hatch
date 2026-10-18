@@ -882,6 +882,18 @@ public sealed class GoToWorkTests
     }
 
     [Fact]
+    public async Task An_unknown_agent_refuses_before_any_lock_and_before_any_claim()
+    {
+        using var h = new Harness();
+        var runtime = h.Runtime with { Settings = h.Runtime.Settings with { Agent = "nope" } };
+
+        Assert.Equal(1, await new GoToWorkCommand(runtime).RunAsync(["--once"], default));
+
+        Assert.Contains(h.Say.Complained, l => l.Contains("nope", StringComparison.Ordinal) && l.Contains("claude", StringComparison.Ordinal));
+        Assert.Empty(h.Wire.Calls);
+    }
+
+    [Fact]
     public async Task Started_outside_a_checkout_with_repo_is_named_after_the_first_and_sends_no_standing()
     {
         using var h = new Harness();

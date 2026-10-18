@@ -482,6 +482,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
         "                     consulted when this is given. With none set, <dir> is a",
         "                     per-user default; `--workspace off` serves only the",
         "                     checkouts it has and never clones",
+        "  --agent <id>       beats HATCH_AGENT - resolved once before the loop starts,",
+        "                     and carried the whole night, unlike --model and --effort",
         "",
         "  None of the bounds are set by default - an unattended run that stopped for",
         "  a reason nobody asked for is a run somebody has to go and check on. Each is",
@@ -516,7 +518,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
     {
         if (Usage.Wanted(args)) return Usage.Print(runtime.Say, GoToWorkUsage);
 
-        string? key = null, under = null, until = null, stopFile = null;
+        string? key = null, under = null, until = null, stopFile = null, agent = null;
         var interval = 60;
         var mergeInterval = 5;
         var once = false;
@@ -598,6 +600,9 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 case "--workspace" when i + 1 < args.Length: workspaceFlag = args[++i]; break;
                 case "--workspace":
                     return Usage.Refuse(runtime.Say, "go-to-work --workspace takes a directory", GoToWorkUsage);
+                case "--agent" when i + 1 < args.Length: agent = args[++i]; break;
+                case "--agent":
+                    return Usage.Refuse(runtime.Say, "go-to-work --agent takes an id", GoToWorkUsage);
                 case var flag when flag.StartsWith('-'):
                     return Usage.Refuse(runtime.Say, $"go-to-work does not take {flag}", GoToWorkUsage);
                 default: key = args[i]; break;
@@ -622,6 +627,20 @@ public sealed class GoToWorkCommand(Runtime runtime)
             runtime.Say.Complain($"hatch: one increment on {key} is  hatch work {key}");
             return 1;
         }
+
+        // Resolved once, here, before the lock and the loop - never re-read per
+        // pass, unlike --model and --effort which the playbook settles fresh
+        // each increment. Only an explicit --agent replaces Sessions, the same
+        // shape work uses and for the same reason: Harness hands every test a
+        // FakeSessions, and an unconditional rebuild would silently swap it out.
+        var agentId = agent ?? runtime.Settings.Agent;
+        if (!Agents.Resolve(agentId, runtime.Settings.ClaudeBin, runtime.Say.Complain, out var agentSessions, out var agentRefusal))
+        {
+            runtime.Say.Complain(agentRefusal);
+            return 1;
+        }
+
+        if (agent is not null) runtime = runtime with { Sessions = agentSessions };
 
         var repoOverridden = repoFlags.Count > 0 || workspaceFlag is not null;
         if (repoOverridden)
