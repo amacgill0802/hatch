@@ -1,6 +1,6 @@
 /* Reading a playbook row: which move it speaks for. */
 
-import type { Playbook } from '../types';
+import type { Playbook, PlaybookFileDto, PlaybookFileRowDto } from '../types';
 
 /**
  * A row whose two ends are the same column is the review playbook: what an
@@ -64,6 +64,41 @@ export function projectLabel(p: Pick<Playbook, 'projectKey' | 'projectName'>): s
   return p.projectKey === null || p.projectName === null
     ? 'All projects'
     : `${p.projectKey} — ${p.projectName}`;
+}
+
+/** A row's label: board-wide, or the project's own - see HA-460. Drawn on
+    every row of the main table, filtered or not. */
+export function playbookLabel(p: Pick<Playbook, 'projectKey'>): string {
+  return p.projectKey === null ? 'board-wide' : `${p.projectKey}'s own`;
+}
+
+/** A file row's label - the third of the three, drawn once a repo-sourced
+    project's own file is merged into the table under its filter. */
+export function fileRowLabel(file: Pick<PlaybookFileDto, 'trunk' | 'sha'>): string {
+  return `.hatch/playbooks.yaml on ${file.trunk} at ${file.sha.slice(0, 7)}`;
+}
+
+/** Whether a board-wide row is shadowed by one of a repo-sourced project's
+    own file rows - the same transition, types and shape, so the file row
+    already speaks for every move the board-wide one would and the
+    board-wide one never will, for this project. Types compared as a set -
+    HA-459's parser already de-duplicates a file row's own, and neither side's
+    order carries meaning. */
+export function shadowedByFile(
+  boardRow: Pick<Playbook, 'fromStatusId' | 'toStatusId' | 'shape' | 'types'>,
+  fileRows: Pick<PlaybookFileRowDto, 'fromStatusId' | 'toStatusId' | 'shape' | 'types'>[],
+): boolean {
+  const sortedBoardTypes = [...boardRow.types].sort();
+  return fileRows.some((r) => {
+    const sortedFileTypes = [...r.types].sort();
+    return (
+      r.fromStatusId === boardRow.fromStatusId &&
+      r.toStatusId === boardRow.toStatusId &&
+      r.shape === boardRow.shape &&
+      sortedFileTypes.length === sortedBoardTypes.length &&
+      sortedFileTypes.every((t, i) => t === sortedBoardTypes[i])
+    );
+  });
 }
 
 /** Whether the page's project filter keeps this row: every row when cleared, every
