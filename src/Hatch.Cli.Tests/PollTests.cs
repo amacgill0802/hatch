@@ -1236,6 +1236,11 @@ public sealed class PollTests
         rig.H.Forge.Excerpts["CI"] = "ECONNRESET";
         rig.H.Forge.RerunAnswer = new RerunAnswer(null, "gh is not installed");
         rig.KeepsTrunk(Fixtures.TrunkBuild(BuildVerdicts.Failed, projectKey: "AER", failing: ["CI"]));
+        // A failed rerun attempt still leaves the build really failed, so this
+        // also reaches the HA-795 bug-filing gate below - stubbed as refused the
+        // same way an auto-filing-off project is, which is silent, so it does
+        // not add to the one line this test is actually about.
+        rig.H.Wire.Reply("POST", "/api/hatch/trunk-builds/1/bug", HttpStatusCode.BadRequest, "auto-filing off");
 
         await rig.RunAsync();
 
@@ -1249,6 +1254,99 @@ public sealed class PollTests
         // later interval does not ask again and says nothing new.
         await rig.Later().RunAsync();
         Assert.Single(rig.H.Say.Complained);
+    }
+
+    // ---- Filing the bug a trunk failure never got re-run into (HA-795) ----
+
+    private static string PostBug(long id) => $"/api/hatch/trunk-builds/{id}/bug";
+
+    [Fact]
+    public async Task A_trunk_failure_that_was_not_re_run_is_filed_and_its_key_printed()
+    {
+        using var rig = new Rig().Board();
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads();
+        rig.StoresTrunks(Fixtures.TrunkBuild(BuildVerdicts.Passed, projectKey: "AER", sha: Moved));
+        rig.Runtime.Readout.SetDrives(["AER"]);
+        rig.H.Forge.Answer = Failed("CI");
+        rig.KeepsTrunk(Fixtures.TrunkBuild(BuildVerdicts.Failed, projectKey: "AER", failing: ["CI"]));
+        rig.H.Wire.Json("POST", PostBug(1), Fixtures.Issue("AER-50"));
+
+        await rig.RunAsync();
+
+        Assert.Single(rig.H.Wire.To("POST", PostBug(1)));
+        Assert.Contains(rig.H.Say.Said, l => l.EndsWith("- filed AER-50", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_board_that_refuses_to_file_costs_one_line_and_not_the_night()
+    {
+        using var rig = new Rig().Board();
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads();
+        rig.StoresTrunks(Fixtures.TrunkBuild(BuildVerdicts.Passed, projectKey: "AER", sha: Moved));
+        rig.Runtime.Readout.SetDrives(["AER"]);
+        rig.H.Forge.Answer = Failed("CI");
+        rig.KeepsTrunk(Fixtures.TrunkBuild(BuildVerdicts.Failed, projectKey: "AER", failing: ["CI"]));
+        // 500, not 503/502 - this harness's HatchClient keeps its own real
+        // retry clock (Harness.Clock, not Rig.Clock), so a transient status
+        // here would actually spend HatchClient's 90s retry window and run
+        // past this suite's blame-hang-timeout instead of failing at once.
+        rig.H.Wire.Reply("POST", PostBug(1), HttpStatusCode.InternalServerError, "down");
+
+        await rig.RunAsync();
+
+        Assert.Contains("could not file a bug", Assert.Single(rig.H.Say.Complained), StringComparison.Ordinal);
+
+        // The sha is already concluded from the PUT above, regardless of the
+        // POST's own failure - so a later interval asks neither again.
+        await rig.Later().RunAsync();
+        Assert.Single(rig.H.Say.Complained);
+    }
+
+    [Fact]
+    public async Task A_row_that_already_carries_a_bug_makes_no_call()
+    {
+        using var rig = new Rig().Board();
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads();
+        rig.StoresTrunks(Fixtures.TrunkBuild(BuildVerdicts.Passed, projectKey: "AER", sha: Moved));
+        rig.Runtime.Readout.SetDrives(["AER"]);
+        rig.H.Forge.Answer = Failed("CI");
+        rig.KeepsTrunk(Fixtures.TrunkBuild(BuildVerdicts.Failed, projectKey: "AER", bugIssueKey: "AER-50", failing: ["CI"]));
+
+        await rig.RunAsync();
+
+        Assert.Empty(rig.H.Wire.To("POST", PostBug(1)));
+    }
+
+    [Fact]
+    public async Task A_project_with_auto_filing_off_makes_the_call_and_says_nothing()
+    {
+        using var rig = new Rig().Board();
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads();
+        rig.StoresTrunks(Fixtures.TrunkBuild(BuildVerdicts.Passed, projectKey: "AER", sha: Moved));
+        rig.Runtime.Readout.SetDrives(["AER"]);
+        rig.H.Forge.Answer = Failed("CI");
+        rig.KeepsTrunk(Fixtures.TrunkBuild(BuildVerdicts.Failed, projectKey: "AER", failing: ["CI"]));
+        rig.H.Wire.Reply("POST", PostBug(1), HttpStatusCode.BadRequest, "AER has auto-filing off - turn it on from the Projects page");
+
+        await rig.RunAsync();
+
+        Assert.Single(rig.H.Wire.To("POST", PostBug(1)));
+        Assert.Empty(rig.H.Say.Complained);
+        Assert.DoesNotContain(rig.H.Say.Said, l => l.Contains("- filed", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_runner_that_does_not_drive_the_project_does_not_file_a_bug()
+    {
+        using var rig = new Rig().Board();
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads();
+        rig.StoresTrunks(Fixtures.TrunkBuild(BuildVerdicts.Passed, projectKey: "AER", sha: Moved));
+        rig.H.Forge.Answer = Failed("CI");
+        rig.KeepsTrunk(Fixtures.TrunkBuild(BuildVerdicts.Failed, projectKey: "AER", failing: ["CI"]));
+
+        await rig.RunAsync();
+
+        Assert.Empty(rig.H.Wire.To("POST", PostBug(1)));
     }
 
     // ---- Landings ----
