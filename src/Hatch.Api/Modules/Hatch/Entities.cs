@@ -149,6 +149,30 @@ public class EfHatchProject
     /// which is what the manual dialog's own default already picks.
     /// </summary>
     public int? AutoHealBugStatusId { get; set; }
+
+    /// <summary>
+    /// Whether this project's playbooks are sourced from its repository rather
+    /// than written on the board. Off by default, so a project nobody has
+    /// touched this setting on keeps filing exactly as it always has. Written
+    /// only by <see cref="ProjectsController.PutPlaybooksSource"/>.
+    /// </summary>
+    public bool RepoSourced { get; set; }
+
+    /// <summary>
+    /// Who turned <see cref="RepoSourced"/> on or off, as a name rather than a
+    /// foreign key - the same column shape <see cref="EfHatchIssue.ClaimedBy"/>
+    /// takes, and for the same reason: the trail has to keep reading after the
+    /// person or the key it named is gone. Null until the first write. Written
+    /// only by <see cref="ProjectsController.PutPlaybooksSource"/>.
+    /// </summary>
+    [MaxLength(Common.PersonName.MaxChars)]
+    public string? RepoSourcedBy { get; set; }
+
+    /// <summary>
+    /// When <see cref="RepoSourced"/> was last set. Null until the first write.
+    /// Written only by <see cref="ProjectsController.PutPlaybooksSource"/>.
+    /// </summary>
+    public DateTimeOffset? RepoSourcedAt { get; set; }
 }
 
 /// <summary>

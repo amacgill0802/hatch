@@ -757,6 +757,16 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasColumnType("boolean")
                         .HasDefaultValue(false);
 
+                    b.Property<bool>("RepoSourced")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTimeOffset?>("RepoSourcedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RepoSourcedBy")
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("AutoHealBugStatusId");
