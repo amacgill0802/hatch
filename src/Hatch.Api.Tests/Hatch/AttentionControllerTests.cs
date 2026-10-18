@@ -633,6 +633,20 @@ public class AttentionControllerTests
     }
 
     [Fact]
+    public async Task Attention_NamesThePlaybookFileAClearCheckFlagged()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "rewrites a playbook", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.CheckAsync(issue, MergeVerdicts.Clean, holdsTrunk: true, playbookFilePath: ".hatch/playbooks.yaml");
+
+        var attention = Value(await h.Attention.GetAttention(default));
+        var row = Assert.Single(attention.Reviews);
+
+        Assert.Equal(".hatch/playbooks.yaml", row.PlaybookFilePath);
+        Assert.Equal(1, attention.Reviews.Count);
+    }
+
+    [Fact]
     public async Task Attention_ListsAnIssueAgainOnceItsConflictClears()
     {
         var h = await NewAsync();
@@ -1433,7 +1447,7 @@ public class AttentionControllerTests
         /// </summary>
         public async Task CheckAsync(
             EfHatchIssue issue, string verdict, string[]? files = null, string remote = "forge.example/owner/repo",
-            string? branchSha = null, bool? holdsTrunk = null)
+            string? branchSha = null, bool? holdsTrunk = null, string? playbookFilePath = null)
         {
             Db.MergeChecks.RemoveRange(
                 Db.MergeChecks.Where(m => m.IssueId == issue.Id && m.Remote == remote));
@@ -1451,6 +1465,7 @@ public class AttentionControllerTests
                 Branch = hasBranch ? "ha-1-thing" : null,
                 BranchSha = hasBranch ? branchSha ?? new string('2', 40) : null,
                 HoldsTrunk = hasBranch ? holdsTrunk : null,
+                PlaybookFilePath = hasBranch ? playbookFilePath : null,
                 Files = EfHatchMergeCheck.JoinFiles(files ?? []),
                 CheckedAt = Now,
                 Runner = "box:/work/repo",

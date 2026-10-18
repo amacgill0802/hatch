@@ -14,6 +14,7 @@ import {
   trunkIconWords,
   waitedWords,
 } from '../lib/attention';
+import { playbookFileWords } from '../lib/mergeCheck';
 import { pullRequestWords } from '../lib/pullRequest';
 import { TrunkBuildBugDialog } from './TrunkBuildBugDialog';
 import type { Attention, TrunkBuild } from '../types';
@@ -188,6 +189,9 @@ export function AttentionHuman({
                       off the front, nothing parsed out of the path. Hatch has
                       no opinion about whose forge an operator uses. */}
                   <span className="hatch-attention-url">{pullRequestWords(r.pullRequestUrl)}</span>
+                  {r.playbookFilePath && (
+                    <span className="hatch-attention-files">{playbookFileWords(r.playbookFilePath)}</span>
+                  )}
                 </a>
               </li>
             ))}

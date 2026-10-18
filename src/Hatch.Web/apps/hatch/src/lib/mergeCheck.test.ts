@@ -15,6 +15,7 @@ const check = (over: Partial<MergeCheck> = {}): MergeCheck => ({
   checkedAt: '2026-09-09T12:00:00Z',
   runner: 'box:/work/repo',
   checkedBy: 'runner',
+  playbookFilePath: null,
   ...over,
 });
 

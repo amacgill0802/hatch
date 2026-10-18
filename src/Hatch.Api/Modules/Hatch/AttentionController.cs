@@ -218,6 +218,7 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
                 bool? holdsTrunk = clean.Any(m => m.HoldsTrunk == false) ? false
                     : clean.Count > 0 && clean.All(m => m.HoldsTrunk == true) ? true
                     : null;
+                var playbookFilePath = clean.FirstOrDefault(m => m.PlaybookFilePath is not null)?.PlaybookFilePath;
 
                 // A pre-approved row the judge would carry on its own - merge
                 // it, update its branch, or is still waiting on a runner to
@@ -234,7 +235,7 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
 
                 return new ReviewDto(
                     IssueKey.Format(i.ProjectKey, i.Number), i.Title, i.Type, i.PullRequestUrl!,
-                    buildState, holdsTrunk, clean.FirstOrDefault()?.Trunk, heldSentence);
+                    buildState, holdsTrunk, clean.FirstOrDefault()?.Trunk, heldSentence, playbookFilePath);
             })
             .OfType<ReviewDto>()
             .ToList();

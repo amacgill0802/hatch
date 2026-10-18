@@ -6,6 +6,7 @@ import { LandingChips } from './LandingChips';
 import { MergeConflictChips } from './MergeConflictChips';
 import { MergeHoldChip } from './MergeHoldChip';
 import { MomentChip } from './MomentChip';
+import { PlaybookFileChip } from './PlaybookFileChip';
 import { PullRequestLink } from './PullRequestLink';
 import { PullRequestStateChips } from './PullRequestStateChips';
 import { TypeBadge } from './TypeBadge';
@@ -67,6 +68,7 @@ export function IssueSubheader({
         <LandingChips landings={issue.landings} />
         <MergeConflictChips checks={issue.mergeChecks} />
         <BuildCheckChips checks={issue.buildChecks} />
+        <PlaybookFileChip checks={issue.mergeChecks} />
         <MergeHoldChip mergeWork={issue.mergeWork} />
         <span className="text-muted">
           filed by {issue.createdBy} on {new Date(issue.createdAt).toLocaleDateString()}

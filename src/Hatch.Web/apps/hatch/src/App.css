@@ -1362,6 +1362,13 @@
   color: var(--muted);
 }
 
+/* Information for a person already about to read the diff, not a problem the
+   loop or a person needs to fix - so it is muted rather than in the warn
+   ladder below. */
+.hatch-chip-playbook-file {
+  color: var(--muted);
+}
+
 .hatch-chip-soon {
   border-color: var(--warn);
   background: var(--warn-bg);

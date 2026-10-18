@@ -33,6 +33,7 @@ const review = (over: Partial<Review> = {}): Review => ({
   buildState: 'unknown',
   holdsTrunk: null,
   trunk: null,
+  playbookFilePath: null,
   ...over,
 });
 
