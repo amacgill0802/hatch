@@ -329,6 +329,11 @@ public record AssigneeDto(string Kind, Guid Id, string Name);
 /// The story <paramref name="OnePr"/> was read from, or null when the value is
 /// this issue's own, comes from its project, or does not exist.
 /// </param>
+/// <param name="ClosedAt">
+/// The instant this issue last entered a terminal column, or null - see
+/// <see cref="EfHatchIssue.ClosedAt"/>. Trailing and defaulted for the reason
+/// <paramref name="OpenQuestions"/> is.
+/// </param>
 public record IssueCardDto(
     string Key,
     string ProjectKey,
@@ -356,7 +361,8 @@ public record IssueCardDto(
     string? PullRequestUrl = null,
     bool OnePr = false,
     bool? OnePrOwn = null,
-    string? OnePrFrom = null);
+    string? OnePrFrom = null,
+    DateTimeOffset? ClosedAt = null);
 
 /// <summary>
 /// The lease a running dispatcher holds on an issue, or null where nothing
@@ -510,6 +516,11 @@ public record IssueClaimDto(
 /// <param name="PullRequestReviewDecision">What the forge last said of the pull request's reviews - one of <see cref="ReviewDecisions"/> - or null where none has been read.</param>
 /// <param name="PullRequestHeadSha">The head commit of the pull request when the forge was last read, or null where none has been read.</param>
 /// <param name="PullRequestReadAt">When the forge was last read for the pull request, or null where it has not been.</param>
+/// <param name="ClosedAt">
+/// The instant this issue last entered a terminal column, or null - see
+/// <see cref="EfHatchIssue.ClosedAt"/>. Trailing and defaulted for the reason
+/// <paramref name="OpenQuestions"/> is.
+/// </param>
 public record IssueDto(
     string Key,
     int ProjectId,
@@ -556,7 +567,8 @@ public record IssueDto(
     string? PullRequestMergeState = null,
     string? PullRequestReviewDecision = null,
     string? PullRequestHeadSha = null,
-    DateTimeOffset? PullRequestReadAt = null);
+    DateTimeOffset? PullRequestReadAt = null,
+    DateTimeOffset? ClosedAt = null);
 
 /// <summary>Taking the lease: who is asking is the credential's to say, so the body names only where from.</summary>
 /// <param name="Runner">The checkout holding it - <c>host:/path/to/checkout</c>, as the runner names itself.</param>
