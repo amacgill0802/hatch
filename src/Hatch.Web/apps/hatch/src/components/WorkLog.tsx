@@ -10,6 +10,8 @@ import {
   hasDescendantSpend,
   moneyPhrase,
   ownPhrase,
+  playbookFileShowCommand,
+  playbookSourcePhrase,
   resumeCommand,
   showsWorkLog,
   totalsPhrase,
@@ -102,9 +104,16 @@ function Entry({ entry }: { entry: WorkLogEntry }) {
         <span className="text-muted">{new Date(entry.endedAt).toLocaleString()}</span>
       </div>
 
+      {playbookSourcePhrase(entry) && <p className="text-muted hatch-worklog-source">{playbookSourcePhrase(entry)}</p>}
+
       {/* The session id in the form it is used in, rather than as an id
           somebody has to assemble a command around. */}
-      <Command command={resumeCommand(entry.sessionId)} />
+      <div className="hatch-worklog-commands">
+        <Command command={resumeCommand(entry.sessionId)} />
+        {entry.playbookSource === 'file' && entry.playbookFileSha && (
+          <Command command={playbookFileShowCommand(entry.playbookFileSha)} />
+        )}
+      </div>
     </li>
   );
 }
