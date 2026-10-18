@@ -284,6 +284,11 @@ public class AdminSurfaceTests
         "TrunkBuildController.PutTrunkBuild",
         "TrunkBuildBugController.PostBug",
 
+        // What .hatch/playbooks.yaml parsed to on a repository's trunk,
+        // Hatch-scoped and gated the same as TrunkBuildController: a key
+        // reads it the same way a runner's poll does. See PlaybookFile.
+        "PlaybookFileController.GetPlaybookFiles",
+
         // Who is at the browser, so the nav strip can say so and know the
         // role. Guarded like the rest of the module, and Hatch-scoped for
         // consistency: a key reads as nobody and gets a 204.
