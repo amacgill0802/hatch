@@ -55,7 +55,7 @@ public static class Unpublished
     /// nobody can find - has not finished, whatever else it did.
     /// </summary>
     public static async Task<string> RefuseAsync(
-        Board board, Terminal say, IncrementReport report, IReadOnlyList<BranchEntry> branches, int letGo, bool trunkLanding, CancellationToken ct)
+        Board board, Terminal say, IncrementReport report, IReadOnlyList<BranchEntry> branches, int letGo, bool trunkLanding, IAgentAdapter adapter, CancellationToken ct)
     {
         string body;
         if (trunkLanding)
@@ -92,7 +92,7 @@ public static class Unpublished
                    + (trunkLanding ? "with no landing recorded." : "without one.");
 
         body += report.SessionId is { Length: > 0 } session
-            ? $"\n\nThe session it ran in is still there, with everything it did in context:\n\n    claude --resume {session}"
+            ? $"\n\nThe session it ran in is still there, with everything it did in context:\n\n    {adapter.ResumeCommand(session)}"
             : "\n\nThere is no session to resume: the run ended before it said what its id was.";
 
         var situation = trunkLanding ? "left no landing recorded" : "left a branch on origin with no pull request";

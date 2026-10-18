@@ -654,7 +654,7 @@ public sealed class WorkCommand(Runtime runtime)
                     && (trunkLanding ? !left.HasLanding : left.BranchOnOrigin && !left.HasPullRequest))
                 {
                     releaseOutcome = await Unpublished.RefuseAsync(
-                        runtime.Board, runtime.Say, report, entering.Entries, work.LetGo, trunkLanding, CancellationToken.None);
+                        runtime.Board, runtime.Say, report, entering.Entries, work.LetGo, trunkLanding, runtime.Adapter, CancellationToken.None);
                 }
 
                 // Every opening banner has a closing one - null only for the

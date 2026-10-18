@@ -35,7 +35,7 @@ public sealed record StopBlock(string Decision, string Reason);
 /// increment. The stop hook always asks, because a session that ends with a
 /// message unread has dropped it.</para>
 /// </remarks>
-public sealed class InboxCommand(Board board, Terminal say, TextReader stdin, TimeProvider clock)
+public sealed class InboxCommand(Board board, Terminal say, TextReader stdin, TimeProvider clock, IHookOutputWriter hookOutput)
 {
     /// <summary>The fewest seconds between two per-step checks.</summary>
     public const int ThrottleSeconds = 15;
@@ -127,10 +127,7 @@ public sealed class InboxCommand(Board board, Terminal say, TextReader stdin, Ti
         if (parts.Count == 0) return 0;
 
         var text = string.Join("\n\n---\n\n", parts);
-        say.Line(hook == "stop"
-            ? JsonSerializer.Serialize(new StopBlock("block", text), HatchJson.Default.StopBlock)
-            : JsonSerializer.Serialize(
-                new PostToolUseOutput(new PostToolUseContext("PostToolUse", text)), HatchJson.Default.PostToolUseOutput));
+        say.Line(hook == "stop" ? hookOutput.WriteStop(text) : hookOutput.WritePostToolUse(text));
         return 0;
     }
 
