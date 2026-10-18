@@ -2197,6 +2197,35 @@ unread" in its `WHERE` — the way the claim closes its races
 checks that race return a message once between them. Unread messages ride the
 dispatch as `WorkDto.Messages`.
 
+### Search
+
+**Three stored, weighted `tsvector` columns, each computed by Postgres, never
+assigned in code, each GIN-indexed:** `EfHatchIssue.SearchVector` (`Title`
+weight A, `Description` weight B), `EfHatchComment.SearchVector` (`Body`,
+weight C, every kind of comment — note, question, answer, message, verdict),
+`EfHatchWorkLogEntry.SearchVector` (`Title` and `Summary`, both weight D).
+See [`SearchQuery.cs`](../src/Hatch.Api/Modules/Hatch/SearchQuery.cs) and
+[`SearchController.cs`](../src/Hatch.Api/Modules/Hatch/SearchController.cs).
+
+**A hit is counted once per issue**, however many of its comments or work-log
+rows matched — the match is an `EXISTS`, not a join.
+
+**Ranking with `q` is `ts_rank` over the issue's own vector only**: a comment
+or work-log match decides whether an issue is found, not where it sorts.
+Ties: open ahead of closed, then newest-closed, then newest-created. Without
+`q` — or with one that reduces to no terms, where `SearchQuery.ToTsQuery`
+returns null — the list is newest-created first.
+
+**`matched` on a hit** lists which of `title`, `description`, `comment`,
+`work-log` found it, in that order.
+
+**Event payloads are deliberately not indexed**: they are superseded copies
+of text already indexed elsewhere, and indexing the JSON would surface a
+retitle's old wording as a match on the issue it no longer describes.
+
+**Done issues are in the result by default**; `statusId` narrows to one
+column, and none of the board's done-horizon folding applies.
+
 ### Issue event
 
 `EfHatchIssueEvent` — `IssueId`, `Actor`, `Kind`, `Payload` (`jsonb`), `At`.
@@ -2702,6 +2731,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/issues/{key}/pull-request-state` | PUT | Keeps what the forge last said of the pull request recorded on an issue: its merge state (`clean`, `blocked`, `behind`, `dirty`, `unstable`, `draft` or `unknown`) and its review decision (`none`, `approved`, `changes-requested` or `review-required`), with the head sha it was read at and when. `{ url, headSha, mergeState, reviewDecision, runner }`; answers `204`. Refused, in a sentence, with `409` for an issue with no pull request recorded or a `url` that is not the recorded one, and `400` for a merge state or review decision outside those lists, an empty head sha, or one longer than a sha can be; `404` on an unknown key. The column is not checked, and `runner` is neither checked nor kept. The board stores them; `MergeWork.Judge` reads the merge state and head sha (see [the merge column's judge list](#the-approval-column)) and nothing else on the server does, and the review decision is read by nothing. A read that repeats the stored merge state, review decision and head sha writes no event and refreshes only when it was read |
 | `/issues/{key}/landing` | PUT | Keeps what a repository holds for an issue's branch — see [landing](#landing). `{ remote, sha, trunk?, containedBy?, runner? }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an empty or non-hex sha, and `containedBy` given without a `trunk`; `404` on an unknown key. The column is not checked. A write that repeats the stored sha and `containedBy` writes no event |
 | `/questions` | GET | Every open question in the house |
+| `/search` | GET | `q`, `projectId`, `type`, `statusId`, `createdFrom`, `createdTo`, `closedFrom`, `closedTo`, `limit` (50, max 200), `offset`, all optional and ANDed — see [Search](#search). Done issues are included by default; `statusId` narrows to one column |
 | `/plan`, `/plan/{key}` | GET | See [the level above the board](#the-level-above-the-board) |
 | `/work/next` | GET | See [the dispatcher](#the-dispatcher). `?heldToken=` names a [claim](#claim) of one's own, so it is not folded past as somebody else's. `?remote=` (repeatable), `?standing=` and `?clones=` declare what the runner has; absent is undeclared and folds nothing. `?mine=true` narrows the pass to the caller's own tickets — see [one more, on `next` alone](#one-more-on-next-alone); `400` when the calling key belongs to nobody. Carries `letGo`, the count of this issue's trailing dropped releases — `0` on a client too old to read it |
 | `/work/{key}` | GET | See [the dispatcher](#the-dispatcher). Same `?heldToken=`, `?remote=`, `?standing=` and `?clones=` as `/work/next`. `?mine=` is ignored — somebody who names a ticket has already chosen it. Carries `letGo` the same way. Also carries `failStatusName` — the implementation column's name, the column a failed [check](#check) sends the issue back to, set on every dispatch and null where the board has none — and `lastCheckFindings`, the newest check's findings, set only for an issue standing in that column whose most recent `status_changed` event carries `verdict: fail`, null otherwise |
