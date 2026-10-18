@@ -260,7 +260,7 @@ public sealed class FakeWorkspace
             return (sha, owner.OnTrunkFor.GetValueOrDefault((path, sha)));
         }
 
-        public Verdict? Check(string key)
+        public Verdict? Check(string key, string? playbookFilePath = null)
         {
             owner.Calls.Add($"check {path} {key}");
             return owner.Verdicts.GetValueOrDefault((path, key));
