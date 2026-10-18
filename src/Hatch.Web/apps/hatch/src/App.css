@@ -3331,6 +3331,16 @@ input.hatch-inline-title-input {
   padding: 0 var(--sp-1);
 }
 
+/* One card's header in the "Files on the trunk" section - the ClaimPanel
+   head's own flex-wrap, gap and baseline rule, reused rather than redefined. */
+.hatch-playbook-file-head {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: baseline;
+  flex-wrap: wrap;
+  margin-bottom: var(--sp-2);
+}
+
 /* ---- Questions ----
 
    An unanswered question is the one thing on a board that nothing else can get

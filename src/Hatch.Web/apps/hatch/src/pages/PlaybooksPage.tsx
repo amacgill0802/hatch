@@ -1,13 +1,18 @@
-import { useState } from 'react';
-import { Button, Card, EmptyState, Field, PageHeader, Table } from '@hatch/ui';
-import { deletePlaybook, getPlaybooks, getStatuses } from '../api/client';
+import { useMemo, useState } from 'react';
+import { Badge, Button, Card, EmptyState, Field, PageHeader, Table, Text } from '@hatch/ui';
+import { deletePlaybook, getPlaybookFiles, getPlaybooks, getStatuses } from '../api/client';
 import { PlaybookEditDialog } from '../components/PlaybookEditDialog';
 import { PlaybookRow } from '../components/PlaybookRow';
+import { StatusPill } from '../components/StatusPill';
+import { TypeBadge } from '../components/TypeBadge';
+import { agoPhrase } from '../lib/claim';
 import { message } from '../lib/errors';
-import { matchesProjectFilter } from '../lib/playbooks';
+import { isReviewPlaybook, isUncheckedEdit, matchesProjectFilter, transitionLabel } from '../lib/playbooks';
+import { absentSentence, boundCanonicals, shortSha, sortedFiles, stateLabel, visibleFiles } from '../lib/playbookFiles';
+import { pullRequestWords } from '../lib/pullRequest';
 import { useLoaded } from '../lib/useLoaded';
 import { hasMultipleProjects, useProjects } from '../lib/useProjects';
-import type { Playbook, Status } from '../types';
+import type { Playbook, PlaybookFileRowDto, PlaybookFilesDto, Status } from '../types';
 
 /**
  * The matrix an agent is dispatched by, and the only place it can be changed.
@@ -22,10 +27,18 @@ import type { Playbook, Status } from '../types';
 export function PlaybooksPage() {
   const { data: playbooks, error, setError, reload } = useLoaded<Playbook[]>(getPlaybooks);
   const { data: statuses } = useLoaded<Status[]>(getStatuses);
+  const { data: files } = useLoaded<PlaybookFilesDto>(getPlaybookFiles);
   const { projects } = useProjects();
   const [projectFilter, setProjectFilter] = useState('');
   const [editing, setEditing] = useState<Playbook | null>(null);
   const [creating, setCreating] = useState(false);
+
+  const bound = useMemo(() => boundCanonicals(projects), [projects]);
+  const visibleFileList = files && sortedFiles(visibleFiles(files.files, bound));
+
+  // Once per render, as ClaimPanel's own `now` is - every card on the page
+  // judges "read how long ago" against the same instant.
+  const now = new Date();
 
   async function act(action: () => Promise<unknown>) {
     try {
@@ -100,6 +113,61 @@ export function PlaybooksPage() {
         </Card>
       )}
 
+      <h2 className="hatch-section-title">Files on the trunk</h2>
+
+      {visibleFileList?.length === 0 && (
+        <EmptyState message="No .hatch/playbooks.yaml read yet - a runner's poll puts one here, at the root of a trunk some project's repository points at." />
+      )}
+
+      {visibleFileList?.map((f) => (
+        <Card key={`${f.canonical}:${f.trunk}`}>
+          <div className="hatch-playbook-file-head">
+            <strong>{f.canonical}</strong>
+            <Text tone="muted" as="span">{f.trunk}</Text>
+            <code>{shortSha(f.sha)}</code>
+            <Badge tone={f.state === 'invalid' ? 'danger' : 'muted'}>{stateLabel(f.state)}</Badge>
+            <Text tone="muted" as="span">
+              read {agoPhrase(f.checkedAt, now)} by {f.runner}
+            </Text>
+            {f.url !== null && (
+              <a className="hatch-chip hatch-chip-link" href={f.url} target="_blank" rel="noreferrer noopener">
+                <span className="hatch-chip-kind">File</span>
+                {pullRequestWords(f.url)}
+              </a>
+            )}
+          </div>
+
+          {f.state === 'parsed' && (
+            <Table>
+              <thead>
+                <tr>
+                  <th>Transition</th>
+                  <th>Types</th>
+                  <th>Model</th>
+                  <th>Effort</th>
+                </tr>
+              </thead>
+              <tbody>
+                {f.rows.map((row, i) => (
+                  <PlaybookFileRowLine key={`${transitionLabel(row)}-${i}`} row={row} statuses={statuses ?? []} />
+                ))}
+              </tbody>
+            </Table>
+          )}
+
+          {f.state === 'invalid' && (
+            <p>
+              {f.problem}
+              {f.lastGoodSha !== null && <> — last good sha {shortSha(f.lastGoodSha)}</>}
+            </p>
+          )}
+
+          {f.state === 'absent' && <p>{absentSentence(f.trunk)}</p>}
+
+          <Text tone="muted" as="p">no project reads this file yet</Text>
+        </Card>
+      ))}
+
       <PlaybookEditDialog
         open={creating || editing !== null}
         playbook={editing}
@@ -112,5 +180,42 @@ export function PlaybooksPage() {
         onSaved={() => void reload()}
       />
     </div>
+  );
+}
+
+/** One row of a file's parsed playbook, read-only: the main table's own
+    `PlaybookRow` minus the project column, the edit button and Delete - a
+    file row carries no project and nothing here may be changed. */
+function PlaybookFileRowLine({ row, statuses }: { row: PlaybookFileRowDto; statuses: Status[] }) {
+  const fromStatus = statuses.find((s) => s.id === row.fromStatusId);
+  const toStatus = statuses.find((s) => s.id === row.toStatusId);
+
+  return (
+    <tr>
+      <td>
+        {isReviewPlaybook(row) ? (
+          <>
+            {fromStatus ? <StatusPill status={fromStatus} /> : <strong>{row.fromStatusName}</strong>}{' '}
+            <Text tone="muted" as="span">review playbook</Text>
+          </>
+        ) : (
+          <>
+            {fromStatus ? <StatusPill status={fromStatus} /> : <strong>{row.fromStatusName}</strong>}
+            <span className="hatch-playbook-arrow">→</span>
+            {toStatus ? <StatusPill status={toStatus} /> : <strong>{row.toStatusName}</strong>}
+          </>
+        )}
+        {isUncheckedEdit(row) && <Badge tone="danger">a check with no denied tools can edit</Badge>}
+      </td>
+      <td>
+        {row.types.length > 0 ? (
+          row.types.map((t) => <TypeBadge key={t} type={t} />)
+        ) : (
+          <Text tone="muted" as="span">any</Text>
+        )}
+      </td>
+      <td>{row.model}</td>
+      <td>{row.effort}</td>
+    </tr>
   );
 }
