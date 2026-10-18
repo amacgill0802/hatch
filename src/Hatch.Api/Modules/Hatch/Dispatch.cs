@@ -995,6 +995,22 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         if (conflicts && ReviewWork.Judge(issue, verdicts, builds) is { Fold: { } reviewBlock })
             return reviewBlock;
 
+        // A story, bug or task standing left of the implementation column
+        // stops where it stands until its own parent reaches it - whatever
+        // that column is ticked, not only the ones ticked ParentPulls. Asked
+        // above the hop, so the hold beats one: an express issue in a column
+        // ticked ExpressSkips, and a story under an epic that has not itself
+        // reached the implementation column, are both folded here rather than
+        // carried. "epic" is deliberately not in this list - an epic reads its
+        // own parent two folds above, with its own sentence. A review
+        // self-move can't reach this: the review column is always at or past
+        // implementation, so the guard below excludes it already.
+        if (issue.Type is "story" or "bug" or "task"
+            && issue.ParentId is { } holdParentId
+            && !Columns.AtOrPastImplementation(statuses, from.Id)
+            && !family.ParentStarted(holdParentId, statuses))
+            return "its parent has not reached the implementation column, so nothing pulls it forward yet";
+
         // The hop answers condition 8 and nothing else: an express issue in a
         // column marked ExpressSkips needs no playbook, because the loop
         // carries it on itself rather than spawning a session for it. Every
@@ -1023,15 +1039,15 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         }
 
         // A column that pulls its children is never "no playbook covers
-        // this" - it is one of these two, naming which of FamilyGate.Pulls's
-        // two conditions is unmet. A childless issue in such a column (e.g.
-        // plain Backlog) has nothing to pull, so it falls through unchanged.
-        if (from.ParentPulls && issue.ParentId is { } parentId)
-        {
-            return family.ParentStarted(parentId, statuses)
-                ? "a sibling is already in flight, so only one child is pulled through at a time"
-                : "its parent has not reached the implementation column, so nothing pulls it forward yet";
-        }
+        // this" - this names the one of FamilyGate.Pulls's two conditions
+        // still unmet here. The other - a parent that has not reached the
+        // implementation column - is the fold above, for every story, bug or
+        // task before it can ever reach this one, so this can now only ever
+        // speak for a sibling already in flight. A childless issue in such a
+        // column (e.g. plain Backlog) has nothing to pull, so it falls
+        // through unchanged.
+        if (from.ParentPulls && issue.ParentId is { } parentId && family.ParentStarted(parentId, statuses))
+            return "a sibling is already in flight, so only one child is pulled through at a time";
 
         if (SendBackEligible(issue, from, family, statuses, playbook) && sendBackStreak >= claimed.Claims!.StallResumeLimit)
             return $"sent back {sendBackStreak} times in a row, at this board's limit of " +
@@ -1091,7 +1107,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                 return HopKinds.Epic;
 
             if (issue.Type is "story" or "bug" && from.ExpressSkips
-                && parent is { Type: "epic" } p && wip.Inside(p.StatusId))
+                && parent is { Type: "epic" } p && Columns.AtOrPastImplementation(statuses, p.StatusId))
                 return HopKinds.Under;
         }
 

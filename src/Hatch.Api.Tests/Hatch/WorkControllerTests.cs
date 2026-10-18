@@ -336,7 +336,7 @@ public class WorkControllerTests
     public async Task NextWork_UnderAnEpic_LeavesTheRestOfTheBoardAlone()
     {
         var h = await NewAsync();
-        var mine = await h.FileAsync("epic", "the one I am pushing", h.Todo, rank: 4096);
+        var mine = await h.FileAsync("epic", "the one I am pushing", h.Done, rank: 4096);
         var story = await h.FileAsync("story", "under mine", h.Todo, rank: 2048, parentId: mine.Id);
         var elsewhere = await h.FileAsync("story", "another epic's, and above it", h.Todo, rank: 1024);
 
@@ -363,7 +363,7 @@ public class WorkControllerTests
     public async Task NextWork_UnderAnEpic_PassesOverABlockedChildExactlyAsTheWholeBoardDoes()
     {
         var h = await NewAsync();
-        var epic = await h.FileAsync("epic", "the epic", h.Todo, rank: 4096);
+        var epic = await h.FileAsync("epic", "the epic", h.InProgress, rank: 4096);
         var asked = await h.FileAsync("story", "waiting on a decision", h.Todo, rank: 1024, parentId: epic.Id);
         var workable = await h.FileAsync("story", "nothing in its way", h.Todo, rank: 2048, parentId: epic.Id);
         await h.AskAsync(asked, "per-node or global?");
@@ -560,7 +560,7 @@ public class WorkControllerTests
     public async Task NextWork_StartsASecondStoryUnderAParentThatIsAwaitingReview()
     {
         var h = await NewAsync();
-        var parent = await h.FileAsync("epic", "the effort", h.Todo, rank: 8192);
+        var parent = await h.FileAsync("epic", "the effort", h.Done, rank: 8192);
         await h.FileAsync("story", "already up for review", h.Review, rank: 1024, parentId: parent.Id);
         var next = await h.FileAsync("story", "independent of it", h.Todo, rank: 1024, parentId: parent.Id);
 
@@ -4944,7 +4944,7 @@ public class WorkControllerTests
     }
 
     [Fact]
-    public async Task AnExpressChildInAParentPullsColumn_StillHopsAsExpress_WhenTheParentHasNotStarted()
+    public async Task AnExpressChildInAParentPullsColumn_IsFoldedByTheParentHold_WhenTheParentHasNotStarted()
     {
         var h = await NewAsync();
         var parent = await h.FileAsync("story", "the epic", h.Todo);
@@ -4955,9 +4955,82 @@ public class WorkControllerTests
 
         var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(child));
 
+        Assert.Equal(
+            "its parent has not reached the implementation column, so nothing pulls it forward yet",
+            entry.Blocked);
+        Assert.False(entry.Hop);
+        Assert.Null(entry.HopKind);
+    }
+
+    // ---- A child stops where it stands until its parent reaches the
+    // implementation column, whatever column it stands in (HA-775) ----
+
+    [Fact]
+    public async Task AStoryInToDoUnderAnEpicInToDo_IsFolded_WithNoColumnTickedAtAll()
+    {
+        var h = await NewAsync();
+        var epic = await h.FileAsync("epic", "E", h.Todo);
+        var story = await h.FileAsync("story", "S", h.Todo, parentId: epic.Id);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(story));
+
+        Assert.Equal(
+            "its parent has not reached the implementation column, so nothing pulls it forward yet",
+            entry.Blocked);
+        Assert.False(entry.Hop);
+    }
+
+    [Fact]
+    public async Task ATaskUnderAStoryLeftOfImplementation_IsFoldedByItsDirectParent_NotAGrandparentEpic()
+    {
+        var h = await NewAsync();
+        var epic = await h.FileAsync("epic", "running", h.InProgress);
+        var story = await h.FileAsync("story", "not started", h.Todo, parentId: epic.Id);
+        var task = await h.FileAsync("task", "T", h.Todo, parentId: story.Id);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(task));
+
+        Assert.Equal(
+            "its parent has not reached the implementation column, so nothing pulls it forward yet",
+            entry.Blocked);
+        Assert.False(entry.Hop);
+    }
+
+    [Fact]
+    public async Task AChildWhoseParentStandsInReview_OnAnUntickedColumn_IsClear()
+    {
+        var h = await NewAsync();
+        var parent = await h.FileAsync("story", "up for review", h.Review);
+        var child = await h.FileAsync("task", "the child", h.Todo, parentId: parent.Id);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(child));
+
         Assert.Null(entry.Blocked);
-        Assert.True(entry.Hop);
-        Assert.Equal(HopKinds.Express, entry.HopKind);
+        Assert.False(entry.Hop);
+    }
+
+    [Fact]
+    public async Task AChildAlreadyInTheImplementationColumn_IsClear_WhateverItsParentsColumn()
+    {
+        var h = await NewAsync();
+        var parent = await h.FileAsync("story", "not started", h.Todo);
+        var child = await h.FileAsync("task", "already building", h.InProgress, parentId: parent.Id);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(child));
+
+        Assert.Null(entry.Blocked);
+        Assert.False(entry.Hop);
+    }
+
+    [Fact]
+    public async Task ATopLevelIssue_InAColumnWithNoPlaybook_IsUnaffected()
+    {
+        var h = await NewAsync();
+        await h.FileAsync("story", "nobody's parent and nobody's child", h.Inbox);
+
+        Assert.Equal(
+            "no playbook covers \"inbox\" to \"todo\" for a story - add one on the Playbooks page",
+            Only(await h.Work.GetQueue(0, null, default)).Blocked);
     }
 
     // ---- The ticked implementation column (HAT-2) ----
@@ -8334,7 +8407,7 @@ public class WorkControllerTests
     public async Task ASiblingsClaim_FoldsNothing()
     {
         var h = await NewAsync();
-        var story = await h.FileAsync("story", "the story", h.Todo, rank: 1024);
+        var story = await h.FileAsync("story", "the story", h.InProgress, rank: 1024);
         var one = await h.FileAsync("task", "one", h.Todo, rank: 1024, parentId: story.Id);
         var two = await h.FileAsync("task", "two", h.Todo, rank: 2048, parentId: story.Id);
         await h.ClaimAsync(one);
@@ -8350,9 +8423,9 @@ public class WorkControllerTests
     {
         var h = await NewAsync();
         var epic = await h.FileAsync("epic", "the epic", h.Done, rank: 1024);
-        var s1 = await h.FileAsync("story", "s1", h.Todo, rank: 1024, parentId: epic.Id);
+        var s1 = await h.FileAsync("epic", "s1", h.InProgress, rank: 1024, parentId: epic.Id);
         var t1 = await h.FileAsync("task", "t1", h.Todo, rank: 1024, parentId: s1.Id);
-        var s2 = await h.FileAsync("story", "s2", h.Todo, rank: 2048, parentId: epic.Id);
+        var s2 = await h.FileAsync("epic", "s2", h.InProgress, rank: 2048, parentId: epic.Id);
         var t2 = await h.FileAsync("task", "t2", h.Todo, rank: 2048, parentId: s2.Id);
         await h.ClaimAsync(t1);
 
@@ -8368,7 +8441,7 @@ public class WorkControllerTests
     {
         var h = await NewAsync();
         var story = await h.FileAsync("story", "its runner died", h.Todo, rank: 1024);
-        var task = await h.FileAsync("task", "beneath it", h.Todo, rank: 2048, parentId: story.Id);
+        var task = await h.FileAsync("task", "beneath it", h.InProgress, rank: 2048, parentId: story.Id);
         await h.ClaimAsync(story);
 
         h.Time.Advance(TimeSpan.FromSeconds(TestClaims.Ttl + 1));
@@ -8414,7 +8487,7 @@ public class WorkControllerTests
     public async Task AClaimRead_WithItsOwnToken_FoldsNeitherTheStoryNorItsTask()
     {
         var h = await NewAsync();
-        var story = await h.FileAsync("story", "the story", h.Todo, rank: 1024);
+        var story = await h.FileAsync("epic", "the story", h.InProgress, rank: 1024);
         var task = await h.FileAsync("task", "beneath it", h.Todo, rank: 2048, parentId: story.Id);
         var token = await h.ClaimAsync(story);
 
@@ -8891,7 +8964,7 @@ public class WorkControllerTests
         var h = await NewAsync();
         await h.TickWipAsync(h.InProgress, h.Review);
 
-        var epic = await h.FileAsync("epic", "E", h.Todo, rank: 256);
+        var epic = await h.FileAsync("epic", "E", h.InProgress, rank: 256);
         await h.SetEpicLimitAsync(epic, 1);
         await h.FileAsync("story", "S1, already inside", h.InProgress, rank: 512, parentId: epic.Id);
 
@@ -8899,7 +8972,7 @@ public class WorkControllerTests
         var s3 = await h.FileAsync("story", "S3, waiting", h.Todo, rank: 2048, parentId: epic.Id);
         var x = await h.FileAsync("story", "X, no parent", h.Todo, rank: 4096);
 
-        var otherEpic = await h.FileAsync("epic", "another epic", h.Todo, rank: 8192);
+        var otherEpic = await h.FileAsync("epic", "another epic", h.InProgress, rank: 8192);
         var otherChild = await h.FileAsync("story", "under another epic", h.Todo, rank: 8200, parentId: otherEpic.Id);
 
         var sentence = $"{Key(epic)} is at its limit - 1 of 1 of its stories and bugs is in the WIP section - "
@@ -8924,7 +8997,7 @@ public class WorkControllerTests
         var h = await NewAsync();
         await h.TickWipAsync(h.InProgress, h.Review);
 
-        var epic = await h.FileAsync("epic", "E", h.Todo, rank: 256);
+        var epic = await h.FileAsync("epic", "E", h.InProgress, rank: 256);
         await h.SetEpicLimitAsync(epic, 2);
         await h.FileAsync("story", "S1", h.InProgress, rank: 512, parentId: epic.Id);
 
@@ -8952,7 +9025,7 @@ public class WorkControllerTests
         var h = await NewAsync();
         await h.TickWipAsync(h.InProgress, h.Review);
 
-        var epic = await h.FileAsync("epic", "E", h.Todo, rank: 256);
+        var epic = await h.FileAsync("epic", "E", h.InProgress, rank: 256);
         await h.SetEpicLimitAsync(epic, 1);
         var s1 = await h.FileAsync("story", "S1", h.InProgress, rank: 512, parentId: epic.Id);
         var s2 = await h.FileAsync("story", "S2", h.Todo, rank: 1024, parentId: epic.Id);
@@ -8978,7 +9051,7 @@ public class WorkControllerTests
         var h = await NewAsync();
         await h.TickWipAsync(h.InProgress, h.Review);
 
-        var epic = await h.FileAsync("epic", "E", h.Todo, rank: 256);
+        var epic = await h.FileAsync("epic", "E", h.InProgress, rank: 256);
         await h.SetEpicLimitAsync(epic, 2);
         await h.FileAsync("story", "S1", h.InProgress, rank: 512, parentId: epic.Id);
 
@@ -9044,7 +9117,7 @@ public class WorkControllerTests
         var h = await NewAsync();
         await h.TickWipAsync(h.InProgress, h.Review);
 
-        var epic = await h.FileAsync("epic", "E", h.Todo, rank: 256);
+        var epic = await h.FileAsync("epic", "E", h.InProgress, rank: 256);
         await h.SetEpicLimitAsync(epic, 1);
         var s1 = await h.FileAsync("story", "S1", h.InProgress, rank: 512, parentId: epic.Id);
 
@@ -9053,7 +9126,7 @@ public class WorkControllerTests
 
         var runningEpic = await h.FileAsync("epic", "running above it", h.InProgress, rank: 2047);
         var anotherEpic = await h.FileAsync("epic", "another epic moving in", h.Todo, rank: 2048, parentId: runningEpic.Id);
-        await h.FileAsync("task", "under the other epic", h.Todo, rank: 2049, parentId: anotherEpic.Id);
+        await h.FileAsync("task", "under the other epic", h.InProgress, rank: 2049, parentId: anotherEpic.Id);
         Assert.Null(Value(await h.Work.GetWork(Key(anotherEpic), null, default)).Blocked);
 
         // Inside the section both ways - S1 advancing from In Progress into
@@ -9061,7 +9134,7 @@ public class WorkControllerTests
         Assert.Null(Value(await h.Work.GetWork(Key(s1), null, default)).Blocked);
 
         var underEpic = await h.FileAsync("story", "a story under E", h.Todo, rank: 4096, parentId: epic.Id);
-        var bug = await h.FileAsync("bug", "under that story, not under E", h.Todo, rank: 4100, parentId: underEpic.Id);
+        var bug = await h.FileAsync("bug", "under that story, not under E", h.InProgress, rank: 4100, parentId: underEpic.Id);
 
         // The bug's own parent is the story, not the epic - never held by E's
         // limit, whatever E's own load.
@@ -9073,7 +9146,7 @@ public class WorkControllerTests
     {
         var h = await NewAsync();
 
-        var epic = await h.FileAsync("epic", "E", h.Todo, rank: 256);
+        var epic = await h.FileAsync("epic", "E", h.InProgress, rank: 256);
         await h.SetEpicLimitAsync(epic, 1);
         await h.FileAsync("story", "S1", h.InProgress, rank: 512, parentId: epic.Id);
         var s2 = await h.FileAsync("story", "S2", h.Todo, rank: 1024, parentId: epic.Id);
