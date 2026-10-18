@@ -80,6 +80,61 @@ public class IssueWorkLogControllerTests
     }
 
     [Fact]
+    public async Task PlaybookSourceAndFileReference_ArePassedThroughUnchanged()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        var entry = await h.PostAsync(issue.Key, Reported() with
+        {
+            PlaybookSource = "file",
+            PlaybookFileTrunk = "main",
+            PlaybookFileSha = "abc123abc123abc123abc123abc123abc123abc1",
+            PlaybookFileHash = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+        });
+
+        Assert.Equal("file", entry.PlaybookSource);
+        Assert.Equal("main", entry.PlaybookFileTrunk);
+        Assert.Equal("abc123abc123abc123abc123abc123abc123abc1", entry.PlaybookFileSha);
+        Assert.Equal("deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef", entry.PlaybookFileHash);
+
+        var log = await h.ReadAsync(issue.Key);
+        var row = Assert.Single(log.Entries);
+        Assert.Equal("file", row.PlaybookSource);
+        Assert.Equal("main", row.PlaybookFileTrunk);
+        Assert.Equal("abc123abc123abc123abc123abc123abc123abc1", row.PlaybookFileSha);
+        Assert.Equal("deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef", row.PlaybookFileHash);
+    }
+
+    [Fact]
+    public async Task PlaybookSourceAndFileReference_AreNullWhenNotSent()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        var entry = await h.PostAsync(issue.Key, Reported());
+
+        Assert.Null(entry.PlaybookSource);
+        Assert.Null(entry.PlaybookFileTrunk);
+        Assert.Null(entry.PlaybookFileSha);
+        Assert.Null(entry.PlaybookFileHash);
+    }
+
+    [Fact]
+    public async Task ABoardOrProjectSourcedRow_NeverCarriesAFileReference()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        var entry = await h.PostAsync(issue.Key, Reported() with { PlaybookSource = "board" });
+
+        Assert.Equal("board", entry.PlaybookSource);
+        Assert.Null(entry.PlaybookFileTrunk);
+        Assert.Null(entry.PlaybookFileSha);
+        Assert.Null(entry.PlaybookFileHash);
+    }
+
+    [Fact]
     public async Task TheFourCounts_AreTheSumOfTheBreakdownAndNotSentByTheCaller()
     {
         var h = await NewAsync();

@@ -2369,6 +2369,22 @@ public class EfHatchWorkLogEntry
     public int? PromptChars { get; set; }
 
     /// <summary>
+    /// Which kind of playbook the session was dispatched against - <c>"board"</c>,
+    /// <c>"project"</c> or <c>"file"</c>, mirroring <see cref="PlaybookDto.Source"/>.
+    /// Null on a row posted by an older runner, which never sent it.
+    /// </summary>
+    [MaxLength(10)] public string? PlaybookSource { get; set; }
+
+    /// <summary>The trunk the session's playbook file was read from. Set only when <see cref="PlaybookSource"/> is <c>"file"</c>.</summary>
+    [MaxLength(EfHatchPlaybookFile.MaxRefLength)] public string? PlaybookFileTrunk { get; set; }
+
+    /// <summary>The sha the session's playbook file was confirmed against. Set only when <see cref="PlaybookSource"/> is <c>"file"</c>.</summary>
+    [MaxLength(EfHatchPlaybookFile.MaxShaLength)] public string? PlaybookFileSha { get; set; }
+
+    /// <summary>The hash of the session's playbook file. Set only when <see cref="PlaybookSource"/> is <c>"file"</c>.</summary>
+    [MaxLength(EfHatchPlaybookFile.MaxHashLength)] public string? PlaybookFileHash { get; set; }
+
+    /// <summary>
     /// Notional API list price, in dollars, as the CLI reported it. Eight
     /// places because a short session costs a fraction of a cent and rounding
     /// it to two would make a night of them add up to nothing.

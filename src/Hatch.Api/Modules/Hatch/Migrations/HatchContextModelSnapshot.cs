@@ -1196,6 +1196,22 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<long?>("PeakContextTokens")
                         .HasColumnType("bigint");
 
+                    b.Property<string>("PlaybookFileHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("PlaybookFileSha")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("PlaybookFileTrunk")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("PlaybookSource")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
                     b.Property<int?>("PromptChars")
                         .HasColumnType("integer");
 
