@@ -1188,7 +1188,7 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<long>("CacheReadTokens")
                         .HasColumnType("bigint");
 
-                    b.Property<decimal>("CostUsd")
+                    b.Property<decimal?>("CostUsd")
                         .HasPrecision(18, 8)
                         .HasColumnType("numeric(18,8)");
 

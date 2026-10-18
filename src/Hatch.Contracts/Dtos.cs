@@ -2149,13 +2149,14 @@ public record TimelineDto(
 /// that knows the battery's vendor spelling. Nothing downstream of the wire
 /// should have to know two vocabularies.
 /// </remarks>
+/// <param name="CostUsd">Dollars, or null when the agent reported no price - unpriced, not free.</param>
 public record WorkLogModelUseDto(
     string Model,
     long InputTokens,
     long OutputTokens,
     long CacheCreationTokens,
     long CacheReadTokens,
-    decimal CostUsd);
+    decimal? CostUsd);
 
 /// <summary>
 /// One finished session, as the dispatcher reports it.
@@ -2177,6 +2178,7 @@ public record WorkLogModelUseDto(
 /// <param name="DurationMs">The session's own <c>duration_ms</c>, which is the smaller number and the honest one.</param>
 /// <param name="Title">What the session did, in a few words, or null when it never said.</param>
 /// <param name="Summary">The same at length. Clipped rather than refused when it runs long - see <see cref="IssueWorkLogController"/>.</param>
+/// <param name="CostUsd">Dollars, or null when the agent reported no price - unpriced, not free. Never sent as <c>0</c> to mean "unknown".</param>
 /// <param name="Models">
 /// The per-model breakdown. Absent on a run that fell over before the accounting
 /// arrived, which records zero tokens and whatever cost was reported: a session
@@ -2191,7 +2193,7 @@ public record WorkLogEntryRequest(
     string? Summary,
     bool IsError,
     int Turns,
-    decimal CostUsd,
+    decimal? CostUsd,
     IReadOnlyList<WorkLogModelUseDto>? Models,
     int? Requests = null,
     long? PeakContextTokens = null,
@@ -2213,6 +2215,7 @@ public record WorkLogEntryRequest(
 /// The four counts added up, carried rather than left to the client, so the
 /// headline figure has one definition.
 /// </param>
+/// <param name="CostUsd">Dollars, or null when the agent reported no price - unpriced, not free.</param>
 public record WorkLogEntryDto(
     long Id,
     string SessionId,
@@ -2224,7 +2227,7 @@ public record WorkLogEntryDto(
     bool Described,
     bool IsError,
     int Turns,
-    decimal CostUsd,
+    decimal? CostUsd,
     long InputTokens,
     long OutputTokens,
     long CacheCreationTokens,
@@ -2346,7 +2349,7 @@ public record WorkLogSessionDto(
     bool Described,
     bool IsError,
     int Turns,
-    decimal CostUsd,
+    decimal? CostUsd,
     long InputTokens,
     long OutputTokens,
     long CacheCreationTokens,

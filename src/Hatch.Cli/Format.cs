@@ -16,12 +16,13 @@ public static class Format
 
     /// <summary>
     /// Dollars at enough places that a cheap session does not read as free. Two
-    /// would print a third of a cent as $0, which is a different claim.
+    /// would print a third of a cent as $0, which is a different claim. Null is
+    /// a session whose agent reported no price: "unpriced", never "$0".
     /// </summary>
-    public static string Spent(decimal usd) =>
-        usd >= 0.01m
-            ? "$" + Math.Round(usd, 2).ToString("0.##", CultureInfo.InvariantCulture)
-            : "$" + Math.Round(usd, 4).ToString("0.####", CultureInfo.InvariantCulture);
+    public static string Spent(decimal? usd) =>
+        usd is not { } d ? "unpriced"
+        : d >= 0.01m ? "$" + Math.Round(d, 2).ToString("0.##", CultureInfo.InvariantCulture)
+        : "$" + Math.Round(d, 4).ToString("0.####", CultureInfo.InvariantCulture);
 
     /// <summary>
     /// A timestamp as the server wrote it: ISO 8601, and no trailing zeros on
