@@ -279,6 +279,12 @@ public class WorkController(
         var repos = RepositoryDeclaration.From(remote, standing, null);
         if (!repos.IsDeclared) return new List<ReviewCheckDto>();
 
+        var flaggedCanonicals = (await db.Projects.AsNoTracking()
+                .Where(p => p.RepoSourced).Include(p => p.Repositories).ToListAsync(ct))
+            .Select(p => p.Repositories.OrderBy(r => r.SortOrder).FirstOrDefault()?.Canonical)
+            .Where(c => c is not null)
+            .ToHashSet();
+
         var statuses = await _dispatch.OrderedStatusesAsync(ct);
         if (Columns.AwaitingReview(statuses) is not { } review) return new List<ReviewCheckDto>();
         var merges = Columns.Merges(statuses);
@@ -355,7 +361,8 @@ public class WorkController(
                 IssueKey.Format(i.Project!.Key, i.Number),
                 i.Project.Repositories
                     .OrderBy(r => r.SortOrder)
-                    .Select((r, at) => new WorkRepositoryDto(r.Remote, r.Canonical, r.BaseBranch, at == 0, repos.Match(r.Canonical)))
+                    .Select((r, at) => new WorkRepositoryDto(r.Remote, r.Canonical, r.BaseBranch, at == 0, repos.Match(r.Canonical),
+                        flaggedCanonicals.Contains(r.Canonical) ? PlaybookFile.Path : null))
                     .ToList(),
                 merged.Select(IssueMergeChecks.Project).ToList(),
                 built.Select(IssueBuildChecks.Project).ToList(),

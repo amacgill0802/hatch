@@ -6776,6 +6776,83 @@ public class WorkControllerTests
             rows.Single(r => r.Key == Key(inMerges)).MergeWork);
     }
 
+    // ---- The playbook file flag (HA-824) ----
+
+    [Fact]
+    public async Task ReviewRead_FlagsARepoSourcedProjectsPrimaryRepositoryOnItsOwnRow()
+    {
+        var h = await NewAsync();
+        await h.SetRepoSourcedAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var issue = await h.FileAsync("story", "up for review", h.Review);
+
+        var row = Assert.Single(Value(await h.Work.GetReview(["https://example.com/o/r"], null, default)));
+
+        Assert.Equal(Key(issue), row.Key);
+        Assert.Equal(".hatch/playbooks.yaml", Assert.Single(row.Repositories).PlaybookFilePath);
+    }
+
+    [Fact]
+    public async Task ReviewRead_LeavesARepositoryNoProjectReadsUnflagged()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var issue = await h.FileAsync("story", "up for review", h.Review);
+
+        var row = Assert.Single(Value(await h.Work.GetReview(["https://example.com/o/r"], null, default)));
+
+        Assert.Equal(Key(issue), row.Key);
+        Assert.Null(Assert.Single(row.Repositories).PlaybookFilePath);
+    }
+
+    /// <summary>
+    /// The second project never turned the setting on itself - it is flagged
+    /// only because the first project's primary repository shares its
+    /// canonical, through that project's own <c>RepoSourced</c> row.
+    /// </summary>
+    [Fact]
+    public async Task ReviewRead_FlagsASecondProjectsRepositoryThroughTheFirstProjectsRepoSourcedRow()
+    {
+        var h = await NewAsync();
+        await h.SetRepoSourcedAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+
+        var other = await h.AddProjectAsync("OTH");
+        var (canonical, _) = RemoteIdentity.Canonical("https://example.com/o/r");
+        h.Db.ProjectRepositories.Add(new EfHatchProjectRepository
+        {
+            ProjectId = other,
+            Remote = "https://example.com/o/r",
+            Canonical = canonical!,
+            SortOrder = 0,
+            CreatedAt = Now,
+        });
+        var issue = await h.FileAsync("story", "up for review, in the other project", h.Review, projectId: other);
+        await h.Db.SaveChangesAsync();
+
+        var row = Assert.Single(Value(await h.Work.GetReview(["https://example.com/o/r"], null, default)));
+
+        Assert.Equal(Key("OTH", issue), row.Key);
+        Assert.Equal(".hatch/playbooks.yaml", Assert.Single(row.Repositories).PlaybookFilePath);
+    }
+
+    [Fact]
+    public async Task ReviewRead_LeavesARepoSourcedProjectsSecondRepositoryUnflagged()
+    {
+        var h = await NewAsync();
+        await h.SetRepoSourcedAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        await h.BindRepositoryAsync("https://example.com/o/second");
+        var issue = await h.FileAsync("story", "up for review", h.Review);
+
+        var row = Assert.Single(Value(await h.Work.GetReview(["https://example.com/o/r"], null, default)));
+
+        Assert.Equal(Key(issue), row.Key);
+        Assert.Equal(2, row.Repositories.Count);
+        Assert.Equal(".hatch/playbooks.yaml", row.Repositories[0].PlaybookFilePath);
+        Assert.Null(row.Repositories[1].PlaybookFilePath);
+    }
+
     // ---- A no-checks tip, judged by what its project and its forge say (HA-730) ----
     //
     // The merge column, the approve hop and the review read all ask
