@@ -351,6 +351,15 @@ public sealed class FakeForge
     /// <summary>What an update of one pull request's number answers.</summary>
     public Dictionary<long, UpdateAnswer> UpdateFor { get; } = [];
 
+    /// <summary>Every re-run asked for, with the job id it carried (null for a check with none), in order.</summary>
+    public List<(string Path, long? JobId)> RerunCalls { get; } = [];
+
+    /// <summary>What every re-run attempt answers, unless <see cref="RerunFor"/> says otherwise.</summary>
+    public RerunAnswer RerunAnswer { get; set; } = new(null, null);
+
+    /// <summary>What a re-run of one job id answers.</summary>
+    public Dictionary<long, RerunAnswer> RerunFor { get; } = [];
+
     public IForge For(string path, string? canonical)
     {
         Canonicals.Add(canonical);
@@ -388,6 +397,14 @@ public sealed class FakeForge
         {
             owner.UpdateCalls.Add((path, number, sha));
             return Task.FromResult(owner.UpdateFor.GetValueOrDefault(number, owner.UpdateAnswer));
+        }
+
+        public Task<RerunAnswer> RerunAsync(FailingCheck check, CancellationToken ct)
+        {
+            owner.RerunCalls.Add((path, check.JobId));
+            return Task.FromResult(check.JobId is { } job
+                ? owner.RerunFor.GetValueOrDefault(job, owner.RerunAnswer)
+                : owner.RerunAnswer);
         }
     }
 }
