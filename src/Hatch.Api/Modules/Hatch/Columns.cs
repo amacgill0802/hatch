@@ -159,6 +159,27 @@ public static class Columns
             : null);
 
     /// <summary>
+    /// Whether a column is the implementation column or stands to its right -
+    /// a terminal column included, since a terminal column is further along
+    /// than implementation, not off the lane work is in. A deferred column is
+    /// on no lane, so it is never in this one.
+    /// </summary>
+    public static bool AtOrPastImplementation(List<EfHatchStatus> statuses, int statusId) =>
+        AtOrPastImplementationIds(statuses).Contains(statusId);
+
+    /// <summary>
+    /// Every column <see cref="AtOrPastImplementation"/> is true of, worked out
+    /// once - for the caller that asks it of every issue on the board.
+    /// </summary>
+    public static HashSet<int> AtOrPastImplementationIds(List<EfHatchStatus> statuses)
+    {
+        if (Implementation(statuses) is not { } implementation) return [];
+
+        var board = Board(statuses);
+        return board.Skip(board.FindIndex(s => s.Id == implementation.Id)).Select(s => s.Id).ToHashSet();
+    }
+
+    /// <summary>
     /// The column that feeds <see cref="Implementation"/>: the one whose own
     /// <see cref="Target"/> is the implementation column, measured the same
     /// way <see cref="Implementation"/>'s own fallback measures the

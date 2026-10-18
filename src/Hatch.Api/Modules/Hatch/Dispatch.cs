@@ -1803,11 +1803,10 @@ public sealed class FamilyGate
             : $"{open} of its {counted} children {(open == 1 ? "is" : "are")} not done - an epic is verified once its stories are";
     }
 
-    /// <summary>Whether the parent's own column is Columns.Implementation.</summary>
+    /// <summary>Whether the parent's own column has reached Columns.Implementation.</summary>
     public bool ParentStarted(long parentId, List<EfHatchStatus> statuses) =>
         _statusById.TryGetValue(parentId, out var statusId)
-        && Columns.Implementation(statuses) is { } implementation
-        && statusId == implementation.Id;
+        && Columns.AtOrPastImplementation(statuses, statusId);
 
     /// <summary>
     /// Whether a sibling of this issue is in flight - see HA-149: standing

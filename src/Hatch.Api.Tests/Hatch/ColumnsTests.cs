@@ -15,8 +15,8 @@ namespace Hatch.Api.Tests.Hatch;
 /// </summary>
 public class ColumnsTests
 {
-    static EfHatchStatus S(int id, string name, int sortOrder, bool terminal = false, bool isProtected = false, bool mergesPullRequest = false) =>
-        new() { Id = id, Name = name, SortOrder = sortOrder, IsTerminal = terminal, IsProtected = isProtected, MergesPullRequest = mergesPullRequest };
+    static EfHatchStatus S(int id, string name, int sortOrder, bool terminal = false, bool isProtected = false, bool mergesPullRequest = false, bool deferred = false) =>
+        new() { Id = id, Name = name, SortOrder = sortOrder, IsTerminal = terminal, IsProtected = isProtected, MergesPullRequest = mergesPullRequest, IsDeferred = deferred };
 
     [Fact]
     public void PlainBoard_AwaitingReviewIsReview_ImplementationIsDoing()
@@ -214,5 +214,36 @@ public class ColumnsTests
         var board = new List<EfHatchStatus> { todo, doing, done };
 
         Assert.Null(Columns.Closes(board, done));
+    }
+
+    [Fact]
+    public void FiveColumnBoardWithADeferredColumnMidBoard_AtOrPastImplementationIsMeasuredOffTheBoard()
+    {
+        var todo = S(1, "To Do", 10);
+        var doing = S(2, "Doing", 20);
+        var parked = S(3, "Parked", 30, deferred: true);
+        var review = S(4, "Review", 40);
+        var done = S(5, "Done", 50, terminal: true);
+        var board = new List<EfHatchStatus> { todo, doing, parked, review, done };
+
+        Assert.False(Columns.AtOrPastImplementation(board, todo.Id));
+        Assert.True(Columns.AtOrPastImplementation(board, doing.Id));
+        Assert.False(Columns.AtOrPastImplementation(board, parked.Id));
+        Assert.True(Columns.AtOrPastImplementation(board, review.Id));
+        Assert.True(Columns.AtOrPastImplementation(board, done.Id));
+
+        Assert.Equal(new HashSet<int> { doing.Id, review.Id, done.Id }, Columns.AtOrPastImplementationIds(board));
+    }
+
+    [Fact]
+    public void NoImplementationColumn_AtOrPastImplementationIdsIsEmpty()
+    {
+        var review = S(1, "Review", 10);
+        var done = S(2, "Done", 20, terminal: true);
+        var board = new List<EfHatchStatus> { review, done };
+
+        Assert.Empty(Columns.AtOrPastImplementationIds(board));
+        Assert.False(Columns.AtOrPastImplementation(board, review.Id));
+        Assert.False(Columns.AtOrPastImplementation(board, done.Id));
     }
 }
