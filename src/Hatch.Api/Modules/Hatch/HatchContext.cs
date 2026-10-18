@@ -4,7 +4,7 @@ namespace Hatch.Api.Modules.Hatch;
 
 /// <summary>
 /// Hatch's slice of the Hatch database: the <c>hatch</c> schema, its own
-/// migration history, twenty tables.
+/// migration history, twenty-one tables.
 /// </summary>
 public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(options), IModuleContext
 {
@@ -28,6 +28,7 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
     public DbSet<EfHatchBuildCheck> BuildChecks => Set<EfHatchBuildCheck>();
     public DbSet<EfHatchLanding> Landings => Set<EfHatchLanding>();
     public DbSet<EfHatchTrunkBuild> TrunkBuilds => Set<EfHatchTrunkBuild>();
+    public DbSet<EfHatchPlaybookFile> PlaybookFiles => Set<EfHatchPlaybookFile>();
     public DbSet<EfHatchVerdict> Verdicts => Set<EfHatchVerdict>();
 
     /// <summary>
@@ -315,6 +316,11 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
                 .OnDelete(DeleteBehavior.SetNull);
 
             e.Property(t => t.Failing).HasColumnType("jsonb");
+        });
+
+        modelBuilder.Entity<EfHatchPlaybookFile>(e =>
+        {
+            e.Property(f => f.Rows).HasColumnType("jsonb");
         });
 
         base.OnModelCreating(modelBuilder);

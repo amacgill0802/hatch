@@ -2708,6 +2708,17 @@ public record TrunkBuildDto(
 public record TrunkBuildBugRequest(bool? Express, string? Priority, int? StatusId);
 
 /// <summary>
+/// One playbook row as the server resolved it when it parsed the file - status
+/// ids only, normalized/defaulted the same way <c>PlaybooksController.CreatePlaybook</c>
+/// resolves a row before storing an <c>EfHatchPlaybook</c>. What is actually
+/// persisted in <c>EfHatchPlaybookFile.Rows</c>. No status names: a column
+/// rename after the parse must not change what a stored copy means.
+/// </summary>
+public record PlaybookFileRow(
+    int FromStatusId, int ToStatusId, IReadOnlyList<string> Types, string Shape, string Prompt,
+    string Model, string Effort, int? Budget, int? BriefLimit, IReadOnlyList<string> DeniedTools, bool IsCheck);
+
+/// <summary>
 /// What the board would like a runner to do: carry on, hold, or finish and
 /// stop.
 /// </summary>
