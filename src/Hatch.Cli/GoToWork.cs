@@ -1587,13 +1587,13 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 // by origin rather than the column - and nobody can find a
                 // pull request for it. Never also a stall: the two guards'
                 // conditions are mutually exclusive by construction.
+                var trunkLanding = work.Landing == Landings.Trunk;
                 if ((report.Moved || report.Resolved || report.FixPushed)
                     && report.EndedInReview
-                    && (left.BranchOnOrigin && !left.HasPullRequest
-                        || work.Landing == Landings.Trunk && !left.HasLanding))
+                    && (trunkLanding ? !left.HasLanding : left.BranchOnOrigin && !left.HasPullRequest))
                 {
                     releaseOutcome = await Unpublished.RefuseAsync(
-                        runtime.Board, runtime.Say, report, entering.Entries, work.LetGo, ct);
+                        runtime.Board, runtime.Say, report, entering.Entries, work.LetGo, trunkLanding, ct);
                 }
             }
             finally
