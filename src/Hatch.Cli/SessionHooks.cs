@@ -25,7 +25,7 @@ namespace Hatch.Cli;
 /// settings file every session is handed, whether or not the operator ever ran
 /// <c>rtk init -g</c>. Without RTK the file is what it always was.</para>
 /// </remarks>
-public sealed class SessionHooks : IDisposable
+public sealed class SessionHooks : IDisposable, IAgentHooks
 {
     /// <summary>What a hook is given before it is killed - comfortably more than <see cref="InboxCommand.CallSeconds"/>.</summary>
     public const int TimeoutSeconds = 10;
@@ -41,6 +41,9 @@ public sealed class SessionHooks : IDisposable
 
     /// <summary>The settings file, to hand to <c>--settings</c>.</summary>
     public string Settings { get; }
+
+    /// <summary>Claude's own spawn reads this back as <c>--settings</c>, which is already <see cref="Settings"/>.</summary>
+    public string? Opaque => Settings;
 
     /// <summary>The file whose modification time is when a per-step check last asked.</summary>
     public string Stamp => Path.Combine(Directory, "inbox.stamp");
