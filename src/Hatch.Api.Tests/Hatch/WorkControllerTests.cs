@@ -1848,7 +1848,10 @@ public class WorkControllerTests
 
         Assert.Equal("a-only", Value(await h.Work.GetWork(Key(ownTask), null, default)).Playbook!.Model);
         Assert.Equal("sonnet", Value(await h.Work.GetWork(Key("OTH", otherTask), null, default)).Playbook!.Model);
-        Assert.Equal("AER", Value(await h.Work.GetWork(Key(ownTask), null, default)).Playbook!.ProjectKey);
+        var ownWork = Value(await h.Work.GetWork(Key(ownTask), null, default));
+        Assert.Equal("AER", ownWork.Playbook!.ProjectKey);
+        Assert.Equal("project", ownWork.Playbook!.Source);
+        Assert.Null(ownWork.PlaybookFile);
     }
 
     [Fact]
@@ -1865,6 +1868,8 @@ public class WorkControllerTests
         Assert.Equal("sonnet", work.Playbook!.Model);
         Assert.Null(work.Playbook!.ProjectKey);
         Assert.Null(work.Playbook!.ProjectName);
+        Assert.Equal("board", work.Playbook!.Source);
+        Assert.Null(work.PlaybookFile);
     }
 
     [Fact]
@@ -1917,6 +1922,58 @@ public class WorkControllerTests
         var otherTask = await h.FileAsync("task", "the only issue, in the other project", h.Todo, projectId: other);
 
         Assert.Equal("sonnet", Value(await h.Work.GetNextWork(ct: default)).Playbook!.Model);
+    }
+
+    // ---- Matching, repo-sourced (HA-815) ----
+
+    /// <summary>
+    /// A file-sourced transient row's own <c>Project</c> navigation is null even
+    /// though its <c>ProjectId</c> is set to the real project's id - the trap:
+    /// <c>ProjectKey</c>/<c>ProjectName</c> must come from <c>issue.Project</c>,
+    /// never from the playbook row itself.
+    /// </summary>
+    [Fact]
+    public async Task Work_AFileMatchOnARepoSourcedProject_CarriesTheFileSourceAndTheProjectsRealKeyAndName()
+    {
+        var h = await NewAsync();
+        await h.SetRepoSourcedAsync();
+        var repo = await h.BindRepositoryAsync("https://example.com/o/r", baseBranch: "main");
+        await h.PlaybookFileAsync(repo, "main", EfHatchPlaybookFile.ParsedState, rows: [FileRow(h.Todo, h.InProgress, model: "fable")]);
+
+        var task = await h.FileAsync("task", "a repo-sourced project's own file covers this move", h.Todo);
+
+        var work = Value(await h.Work.GetWork(Key(task), null, default));
+        Assert.Equal("file", work.Playbook!.Source);
+        Assert.Equal("fable", work.Playbook!.Model);
+        Assert.Equal("AER", work.Playbook!.ProjectKey);
+        Assert.Equal("Hatch", work.Playbook!.ProjectName);
+        Assert.NotNull(work.PlaybookFile);
+        Assert.Equal(".hatch/playbooks.yaml", work.PlaybookFile!.Path);
+        Assert.Equal(repo.Canonical, work.PlaybookFile!.Canonical);
+        Assert.Equal("main", work.PlaybookFile!.Trunk);
+        Assert.Equal(new string('a', 40), work.PlaybookFile!.Sha);
+    }
+
+    /// <summary>
+    /// The same repo-sourced project, a transition its file has no row for: the
+    /// resolution falls through to the board-wide row that does cover it (one
+    /// of the three <see cref="NewAsync"/> seeds on every board), and the file
+    /// is still carried even though it is not the row that matched.
+    /// </summary>
+    [Fact]
+    public async Task Work_ARepoSourcedProjectsFileHasNoRowForTheMove_FallsBackToTheBoardWideRowWithTheFileStillCarried()
+    {
+        var h = await NewAsync();
+        await h.SetRepoSourcedAsync();
+        var repo = await h.BindRepositoryAsync("https://example.com/o/r", baseBranch: "main");
+        await h.PlaybookFileAsync(repo, "main", EfHatchPlaybookFile.ParsedState, rows: [FileRow(h.Todo, h.InProgress, model: "fable")]);
+
+        var task = await h.FileAsync("task", "the file has no row for this transition", h.InProgress);
+
+        var work = Value(await h.Work.GetWork(Key(task), null, default));
+        Assert.Equal("board", work.Playbook!.Source);
+        Assert.Equal("sonnet", work.Playbook!.Model);
+        Assert.NotNull(work.PlaybookFile);
     }
 
     // ---- The issue's own model and effort ----
@@ -9760,6 +9817,38 @@ public class WorkControllerTests
             return project.Id;
         }
 
+        /// <summary>The project's repo-sourced flag, written straight onto the row.</summary>
+        public async Task SetRepoSourcedAsync(bool on = true, int? projectId = null)
+        {
+            var project = await Db.Projects.SingleAsync(p => p.Id == (projectId ?? ProjectId));
+            project.RepoSourced = on;
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>The resolved state of a repo-sourced project's own <c>.hatch/playbooks.yaml</c> copy, as a prior check against it left it.</summary>
+        public async Task<EfHatchPlaybookFile> PlaybookFileAsync(
+            EfHatchProjectRepository repo, string trunk, string state,
+            IReadOnlyList<PlaybookFileRow>? rows = null, string? problem = null, string? sha = null)
+        {
+            var file = new EfHatchPlaybookFile
+            {
+                Remote = repo.Remote,
+                Canonical = repo.Canonical,
+                Trunk = trunk,
+                Sha = sha ?? new string('a', 40),
+                State = state,
+                Rows = rows is null ? null : EfHatchPlaybookFile.WriteRows(rows),
+                Problem = problem,
+                CheckedAt = Now,
+                Runner = "host:/checkout",
+                CheckedBy = "runner",
+            };
+
+            Db.PlaybookFiles.Add(file);
+            await Db.SaveChangesAsync();
+            return file;
+        }
+
         /// <summary>
         /// A project's landing policy and check requirement, written straight
         /// onto the row - what the write route accepts and refuses is a
@@ -10510,6 +10599,11 @@ public class WorkControllerTests
         CreatedAt = Now,
         UpdatedAt = Now,
     };
+
+    /// <summary>A row off a repo-sourced project's own <c>.hatch/playbooks.yaml</c> copy, resolved rather than read off a table.</summary>
+    private static PlaybookFileRow FileRow(
+        int from, int to, IReadOnlyList<string>? types = null, string shape = "any", string model = "sonnet") =>
+        new(from, to, types ?? [], shape, "do the thing", model, "high", null, null, [], false);
 
     private static T Value<T>(ActionResult<T> result) =>
         result.Value ?? throw new InvalidOperationException($"expected a value, got {result.Result?.GetType().Name ?? "nothing"}");

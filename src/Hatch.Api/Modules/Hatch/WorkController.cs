@@ -1109,9 +1109,10 @@ public class WorkController(
                 OnePrFrom: onePrFrom));
         }
 
-        var playbook = to is null
+        var match = to is null
             ? null
-            : (await _dispatch.MatchAsync(from.Id, to.Id, issue.Type, children.Count > 0, issue.ProjectId, ct))?.Playbook;
+            : await _dispatch.MatchAsync(from.Id, to.Id, issue.Type, children.Count > 0, issue.ProjectId, ct);
+        var playbook = match?.Playbook;
 
         // Both halves in one read: the open ones decide whether an agent is
         // dispatched at all, and the answered ones are what it is dispatched
@@ -1162,27 +1163,37 @@ public class WorkController(
             repos, merged, built, hopKind, statuses, wip, epics, landing: landing);
         var hopped = hop && blocked is null;
 
+        // The values the increment will actually run on, in place rather than
+        // beside them. An issue's own model and effort beat whichever playbook
+        // speaks for its next move, and a client that had to remember to check
+        // a second pair of fields is a client that will one day spawn sonnet
+        // on a ticket set to opus - silently. Nothing is hidden by folding
+        // them in: issue.modelOverride rides the same payload, and is how a
+        // printed line says where the value came from. Everything else stays
+        // the matched row's own, so the dispatch names the playbook that
+        // spoke *and* the values that won.
+        //
+        // Null on a hop, even where a playbook covers the move, so no client
+        // can spawn a session for it by accident - see WorkDto.Hop.
+        PlaybookDto? playbookDto = null;
+        if (!hopped && playbook is not null)
+        {
+            var baseDto = PlaybooksController.ToDto(playbook);
+            playbookDto = baseDto with
+            {
+                Model = issue.ModelOverride ?? playbook.Model,
+                Effort = issue.EffortOverride ?? playbook.Effort,
+                Source = match!.Source!,
+                ProjectKey = match.Source == "file" ? issue.Project!.Key : baseDto.ProjectKey,
+                ProjectName = match.Source == "file" ? issue.Project!.Name : baseDto.ProjectName,
+            };
+        }
+
         return new WorkDto(
             issueDto,
             ToStatusDto(from),
             rowTo is null ? null : ToStatusDto(rowTo),
-            // The values the increment will actually run on, in place rather
-            // than beside them. An issue's own model and effort beat whichever
-            // playbook speaks for its next move, and a client that had to
-            // remember to check a second pair of fields is a client that will
-            // one day spawn sonnet on a ticket set to opus - silently. Nothing
-            // is hidden by folding them in: issue.modelOverride rides the same
-            // payload, and is how a printed line says where the value came
-            // from. Everything else stays the matched row's own, so the
-            // dispatch names the playbook that spoke *and* the values that won.
-            //
-            // Null on a hop, even where a playbook covers the move, so no
-            // client can spawn a session for it by accident - see WorkDto.Hop.
-            hopped || playbook is null ? null : PlaybooksController.ToDto(playbook) with
-            {
-                Model = issue.ModelOverride ?? playbook.Model,
-                Effort = issue.EffortOverride ?? playbook.Effort,
-            },
+            playbookDto,
             childCards,
             repositories,
             questions,
@@ -1206,7 +1217,8 @@ public class WorkController(
             branchKey,
             branchTitle,
             lastCheckFindings,
-            implementationStatus?.Name);
+            implementationStatus?.Name,
+            match?.File is null ? null : new PlaybookFileReferenceDto(match.File.Path, match.File.Canonical, match.File.Trunk, match.File.Sha, match.File.Hash));
     }
 
     /// <summary>
