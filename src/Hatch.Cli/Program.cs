@@ -180,10 +180,12 @@ try
             else if (!noKeys) say.Line("hatch: keys are off — use Ctrl-C or --stop-file to stop this runner");
         }
 
+        var adapter = new ClaudeAdapter(settings.ClaudeBin, warn: say.Complain);
         var runtime = new Runtime(
             Settings: settings,
             Board: board,
-            Sessions: new ClaudeSessionRunner(settings.ClaudeBin, warn: say.Complain),
+            Sessions: new AgentSessionRunner(adapter),
+            Adapter: adapter,
             Say: say,
             Root: primaryRoot,
             RunnerName: runnerName,

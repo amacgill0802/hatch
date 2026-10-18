@@ -13,6 +13,7 @@ public sealed record Runtime(
     Settings Settings,
     Board Board,
     ISessionRunner Sessions,
+    IAgentAdapter Adapter,
     Terminal Say,
     string Root,
     string RunnerName,
