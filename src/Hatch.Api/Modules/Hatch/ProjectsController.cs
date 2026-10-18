@@ -469,7 +469,10 @@ public class ProjectsController(
 
     /// <summary>
     /// How a project expects its work to land - <see cref="EfHatchProject.Landing"/>,
-    /// <see cref="EfHatchProject.ChecksRequired"/> and <see cref="EfHatchProject.OnePullRequest"/>. Only an owner may call this;
+    /// <see cref="EfHatchProject.ChecksRequired"/>, <see cref="EfHatchProject.OnePullRequest"/>, and its
+    /// auto-heal settings (<see cref="EfHatchProject.AutoHealBugEnabled"/>,
+    /// <see cref="EfHatchProject.AutoHealBugPriority"/>, <see cref="EfHatchProject.AutoHealBugPreApproval"/>,
+    /// <see cref="EfHatchProject.AutoHealBugStatusId"/>). Only an owner may call this;
     /// unlike <see cref="PatchProject"/>, which never reads either field, this is the
     /// only route that writes them.
     /// </summary>
@@ -489,9 +492,40 @@ public class ProjectsController(
         if (landing is not null && landing != Landings.PullRequest && landing != Landings.Trunk)
             return BadRequest($"landing is \"{Landings.PullRequest}\" or \"{Landings.Trunk}\" - not \"{request.Landing}\"");
 
+        var autoHealPriority = project.AutoHealBugPriority;
+        if (request.AutoHealBugPriority is { } autoHealPriorityName && !PriorityLevels.TryParse(autoHealPriorityName, out autoHealPriority))
+            return BadRequest($"\"{autoHealPriorityName}\" is not a priority - paused, economy, low, normal, expedited or emergency");
+
+        var autoHealPreApproval = project.AutoHealBugPreApproval;
+        if (request.AutoHealBugPreApproval is { } autoHealPreApprovalName && !PreApprovalLevels.TryParse(autoHealPreApprovalName, out autoHealPreApproval))
+            return BadRequest($"\"{autoHealPreApprovalName}\" is not a pre-approval level - none, express or preapproved");
+
+        int? autoHealStatusId = project.AutoHealBugStatusId;
+        var autoHealStatusIdChanged = false;
+        if (request.AutoHealBugStatusId is { } rawAutoHealStatusId)
+        {
+            autoHealStatusIdChanged = true;
+            if (rawAutoHealStatusId == "")
+            {
+                autoHealStatusId = null;
+            }
+            else if (!int.TryParse(rawAutoHealStatusId, out var parsedAutoHealStatusId) || !await db.Statuses.AnyAsync(s => s.Id == parsedAutoHealStatusId, ct))
+            {
+                return BadRequest($"there is no column {rawAutoHealStatusId}");
+            }
+            else
+            {
+                autoHealStatusId = parsedAutoHealStatusId;
+            }
+        }
+
         var unchanged = (landing is null || landing == project.Landing) &&
             (request.ChecksRequired is null || request.ChecksRequired == project.ChecksRequired) &&
-            (request.OnePullRequest is null || request.OnePullRequest == project.OnePullRequest);
+            (request.OnePullRequest is null || request.OnePullRequest == project.OnePullRequest) &&
+            (request.AutoHealBugEnabled is null || request.AutoHealBugEnabled == project.AutoHealBugEnabled) &&
+            autoHealPriority == project.AutoHealBugPriority &&
+            autoHealPreApproval == project.AutoHealBugPreApproval &&
+            (!autoHealStatusIdChanged || autoHealStatusId == project.AutoHealBugStatusId);
 
         if (!unchanged)
         {
@@ -525,6 +559,10 @@ public class ProjectsController(
             if (landing is not null) project.Landing = landing;
             if (request.ChecksRequired is { } checksRequired) project.ChecksRequired = checksRequired;
             if (request.OnePullRequest is { } onePullRequest) project.OnePullRequest = onePullRequest;
+            if (request.AutoHealBugEnabled is { } autoHealEnabled) project.AutoHealBugEnabled = autoHealEnabled;
+            if (request.AutoHealBugPriority is not null) project.AutoHealBugPriority = autoHealPriority;
+            if (request.AutoHealBugPreApproval is not null) project.AutoHealBugPreApproval = autoHealPreApproval;
+            if (autoHealStatusIdChanged) project.AutoHealBugStatusId = autoHealStatusId;
 
             await db.SaveChangesAsync(ct);
             logger.LogInformation("Project {ProjectKey} landing set to {Landing}/{ChecksRequired}/{OnePullRequest} by {Actor}", project.Key, project.Landing, project.ChecksRequired, project.OnePullRequest, await caller.ActorNameAsync(ct));
@@ -601,7 +639,9 @@ public class ProjectsController(
         EfHatchProject project, int issueCount, IReadOnlyList<ProjectRepositoryDto> repositories, DateTimeOffset? logoUpdatedAt,
         IReadOnlyList<ProjectMemberDto> members, bool canApprove, bool canAdminister) =>
         new(project.Id, project.Key, project.Name, issueCount, project.CreatedAt, project.Color, project.Icon, repositories, logoUpdatedAt,
-            members, canApprove, canAdminister, project.Landing, project.ChecksRequired, project.OnePullRequest);
+            members, canApprove, canAdminister, project.Landing, project.ChecksRequired, project.OnePullRequest,
+            PriorityLevels.Name(project.AutoHealBugPriority), PreApprovalLevels.Name(project.AutoHealBugPreApproval),
+            project.AutoHealBugEnabled, project.AutoHealBugStatusId);
 
     private async Task<List<ProjectMemberDto>> LiveMembersAsync(int projectId, CancellationToken ct)
     {

@@ -18,11 +18,17 @@ namespace Hatch.Contracts;
 /// <param name="Members">Who owns or approves on this project, resolved - the same list <c>GET .../members</c> answers with.</param>
 /// <param name="CanApprove">Whether the caller is a live owner or approver - the same question <c>IProjectAccess.CanApproveAsync</c> answers.</param>
 /// <param name="CanAdminister">Whether the caller is a live owner - the same question <c>IProjectAccess.IsOwnerAsync</c> answers.</param>
+/// <param name="AutoHealBugEnabled">Whether a trunk failure files a bug at all - see <see cref="EfHatchProject.AutoHealBugEnabled"/>. Off by default, which is today's behaviour.</param>
+/// <param name="AutoHealBugPriority">The priority a trunk-failure bug is filed at - see <see cref="PriorityLevels"/>.</param>
+/// <param name="AutoHealBugPreApproval">The pre-approval level a trunk-failure bug is born at - see <see cref="PreApprovalLevels"/>.</param>
+/// <param name="AutoHealBugStatusId">The column a trunk-failure bug is born in, or null to track the column that feeds implementation - see <see cref="EfHatchProject.AutoHealBugStatusId"/>.</param>
 public record ProjectDto(
     int Id, string Key, string Name, int IssueCount, DateTimeOffset CreatedAt, string? Color, string? Icon,
     IReadOnlyList<ProjectRepositoryDto> Repositories, DateTimeOffset? LogoUpdatedAt,
     IReadOnlyList<ProjectMemberDto> Members, bool CanApprove, bool CanAdminister,
-    string Landing = Landings.PullRequest, bool ChecksRequired = true, bool OnePullRequest = false);
+    string Landing = Landings.PullRequest, bool ChecksRequired = true, bool OnePullRequest = false,
+    string AutoHealBugPriority = PriorityLevels.EmergencyName, string AutoHealBugPreApproval = PreApprovalLevels.ExpressName,
+    bool AutoHealBugEnabled = false, int? AutoHealBugStatusId = null);
 
 /// <summary>A stored image, as the markdown that shows it will name it: <c>/api/hatch/images/{id}</c>.</summary>
 public record ImageDto(Guid Id);
@@ -68,10 +74,17 @@ public record ProjectMemberDto(Guid PersonId, string Name, string Role);
 /// <summary>A role to set a member to - <c>"owner"</c> or <c>"approver"</c>, nothing else.</summary>
 public record ProjectMemberWriteRequest(string Role);
 
-/// <summary>A write to a project's landing settings - <c>null</c> on either field leaves it alone.</summary>
+/// <summary>A write to a project's landing settings - <c>null</c> on a field leaves it alone.</summary>
 /// <param name="Landing">One of <see cref="Landings"/>.</param>
 /// <param name="OnePullRequest">The project default for whether a story's tasks share its branch and one pull request - see <see cref="EfHatchProject.OnePullRequest"/>. Null leaves it alone.</param>
-public record ProjectLandingWriteRequest(string? Landing, bool? ChecksRequired, bool? OnePullRequest = null);
+/// <param name="AutoHealBugEnabled">Whether a trunk failure files a bug at all - see <see cref="EfHatchProject.AutoHealBugEnabled"/>. Null leaves it alone.</param>
+/// <param name="AutoHealBugPriority">A name from <see cref="PriorityLevels"/>. Null leaves it alone.</param>
+/// <param name="AutoHealBugPreApproval">A name from <see cref="PreApprovalLevels"/>. Null leaves it alone.</param>
+/// <param name="AutoHealBugStatusId">Null leaves it alone; <c>""</c> clears it back to automatic; a column id sets it - see <see cref="EfHatchProject.AutoHealBugStatusId"/>.</param>
+public record ProjectLandingWriteRequest(
+    string? Landing, bool? ChecksRequired, bool? OnePullRequest = null,
+    bool? AutoHealBugEnabled = null, string? AutoHealBugPriority = null,
+    string? AutoHealBugPreApproval = null, string? AutoHealBugStatusId = null);
 
 // ---- Statuses ----
 
