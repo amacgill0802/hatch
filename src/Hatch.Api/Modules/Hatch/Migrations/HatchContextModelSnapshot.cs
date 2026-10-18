@@ -698,6 +698,24 @@ namespace Hatch.Api.Modules.Hatch.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<bool>("AutoHealBugEnabled")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
+                    b.Property<int>("AutoHealBugPreApproval")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1);
+
+                    b.Property<int>("AutoHealBugPriority")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(2);
+
+                    b.Property<int?>("AutoHealBugStatusId")
+                        .HasColumnType("integer");
+
                     b.Property<bool>("ChecksRequired")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
@@ -740,6 +758,8 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasDefaultValue(false);
 
                     b.HasKey("Id");
+
+                    b.HasIndex("AutoHealBugStatusId");
 
                     b.HasIndex("Key")
                         .IsUnique();
@@ -1325,6 +1345,14 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Navigation("Project");
 
                     b.Navigation("ToStatus");
+                });
+
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchProject", b =>
+                {
+                    b.HasOne("Hatch.Api.Modules.Hatch.EfHatchStatus", null)
+                        .WithMany()
+                        .HasForeignKey("AutoHealBugStatusId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchProjectLogo", b =>
