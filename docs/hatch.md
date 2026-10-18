@@ -1760,9 +1760,10 @@ own. CI runs it on every pull request.
 ### Merge check
 
 `EfHatchMergeCheck` — `IssueId`, `Remote`, `Canonical`, `Trunk`, `TrunkSha`,
-`Branch?`, `BranchSha?`, `Verdict`, `Files`, `HoldsTrunk?`, `CheckedAt`, `Runner`,
-`CheckedBy`. What a runner found when it merged an issue's branch against the
-trunk, and the two refs it was looking at when it did. `Verdict` is one of four:
+`Branch?`, `BranchSha?`, `Verdict`, `Files`, `HoldsTrunk?`, `PlaybookFilePath?`,
+`CheckedAt`, `Runner`, `CheckedBy`. What a runner found when it merged an
+issue's branch against the trunk, and the two refs it was looking at when it
+did. `Verdict` is one of four:
 
 | Verdict | Means |
 |---|---|
@@ -1782,6 +1783,15 @@ memory rather than asking the board for something that is not there.
 this field reads it as `null` too - *not said*, not *false* - and the poll
 rechecks a stored `clean` verdict once to fill it in even where nothing else
 about the branch has moved.
+
+`PlaybookFilePath` names `.hatch/playbooks.yaml` when the branch's diff
+against the trunk touches it, read with `git diff --name-only` between the
+two full shas `Check` already holds - no worktree touched, no second fetch.
+It is null for `none` and `ambiguous`, which name no branch; null when the
+diff does not touch it; and null for a repository no project reads as its
+own, repo-sourced primary repository, since nothing asked the runner to look
+at all - the review read names the path, in `WorkRepositoryDto.PlaybookFilePath`,
+so the runner never spells `.hatch/playbooks.yaml` itself.
 
 **One verdict per issue per repository**, unique on `(IssueId, Canonical)`, where
 `Canonical` is [`RemoteIdentity.Canonical`](#repository) of the remote as the
@@ -2935,6 +2945,12 @@ answers the section above — naming the trunk as a runner reported it (*Up to
 date with main*, *Behind main*), or *not checked against the trunk yet*, in
 grey, when no runner has said.
 
+A third line is drawn below the title and the pull request's own line, only
+when the pull request changes `.hatch/playbooks.yaml` - the same sentence
+the issue page's own chip shows, *"this change also rewrites the
+instructions agents follow - `<path>`"* - since a person about to merge
+from here is the same person who would see it there.
+
 Unlike the battery, **it always draws something**. "Nothing is waiting" is an
 answer worth having, and it is the one it gives most of the time.
 
@@ -2946,7 +2962,8 @@ answer worth having, and it is the one it gives most of the time.
   "reviews": [
     { "key": "AER-12", "title": "A story that landed", "type": "story",
       "pullRequestUrl": "https://forge.example/pulls/12",
-      "buildState": "success", "holdsTrunk": true, "trunk": "main" }
+      "buildState": "success", "holdsTrunk": true, "trunk": "main",
+      "playbookFilePath": null }
   ],
   "inReviewWithoutPullRequest": 3,
   "questions": [ ... ],
