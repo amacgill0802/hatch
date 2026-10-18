@@ -203,6 +203,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasMaxLength(240)
                         .HasColumnType("character varying(240)");
 
+                    b.Property<DateTimeOffset?>("ClosedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -313,6 +316,8 @@ namespace Hatch.Api.Modules.Hatch.Migrations
 
                     b.HasIndex("ProjectId", "Number")
                         .IsUnique();
+
+                    b.HasIndex("StatusId", "ClosedAt");
 
                     b.HasIndex("StatusId", "Rank");
 

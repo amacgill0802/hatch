@@ -235,6 +235,42 @@ public class ColumnsTests
         Assert.Equal(new HashSet<int> { doing.Id, review.Id, done.Id }, Columns.AtOrPastImplementationIds(board));
     }
 
+    static readonly DateTimeOffset Earlier = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+    static readonly DateTimeOffset Now = new(2026, 6, 1, 0, 0, 0, TimeSpan.Zero);
+
+    [Fact]
+    public void ClosedAt_IntoANonTerminalColumn_IsNullWhateverTheOtherArgumentsAre()
+    {
+        var doing = S(1, "Doing", 10);
+        var review = S(2, "Review", 20);
+        var done = S(3, "Done", 30, terminal: true);
+
+        Assert.Null(Columns.ClosedAt(null, doing, Now, null));
+        Assert.Null(Columns.ClosedAt(doing, review, Now, Earlier));
+        Assert.Null(Columns.ClosedAt(done, doing, Now, Earlier));
+    }
+
+    [Fact]
+    public void ClosedAt_IntoATerminalColumnFromAnythingElse_IsNow()
+    {
+        var review = S(1, "Review", 10);
+        var done = S(2, "Done", 20, terminal: true);
+
+        Assert.Equal(Now, Columns.ClosedAt(null, done, Now, null));
+        Assert.Equal(Now, Columns.ClosedAt(review, done, Now, null));
+        Assert.Equal(Now, Columns.ClosedAt(review, done, Now, Earlier));
+    }
+
+    [Fact]
+    public void ClosedAt_BetweenTwoTerminalColumns_KeepsTheEarlierInstant()
+    {
+        var done = S(1, "Done", 10, terminal: true);
+        var shipped = S(2, "Shipped", 20, terminal: true);
+
+        Assert.Equal(Earlier, Columns.ClosedAt(done, shipped, Now, Earlier));
+        Assert.Null(Columns.ClosedAt(done, shipped, Now, null));
+    }
+
     [Fact]
     public void NoImplementationColumn_AtOrPastImplementationIdsIsEmpty()
     {
