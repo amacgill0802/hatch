@@ -575,6 +575,50 @@ public class ProjectsController(
         return ToDto(project, count, repositories, logoUpdatedAt, members, canApprove, canAdminister);
     }
 
+    /// <summary>
+    /// Whether <see cref="EfHatchProject.RepoSourced"/> is on - playbooks read
+    /// from the project's repository rather than written on the board. Only an
+    /// owner may call this. Turning it on is refused if the project binds no
+    /// repository, or if any <see cref="EfHatchPlaybook"/> row still names it -
+    /// those have to be deleted or re-pointed to the board first. Turning it
+    /// off writes nothing else; the playbook rows are untouched either way.
+    /// </summary>
+    [HttpPut("{id:int}/playbooks-source")]
+    [RequireRole(PersonRole.User)]
+    public async Task<ActionResult<ProjectDto>> PutPlaybooksSource(int id, ProjectRepoSourcedWriteRequest request, CancellationToken ct)
+    {
+        if (await NotAPerson(ct) is { } refusal) return refusal;
+
+        var project = await db.Projects.FirstOrDefaultAsync(p => p.Id == id, ct);
+        if (project is null) return NotFound();
+
+        if (!await access.IsOwnerAsync(id, ct))
+            return new ObjectResult($"only an owner of {project.Key} may change whether its playbooks are sourced from its repository") { StatusCode = StatusCodes.Status403Forbidden };
+
+        if (request.RepoSourced && !project.RepoSourced)
+        {
+            if (!await db.ProjectRepositories.AnyAsync(r => r.ProjectId == id, ct))
+                return BadRequest($"{project.Key} binds no repository - bind one on the Projects page first");
+
+            var playbookCount = await db.Playbooks.CountAsync(p => p.ProjectId == id, ct);
+            if (playbookCount > 0)
+                return BadRequest($"{playbookCount} playbook row{(playbookCount == 1 ? "" : "s")} still name{(playbookCount == 1 ? "s" : "")} this project - delete {(playbookCount == 1 ? "it" : "them")} or hand {(playbookCount == 1 ? "it" : "them")} to the board first");
+        }
+
+        project.RepoSourced = request.RepoSourced;
+        project.RepoSourcedBy = await caller.ActorNameAsync(ct);
+        project.RepoSourcedAt = time.GetUtcNow();
+
+        await db.SaveChangesAsync(ct);
+        logger.LogInformation("Project {ProjectKey} playbooks source set to {RepoSourced} by {Actor}", project.Key, project.RepoSourced, project.RepoSourcedBy);
+
+        var count = await db.Issues.CountAsync(i => i.ProjectId == id, ct);
+        var repositories = await RepositoriesAsync(id, ct);
+        var logoUpdatedAt = await LogoUpdatedAtAsync(id, ct);
+        var (members, canApprove, canAdminister) = await MembersAsync(id, ct);
+        return ToDto(project, count, repositories, logoUpdatedAt, members, canApprove, canAdminister);
+    }
+
     /// <summary>Takes a member off a project. Only an owner may call this, and it refuses to leave a project with no owner at all.</summary>
     [HttpDelete("{id:int}/members/{personId:guid}")]
     [RequireRole(PersonRole.User)]
@@ -641,7 +685,8 @@ public class ProjectsController(
         new(project.Id, project.Key, project.Name, issueCount, project.CreatedAt, project.Color, project.Icon, repositories, logoUpdatedAt,
             members, canApprove, canAdminister, project.Landing, project.ChecksRequired, project.OnePullRequest,
             PriorityLevels.Name(project.AutoHealBugPriority), PreApprovalLevels.Name(project.AutoHealBugPreApproval),
-            project.AutoHealBugEnabled, project.AutoHealBugStatusId);
+            project.AutoHealBugEnabled, project.AutoHealBugStatusId,
+            project.RepoSourced, project.RepoSourcedBy, project.RepoSourcedAt);
 
     private async Task<List<ProjectMemberDto>> LiveMembersAsync(int projectId, CancellationToken ct)
     {
