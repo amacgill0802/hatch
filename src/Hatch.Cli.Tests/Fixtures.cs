@@ -85,7 +85,8 @@ public static class Fixtures
         bool isCheck = false,
         string? lastCheckFindings = null,
         string? failStatusName = null,
-        string? landing = null) =>
+        string? landing = null,
+        PlaybookFileReferenceDto? playbookFile = null) =>
         new(
             Issue: issue ?? Issue(key),
             FromStatus: Status(3, from),
@@ -107,7 +108,8 @@ public static class Fixtures
             Statuses: statuses ?? [Status(2, "To Do"), Status(3, "In Progress"), Status(4, "In Review")],
             LastCheckFindings: lastCheckFindings,
             FailStatusName: failStatusName,
-            Landing: landing);
+            Landing: landing,
+            PlaybookFile: playbookFile);
 
     /// <summary>The dispatch of an issue in review whose branch conflicts: review to itself, with the board's verdict on it.</summary>
     public static WorkDto ConflictWork(
@@ -204,6 +206,16 @@ public static class Fixtures
         new(
             1, remote, canonical, trunk, sha ?? new string('a', 40), "parsed", "hash",
             [], null, null, null, url, DateTimeOffset.UnixEpoch, "runner", "hatch");
+
+    /// <summary>
+    /// The repo copy a dispatch was judged against - carried on <see
+    /// cref="WorkDto.PlaybookFile"/>, read by <see cref="Increment.RunAsync"/>'s
+    /// spawn-time check (HA-809).
+    /// </summary>
+    public static PlaybookFileReferenceDto PlaybookFileReference(
+        string path = ".hatch/playbooks.yaml", string canonical = "example.test/repo",
+        string trunk = "main", string? sha = null, string? hash = null) =>
+        new(path, canonical, trunk, sha ?? new string('a', 40), hash ?? "deadbeef");
 
     /// <summary>One row of the review read: an issue in review, and what the board holds about its branch.</summary>
     public static ReviewCheckDto Review(

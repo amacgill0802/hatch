@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Text.Json;
 
 namespace Hatch.Cli;
@@ -35,6 +36,15 @@ public sealed class IncrementReport
 
     /// <summary>The board says it ended where it started: an increment that did nothing.</summary>
     public bool Stalled { get; set; }
+
+    /// <summary>
+    /// The repo copy of the playbook file had moved, or gone missing, since this
+    /// dispatch was judged - caught just before the spawn, in time to refuse it
+    /// rather than run a session against a stale brief. Not a stall: the ticket
+    /// is let go the same way a tree that cannot be reset ends cleanly today,
+    /// and <see cref="Stalled"/> and <see cref="LetGo"/> are never touched.
+    /// </summary>
+    public bool PlaybookStale { get; set; }
 
     /// <summary>
     /// This increment's own verdict on a stall: the first in a row, let go of
@@ -341,6 +351,69 @@ public sealed class Increment(
                 claim.Chatter.Line = $"putting {report.Key} down for {p.Key} - {p.Title}";
                 stopping.Cancel();
             };
+
+            // The repo copy of the playbook file this dispatch was judged
+            // against, read fresh right before the spawn - so a session never
+            // runs against a brief the trunk has already moved past. Skipped
+            // outright for a table-sourced project (no PlaybookFile) or a
+            // runner with no checkout of the primary repository.
+            if (work.PlaybookFile is { } reference
+                && workspace is not null && quietBoard is not null
+                && repositories?.FirstOrDefault(r => r.Primary) is { Path: { } primaryPath } primary)
+            {
+                var ws = workspace(primaryPath, primary.BaseBranch);
+                var heads = ws.Heads();
+                if (heads?.TrunkSha is { } trunkSha)
+                {
+                    if (!ws.Fetch())
+                    {
+                        say.Complain($"hatch: {report.Key} - could not fetch {primary.Remote} to check {reference.Path} - spawning anyway");
+                    }
+                    else
+                    {
+                        var blob = ws.ReadBlob(reference.Trunk, reference.Path);
+                        if (blob.Outcome == BlobOutcome.Failed)
+                        {
+                            say.Complain($"hatch: {report.Key} - could not read {reference.Path} on {reference.Trunk} - {blob.Why} - spawning anyway");
+                        }
+                        else
+                        {
+                            var hash = blob.Content is { } bytes ? Convert.ToHexStringLower(SHA256.HashData(bytes)) : null;
+                            if (hash != reference.Hash)
+                            {
+                                var sentence = hash is null
+                                    ? $"{reference.Path} is missing on {reference.Trunk} at {trunkSha} - this dispatch was judged against {reference.Sha}"
+                                    : $"{reference.Path} on {reference.Trunk} has moved since this dispatch was judged - judged at {reference.Sha}, {reference.Trunk} is now at {trunkSha}";
+
+                                say.Complain($"hatch: {report.Key} - {sentence}");
+
+                                try
+                                {
+                                    await quietBoard.PlaybookFileAsync(
+                                        new PlaybookFileRequest(
+                                            primary.Remote, reference.Trunk, trunkSha,
+                                            blob.Content is { } b ? Convert.ToBase64String(b) : null,
+                                            null, runnerName),
+                                        ct);
+                                }
+                                catch (HatchException e)
+                                {
+                                    say.Complain($"hatch: {report.Key} - could not put the playbook file - {e.Message}");
+                                }
+
+                                report.Flag = sentence;
+                                report.PlaybookStale = true;
+                                report.EndedAt = DateTimeOffset.UtcNow;
+                                return report;
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    say.Complain($"hatch: {report.Key} - origin did not answer for {primary.Remote}, so {reference.Path} was not checked - spawning anyway");
+                }
+            }
 
             var result = await SpawnAsync(work, root, model, effort, quiet, facts, claim, stopping, addDirs, repositories, branches, conflict?.Found, build?.Found);
             report.ExitCode = result.ExitCode;
