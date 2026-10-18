@@ -1912,10 +1912,10 @@ field, and readers take that as none.
 ### Trunk build
 
 `EfHatchTrunkBuild` — `Remote`, `Canonical`, `Trunk`, `Sha`, `ShaSince`,
-`Verdict`, `Failing` (`jsonb`), `CheckedAt`, `Runner`, `CheckedBy`, `BugIssueId?`.
-The same fact as a [build check](#build-check), but about the tip of a
-repository's trunk rather than an issue's branch — a trunk build is nobody's
-issue, so it is not keyed on one. `Verdict` is the same four
+`Verdict`, `Failing` (`jsonb`), `CheckedAt`, `Runner`, `CheckedBy`, `BugIssueId?`,
+`RerunCount`. The same fact as a [build check](#build-check), but about the tip
+of a repository's trunk rather than an issue's branch — a trunk build is
+nobody's issue, so it is not keyed on one. `Verdict` is the same four
 ([above](#build-check)), by the same rules: a check run or a commit status
 fails the same way, a pending build carries whatever has already failed, and a
 runner asks about `none` again until ten minutes after `ShaSince`.
@@ -1930,6 +1930,20 @@ trunk was failing (HA-95) — nullable, `SetNull` on the issue's own delete. It
 stays attached across new failing shas, because a fix that fails again is the
 same outage, and is cleared the moment a verdict for the pair is `passed`, so
 the next failure offers the button again.
+
+`RerunCount` counts how many times a runner has taken a re-run of `Sha`'s
+failing checks ([below](#checking-the-branches-in-review)) — reset to zero on
+exactly the two events `BugIssueId` is let go on: `Sha` changing and a verdict
+for the pair reading `passed`. A new build, or an outage that is over, gets its
+own budget. `TrunkBuildDto` carries it back, trailing and defaulted to `0` for
+a client that predates it, beside `ProjectKey` — not a column on the row at
+all, but `ProjectRepositoryBinding`'s own answer for `Canonical`, read fresh on
+every request rather than copied onto it: the project that names the
+repository primary, lowest project id first, else the lowest-id project that
+binds it at all, else null. It is what gates a runner's own re-run and
+auto-filing ([below](#checking-the-branches-in-review)) — a trunk build with no
+project binding it, or bound to a project this runner does not drive, is
+nobody's to act on without a person.
 
 `PUT /api/hatch/trunk-builds` writes a verdict and a key may, for the reason it
 may write a build check — the caller is a runner, and a verdict only a person
@@ -2419,18 +2433,34 @@ no `hatch priority` or `hatch expedite` verb — the CLI authenticates with a
 key, so the terminal *shows* the level on `board`, `queue` and `show` and sets
 it nowhere.
 
-**And so is filing the bug a failing trunk's button offers (HA-95).** The bug
-`POST /api/hatch/trunk-builds/{id}/bug` files is expedited from the moment it
-exists, so a key that could press the button could put a ticket of its own
-choosing at the front of the night the same way a key that could set priority
-directly could. `TrunkBuildBugController` therefore carries no class-level
-attribute either, cut by the same means as priority; filing itself goes
-through `IssuesController.CreateIssueAsync`'s internal, level-aware overload,
-so the bug's number, rank, first column and `created` event are the ordinary
-ones and the level is set in the same save rather than a second write after.
-Reading the trunk builds themselves stays Hatch-scoped, the way reading a
-build check is: a verdict about a sha is a fact any runner reads the same way,
-whichever repository it binds.
+**Filing the bug a failing trunk's button offers (HA-95) bends this edge, and
+only this one.** `TrunkBuildBugController` still carries no class-level
+scope — a stranger key pressing the button for a ticket of its own choosing is
+cut by the same means as priority. But the method itself accepts the `hatch`
+scope (HA-792), gated at runtime rather than by the attribute, because the
+attribute cannot vary project to project: a key may take it only where the
+project that binds the row's repository has turned auto-filing on, and where
+it has, the bug's priority, pre-approval level and column come off that
+project's own `AutoHealBugPriority`, `AutoHealBugPreApproval` and
+`AutoHealBugStatusId` — never off the request body a key sends, which is not
+read on this path at all. A key choosing its own priority or pre-approval is
+exactly what this edge exists to keep closed; what makes this one safe is
+*whose* choice those three fields really are. They are written only through
+`ProjectsController.PutLanding`, the same owner-only route that sets how a
+project's work lands ([Pre-approval](#pre-approval)) — so turning auto-filing
+on is an owner's standing permission for this one project, recorded in
+advance, the same way setting `preapproved` directly is a press given in
+advance for one issue, given here instead for every bug a trunk's own future
+failure will file under it. A key against a project with auto-filing off is refused the same
+sentence a key with no project binding it gets, naming the Projects page. A
+person's own call is unchanged in every respect — same body, same defaults
+(expedited, no pre-approval, the board's first column), same refusals. Filing
+itself still goes through `IssuesController.CreateIssueAsync`'s internal,
+level-aware overload, so the bug's number, rank, column and `created` event
+are the ordinary ones and the level is set in the same save rather than a
+second write after. Reading the trunk builds themselves stays Hatch-scoped,
+the way reading a build check is: a verdict about a sha is a fact any runner
+reads the same way, whichever repository it binds.
 
 **A key's owner is cut the same way, and for the reason the assignee edge
 names directly.** `--mine` (see [the dispatcher](#the-dispatcher)) reads a
@@ -2576,7 +2606,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/issues/{key}/build-check` | PUT | Keeps a runner's [build verdict](#build-check) for one repository. `{ remote, branch, sha, verdict, failing?, runner, pushedByIncrement? }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an unknown verdict, no branch or sha, and `failed` with no failing checks; a link that is not `http(s)` is stored as null; `404` on an unknown key. The column is not checked. A verdict that repeats the stored one writes no event, and one that moves the row into failed-and-flagged marks the issue stalled with it |
 | `/trunk-builds` | PUT | Keeps a runner's [trunk build verdict](#trunk-build) for one repository's trunk. `{ remote, trunk, sha, verdict, failing?, runner }`; answers with what it now holds. The same refusals the build check's write takes, naming the trunk rather than the branch. No event and no question — there is no issue to write either on. `passed` lets an attached bug go |
 | `/trunk-builds` | GET | Every stored [trunk verdict](#trunk-build), ordered by canonical then trunk — what a runner's poll reads once a poll, since a trunk carries no issue for the verdict to ride in on |
-| `/trunk-builds/{id}/bug` | POST | **Person only** — no class-level scope, the way expedite is cut. Files the bug a failing trunk's *File a bug* button asks for (HA-95), expedited, in the project that binds the repository, in the board's first column — see [what is waiting on you](#what-is-waiting-on-you). `409` once the row is no longer failing; `400` naming the Projects page when no project binds it; a second call answers the bug already filed rather than filing another |
+| `/trunk-builds/{id}/bug` | POST | No class-level scope, the way expedite is cut, but the method itself takes the `hatch` scope, gated at runtime rather than by the attribute, since the attribute cannot vary by project — see [the one edge that is deliberately cut](#the-one-edge-that-is-deliberately-cut). Files the bug a failing trunk's *File a bug* button asks for (HA-95), in the project that binds the repository (lowest project id first, else the lowest-id project that binds it at all) — see [what is waiting on you](#what-is-waiting-on-you). A person's own call is unchanged: expedited, no pre-approval, the board's first column, each overridable in the body. **A key's priority, pre-approval level and column come from the project instead, never from the body** — its own `AutoHealBugPriority`, `AutoHealBugPreApproval` and `AutoHealBugStatusId`, written only through the owner-only `PUT .../landing`. `409` once the row is no longer failing; `400` naming the Projects page when no project binds it, or when a key's project has auto-filing off; a second call answers the bug already filed rather than filing another |
 | `/work/review` | GET | Every issue in the review column the caller holds a checkout of, with its bound repositories and the [merge checks](#merge-check) the board holds — what a runner's poll reads before it asks git anything. `?remote=` (repeatable) and `?standing=` as on the queue; no `clones`, because a poll clones nothing. Not narrowed by a claim, a question, a date or an assignee — see [checking the branches in review](#checking-the-branches-in-review) |
 | `/playbooks` | GET | **Reads only.** POST/PATCH/DELETE are plain `[RequireRole(User)]`. Each playbook carries `isCheck`; a person's `POST` and `PATCH` take `isCheck?` (absent is false on create and leaves it alone on patch) — see [Check](#check) |
 | `/import/preview`, `/import/preview-text`, `/import` | POST | See [the importer](#the-importer) |
@@ -2947,25 +2977,37 @@ repository, the short sha, and every failing check as a link that opens its
 job in a new tab.
 
 **It counts, unlike a branch's conflict or its failing build**, because the
-reasoning that keeps those two quiet does not hold here: nothing is dispatched
-at a trunk, so a failing one has no agent already on it. It sits exactly as it
-is until a person presses **File a bug**, which is what the badge exists to
-surface.
+reasoning that keeps those two quiet does not hold here — except that it now
+holds partway: nothing is dispatched at a trunk, so a failing one has no agent
+already on it, but a row reaching this list may already have been re-run, and
+may already be filing itself, with no agent and no person either
+([below](#checking-the-branches-in-review)). What a person still does is press
+**File a bug** where nothing has, which is what the badge exists to surface.
 
 Each row carries a button, unless it already carries a bug's key as a link in
-its place — `POST /api/hatch/trunk-builds/{id}/bug`, person-only, the same cut
-[expedite](#the-one-edge-that-is-deliberately-cut) takes, because the bug it
-files is expedited and expedite is a person's call. It is filed in the shape a
-bug against a failing trunk was always filed by hand, from the forge's own
-page: a bug, titled *Build failing on &lt;trunk&gt;*, described with the
-repository, the sha and a link to each failing check, expedited, in the board's
-first column — in the project that binds the repository as its primary,
-lowest project id first, else the lowest-id project that binds it at all, else
-refused naming the Projects page.
-The bug stays attached across new failing shas — a fix that fails again is the
-same outage — and is let go the moment a later build on the trunk passes, so
-the next failure offers the button again. A second press, or a second person,
-gets the bug already filed rather than a second one.
+its place — `POST /api/hatch/trunk-builds/{id}/bug`
+([the one edge that is deliberately cut](#the-one-edge-that-is-deliberately-cut)).
+A person pressing it is unchanged: filed in the shape a bug against a failing
+trunk was always filed by hand, from the forge's own page — a bug, titled
+*Build failing on &lt;trunk&gt;*, described with the repository, the sha and a
+link to each failing check, expedited, with no pre-approval, in the board's
+first column, in the project that binds the repository as its primary, lowest
+project id first, else the lowest-id project that binds it at all, else
+refused naming the Projects page. A key may take the same route instead of a
+person — the runner's own poll does, the moment it reads a trunk failure fresh
+and is not re-running it ([below](#checking-the-branches-in-review)), where
+the project settings decide: a project nobody has touched keeps
+`AutoHealBugEnabled` off, which is today's behaviour, so a row of its sits here
+with its button and nothing else having happened to it. A project whose owner
+has turned it on names, too, the priority, the pre-approval level and the
+column the bug is born in — default emergency, express and the column that
+feeds implementation — and a key filing it takes exactly those three, never
+the body it would otherwise send. The bug stays attached across new failing
+shas — a fix that fails again
+is the same outage — and is let go the moment a later build on the trunk
+passes, so the next failure offers the button again. A second press, a second
+person, or the poll finding one already attached, gets the bug already filed
+rather than a second one.
 
 ### The branch in review that has stopped merging
 
@@ -5610,15 +5652,40 @@ without its trunk read at all. A repository's trunk is nobody's issue, so once
 per checkout that has an origin, the poll reads the build on its tip the same
 way — reusing the `ls-remote` heads a checkout's review issues already took,
 where there were any, so a checkout with something in review costs no second
-one — and puts a [trunk build](#trunk-build) to the board. It follows the same
-rules asking `gh` again: `passed` and `failed` are asked once, `pending` every
-interval, `none` until ten minutes after `ShaSince`, and a forge or a board
-that cannot answer is one line per checkout. `GET /api/hatch/trunk-builds`
-answers every stored trunk verdict once a poll, and the runner matches its own
-checkout against it by the remote it spells until the board's canonical form
-for that pair is known. The terminal hears about a change the same way —
-`hatch: main build on 1a2b3c4 failed (api, CI)` — naming the trunk rather than
-an issue.
+one. It follows the same rules asking `gh` again: `passed` and `failed` are
+asked once, `pending` every interval, `none` until ten minutes after
+`ShaSince`, and a forge or a board that cannot answer is one line per checkout.
+
+**A fresh `failed` read branches before it is ever put to the board.** Where
+the stored row's `ProjectKey` is one `runtime.Readout.Drives` says this runner
+drives, and that sha's `RerunCount` is under the cap — three, enough for a
+double transient blip (a flaky registry, a lost runner) to clear on its own,
+not enough to spend a broken build's CI minutes forever behind retries that
+were never going to help — the poll fetches each failing check's log from the
+forge and asks whether it reads as transient. Where every one does, it re-runs
+them on the forge and puts the trunk build with `Verdict = pending` and
+`Reran = true`, not the `failed` it just read: the job really is queued again
+the instant the re-run is taken, so it is not a fabrication, and `pending`
+means the existing never-concluded handling above asks again next interval
+with no change of its own, recovering correctly across a restart or a second
+runner. Past the cap, with any failing check that does not read transient, or
+on a project this runner does not drive, nothing new happens and the real
+`failed` verdict is sent; a forge that will not take the re-run costs one line
+— `hatch: could not re-run the failing checks in <checkout> - <why>` — and
+still reports the failure for real rather than aborting the poll. `RerunCount`
+resets to zero on the same two events `BugIssueId` does — the sha changing, or
+a verdict for the pair passing — so a new build or an ended outage gets its
+own budget. A `failed` verdict that was not re-run is where [the bug a project
+may file without a person](#the-trunk-build-that-fails) is asked for next,
+under the same `Drives` gate.
+
+Either way the poll puts a [trunk build](#trunk-build) to the board.
+`GET /api/hatch/trunk-builds` answers every stored trunk verdict once a poll,
+and the runner matches its own checkout against it by the remote it spells
+until the board's canonical form for that pair is known. The terminal hears
+about a change the same way — `hatch: main build on 1a2b3c4 failed (api, CI)`,
+or with `- re-running` appended where this interval took one — naming the
+trunk rather than an issue.
 
 **The landing half, asked of git and keyed on the checkout.** A trunk-landing
 issue in review has no branch to merge-check and no pull request to ask `gh`
