@@ -4348,6 +4348,14 @@ the order the judge checks them:
     `dirty` are not read, since the build check and git's merge check already
     answer those. This item qualifies HA-289's *"Zero checks is not green"*.
 
+**A flagged path holds, not merges.** Each of three **merge** outcomes
+above - item 12, and the two **merge** sub-cases of item 13 - is
+**hold** instead, *"its pull request changes `<path>` - a person
+merges it on the forge after reading it"*, when any counted clean
+verdict names a path (HA-431). Every other item above - the pushback,
+the update, every pending, and the holds already in the list - is
+unaffected by the flag.
+
 **Pushback is built, not deferred.** `POST /work/{key}/pushback`
 (`WorkController.cs:575-642`, `WorkController.PushbackWork`) carries an issue
 standing in the merge column back to the review column on its own say-so: it
