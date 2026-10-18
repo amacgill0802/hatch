@@ -113,22 +113,20 @@ describe('PlaybookRow', () => {
     expect(html).not.toContain('role="img"');
   });
 
-  it('shows "All projects" for a board-wide row, with multiple projects', () => {
+  it('shows "board-wide" for a board-wide row, with multiple projects', () => {
     const html = renderToStaticMarkup(
       <PlaybookRow playbook={BASE} projects={TWO_PROJECTS} statuses={STATUSES} onEdit={noop} onDelete={noop} />,
     );
-    expect(html).toContain('All projects');
+    expect(html).toContain('board-wide');
   });
 
-  it("draws the project's mark for a scoped row, with multiple projects", () => {
+  it("draws the project's own label for a scoped row, with multiple projects", () => {
     const scoped: Playbook = { ...BASE, projectId: 1, projectKey: 'AER', projectName: 'Aerospace' };
     const html = renderToStaticMarkup(
       <PlaybookRow playbook={scoped} projects={TWO_PROJECTS} statuses={STATUSES} onEdit={noop} onDelete={noop} />,
     );
-    expect(html).toContain('role="img"');
-    expect(html).toContain('aria-label="Aerospace"');
-    expect(html).toContain('AER');
-    expect(html).not.toContain('All projects');
+    expect(html).toContain('AER&#x27;s own');
+    expect(html).not.toContain('board-wide');
   });
 
   it('draws no Shape, Budget, Brief limit or Denied tools', () => {
@@ -175,6 +173,25 @@ describe('PlaybookRow', () => {
       <PlaybookRow playbook={notCheck} projects={ONE_PROJECT} statuses={STATUSES} onEdit={noop} onDelete={noop} />,
     );
     expect(notCheckHtml).not.toContain('hatch-badge--danger');
+  });
+
+  it('shows the shadowed badge only when passed shadowed', () => {
+    const html = renderToStaticMarkup(
+      <PlaybookRow playbook={BASE} projects={ONE_PROJECT} statuses={STATUSES} onEdit={noop} onDelete={noop} />,
+    );
+    expect(html).not.toContain('shadowed by the file');
+
+    const shadowedHtml = renderToStaticMarkup(
+      <PlaybookRow
+        playbook={BASE}
+        projects={ONE_PROJECT}
+        statuses={STATUSES}
+        shadowed
+        onEdit={noop}
+        onDelete={noop}
+      />,
+    );
+    expect(shadowedHtml).toContain('shadowed by the file');
   });
 
   it('opens with a real, focusable button distinct from Delete', () => {

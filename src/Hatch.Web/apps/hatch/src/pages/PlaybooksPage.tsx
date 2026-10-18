@@ -199,9 +199,21 @@ export function PlaybooksPage() {
 }
 
 /** One row of a file's parsed playbook, read-only: the main table's own
-    `PlaybookRow` minus the project column, the edit button and Delete - a
-    file row carries no project and nothing here may be changed. */
-function PlaybookFileRowLine({ row, statuses }: { row: PlaybookFileRowDto; statuses: Status[] }) {
+    `PlaybookRow` minus the edit button and Delete - a file row's own fields
+    may not be changed. `label`, given once a project filter merges this row
+    into the main table, draws in the same column `PlaybookRow` draws its own
+    label in, with a trailing blank cell standing in for the Delete column a
+    file row never has; omitted, as in the "Files on the trunk" card below,
+    neither cell is drawn and the row is this mini-table's own four columns. */
+function PlaybookFileRowLine({
+  row,
+  statuses,
+  label,
+}: {
+  row: PlaybookFileRowDto;
+  statuses: Status[];
+  label?: string;
+}) {
   const fromStatus = statuses.find((s) => s.id === row.fromStatusId);
   const toStatus = statuses.find((s) => s.id === row.toStatusId);
 
@@ -222,6 +234,11 @@ function PlaybookFileRowLine({ row, statuses }: { row: PlaybookFileRowDto; statu
         )}
         {isUncheckedEdit(row) && <Badge tone="danger">a check with no denied tools can edit</Badge>}
       </td>
+      {label !== undefined && (
+        <td>
+          <Text tone="muted" as="span">{label}</Text>
+        </td>
+      )}
       <td>
         {row.types.length > 0 ? (
           row.types.map((t) => <TypeBadge key={t} type={t} />)
@@ -231,6 +248,7 @@ function PlaybookFileRowLine({ row, statuses }: { row: PlaybookFileRowDto; statu
       </td>
       <td>{row.model}</td>
       <td>{row.effort}</td>
+      {label !== undefined && <td />}
     </tr>
   );
 }
