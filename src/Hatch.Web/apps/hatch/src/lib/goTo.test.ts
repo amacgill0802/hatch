@@ -229,3 +229,17 @@ describe('whereOnBoard', () => {
     expect(whereOnBoard(waiting, visible, columns)).toBe('drawn');
   });
 });
+
+describe('goToRows: an issue the server folded off the board', () => {
+  // AER-5 is not in the array at all - the server never sent it - which is not
+  // the same as whereOnBoard's 'undrawn' (a card still here, in a column not drawn).
+  const board = [card('AER-4'), card('AER-6')];
+
+  it('is never found: the console offers nothing for a key it was not handed', () => {
+    expect(goToRows(board, 'AER-5')).toEqual({ rows: [], total: 0 });
+  });
+
+  it('still finds the cards it was handed, so the empty result is the fold and not the fixture', () => {
+    expect(keys(board, 'AER-4')).toEqual(['AER-4']);
+  });
+});
