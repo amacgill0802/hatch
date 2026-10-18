@@ -33,7 +33,7 @@ public class DispatchTests
         var repo = await h.AddRepositoryAsync(baseBranch: "main");
         await h.PlaybookFileAsync(repo, "main", EfHatchPlaybookFile.ParsedState, rows: [FileRow(h.Todo, h.InProgress, model: "fable")]);
 
-        var playbook = await h.Dispatch.MatchAsync(h.Todo, h.InProgress, "story", false, h.ProjectId, default);
+        var playbook = (await h.Dispatch.MatchAsync(h.Todo, h.InProgress, "story", false, h.ProjectId, default))?.Playbook;
 
         Assert.NotNull(playbook);
         Assert.Equal("fable", playbook.Model);
@@ -48,7 +48,7 @@ public class DispatchTests
         await h.PlaybookFileAsync(repo, "main", EfHatchPlaybookFile.ParsedState, rows: [FileRow(h.Todo, h.InProgress, model: "fable")]);
         await h.AddPlaybookAsync(h.Todo, h.InProgress, types: "story", shape: "leaf", model: "sonnet");
 
-        var playbook = await h.Dispatch.MatchAsync(h.Todo, h.InProgress, "story", false, h.ProjectId, default);
+        var playbook = (await h.Dispatch.MatchAsync(h.Todo, h.InProgress, "story", false, h.ProjectId, default))?.Playbook;
 
         // The board-wide row names the type and the shape - strictly more
         // specific than the file row, which names neither - and still loses:
@@ -67,7 +67,7 @@ public class DispatchTests
         await h.PlaybookFileAsync(repo, "main", EfHatchPlaybookFile.ParsedState, rows: [FileRow(h.Todo, h.InProgress, model: "fable")]);
         await h.AddPlaybookAsync(h.InProgress, h.Review, model: "sonnet");
 
-        var playbook = await h.Dispatch.MatchAsync(h.InProgress, h.Review, "story", false, h.ProjectId, default);
+        var playbook = (await h.Dispatch.MatchAsync(h.InProgress, h.Review, "story", false, h.ProjectId, default))?.Playbook;
 
         Assert.NotNull(playbook);
         Assert.Equal("sonnet", playbook.Model);
@@ -85,7 +85,7 @@ public class DispatchTests
             FileRow(h.Todo, h.InProgress, model: "opus"),
         ]);
 
-        var playbook = await h.Dispatch.MatchAsync(h.Todo, h.InProgress, "story", false, h.ProjectId, default);
+        var playbook = (await h.Dispatch.MatchAsync(h.Todo, h.InProgress, "story", false, h.ProjectId, default))?.Playbook;
 
         Assert.NotNull(playbook);
         Assert.Equal("fable", playbook.Model);
@@ -103,7 +103,7 @@ public class DispatchTests
         // create one, is ever loaded as a candidate for Match at all.
         await h.AddPlaybookAsync(h.Todo, h.InProgress, model: "sonnet", projectId: h.ProjectId);
 
-        var playbook = await h.Dispatch.MatchAsync(h.Todo, h.InProgress, "story", false, h.ProjectId, default);
+        var playbook = (await h.Dispatch.MatchAsync(h.Todo, h.InProgress, "story", false, h.ProjectId, default))?.Playbook;
 
         Assert.Null(playbook);
     }
