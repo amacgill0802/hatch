@@ -1821,7 +1821,12 @@ public static class HopKinds
 /// form is this entry's - or null when none of the runner's declared remotes
 /// matched it (including when the caller declared nothing at all).
 /// </param>
-public record WorkRepositoryDto(string Remote, string Canonical, string? BaseBranch, bool Primary, string? MatchedRemote);
+/// <param name="PlaybookFilePath">
+/// The fixed path (<c>.hatch/playbooks.yaml</c>) when some project reads this
+/// repository's file as its own, primary repository, and null otherwise - the
+/// one place a client is told the path rather than spelling it.
+/// </param>
+public record WorkRepositoryDto(string Remote, string Canonical, string? BaseBranch, bool Primary, string? MatchedRemote, string? PlaybookFilePath = null);
 
 /// <summary>
 /// One row of a pass: an issue the dispatcher looked at, and what it decided
