@@ -5304,6 +5304,73 @@ public class WorkControllerTests
         Assert.Contains("the WIP section is full", response.Value?.ToString());
     }
 
+    // HA-774: the epic's own crossing is measured off the implementation
+    // column, not the WIP section - the three tests below widen the WIP
+    // section past implementation (To Do is ticked WIP too) specifically to
+    // tell the two landmarks apart, since every test above this point has a
+    // WIP section that starts exactly at implementation and cannot.
+
+    [Fact]
+    public async Task OnABoardWhereToDoIsAlsoTickedWip_ASubEpicShortOfImplementation_IsClearAndAHopCarriesIt()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.Todo, h.InProgress, h.Review);
+        await h.TickImplementationAsync(h.InProgress);
+        var running = await h.FileAsync("epic", "running above it", h.InProgress);
+        var epic = await h.FileAsync("epic", "E", h.Todo, parentId: running.Id);
+        await h.FileAsync("story", "under E", h.Todo, parentId: epic.Id);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(epic));
+
+        Assert.Null(entry.Blocked);
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Epic, entry.HopKind);
+
+        var work = Value(await h.Work.GetWork(Key(epic), null, default));
+        Assert.True(work.Hop);
+        Assert.Equal(HopKinds.Epic, work.HopKind);
+        Assert.Null(work.Playbook);
+    }
+
+    [Fact]
+    public async Task Hop_OnABoardWhereToDoIsAlsoTickedWip_OnASubEpicShortOfImplementation_MovesItAndWritesEpicOnTheTrail()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.Todo, h.InProgress, h.Review);
+        await h.TickImplementationAsync(h.InProgress);
+        var running = await h.FileAsync("epic", "running above it", h.InProgress);
+        var epic = await h.FileAsync("epic", "E", h.Todo, parentId: running.Id);
+        await h.FileAsync("story", "under E", h.Todo, parentId: epic.Id);
+
+        var moved = Value(await h.Work.HopWork(Key(epic), null, null, null, default));
+        Assert.Equal(h.InProgress, moved.StatusId);
+
+        var row = await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == epic.Id);
+        var e = Assert.Single(row.Events);
+        Assert.Equal(EfHatchIssueEvent.StatusChanged, e.Kind);
+        var payload = System.Text.Json.JsonDocument.Parse(e.Payload!).RootElement;
+        Assert.True(payload.GetProperty("epic").GetBoolean());
+        Assert.False(payload.TryGetProperty("express", out _));
+        AssertColumns(e, h.Todo, h.InProgress);
+    }
+
+    [Fact]
+    public async Task OnABoardWhereToDoIsAlsoTickedWip_ATopLevelEpicInToDo_IsFoldedNamingAPersonMovesItIn()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.Todo, h.InProgress, h.Review);
+        await h.TickImplementationAsync(h.InProgress);
+        var epic = await h.FileAsync("epic", "E", h.Todo);
+        await h.FileAsync("story", "under E", h.Todo, parentId: epic.Id);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(epic));
+
+        Assert.Equal(
+            "a top-level epic is moved in by a person - its own column is the signal for everything under it",
+            entry.Blocked);
+        Assert.False(entry.Hop);
+    }
+
     [Fact]
     public async Task Queue_ListsAStoryUnderARunningEpicInATickedColumnAsAHopCarryingUnderTheEpic()
     {
