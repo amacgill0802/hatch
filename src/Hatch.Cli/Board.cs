@@ -108,6 +108,22 @@ public sealed class Board(HatchClient client)
         Client.WriteAsync<TrunkBuildDto>(HttpMethod.Put, "/api/hatch/trunk-builds", request, ct);
 
     /// <summary>
+    /// Every playbook file verdict the board holds, and the path it is reading
+    /// at - read once per poll and matched locally against each checkout, the
+    /// same as <see cref="TrunkBuildsAsync"/>.
+    /// </summary>
+    public async Task<PlaybookFilesDto> PlaybookFilesAsync(CancellationToken ct) =>
+        await Client.GetAsync<PlaybookFilesDto>("/api/hatch/playbook-files", ct) ?? new PlaybookFilesDto("", []);
+
+    /// <summary>
+    /// What one repository's trunk now holds for the playbook file path - see
+    /// <see cref="PlaybookFileRequest"/>. The remote is spelled the way this
+    /// runner has it; the board canonicalises it.
+    /// </summary>
+    public Task<PlaybookFileDto?> PlaybookFileAsync(PlaybookFileRequest request, CancellationToken ct) =>
+        Client.WriteAsync<PlaybookFileDto>(HttpMethod.Put, "/api/hatch/playbook-files", request, ct);
+
+    /// <summary>
     /// Files the bug HA-95's button would have filed for this trunk build. A
     /// key sends no body - express, the priority and the column are the
     /// project's own standing permission (HA-792), not this call's to name. A

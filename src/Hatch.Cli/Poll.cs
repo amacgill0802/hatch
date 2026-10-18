@@ -83,6 +83,7 @@ public sealed class Poll
     private readonly Dictionary<(string Path, string Key), string> _seenBuild = [];
     private readonly Dictionary<(string Path, string Key), string> _seenLanding = [];
     private readonly Dictionary<string, string> _seenTrunk = [];
+    private readonly Dictionary<string, string> _seenPlaybookFile = [];
     private DateTimeOffset? _last;
     private HashSet<string> _saidBefore = [];
 
@@ -219,6 +220,11 @@ public sealed class Poll
         // anything of its is in review - a repository's trunk is nobody's
         // issue, and a quiet board must not go all night without it.
         await ReadTrunksAsync(runtime, complain, headsByPath, ct);
+
+        // The playbook-file half: every checkout with an origin, whether or
+        // not any project reads the file (HA-459 AC4) - a quiet board must
+        // not go all night without it either.
+        await ReadPlaybookFilesAsync(runtime, complain, headsByPath, ct);
     }
 
     /// <summary>The merge half for one checkout: fetch once if anything moved, and report the verdicts that are due.</summary>
@@ -599,6 +605,110 @@ public sealed class Poll
             catch (Exception e) when (e is not OperationCanceledException)
             {
                 complain($"hatch: could not read the trunk build in {name} - {e.Message}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// The playbook-file half: for every checkout with an origin, read the
+    /// path the board's own answer names off its trunk once per moved sha,
+    /// and put what it found to the board - a real forge link where <c>gh
+    /// browse</c> can give one. Matched by remote and trunk name rather than
+    /// ridden in on a review row, and read once for the whole poll rather
+    /// than once per checkout, the same as <see cref="ReadTrunksAsync"/> -
+    /// run whether or not any project reads the file.
+    /// </summary>
+    /// <remarks>
+    /// Unlike <see cref="ReadTrunksAsync"/>, which never touches git, this
+    /// half fetches once a checkout's playbook file is due to be read, the
+    /// same fetch <see cref="CheckMergesAsync"/> takes. Throws nothing out of
+    /// the poll: every failure is one line and nothing more.
+    /// </remarks>
+    private async Task ReadPlaybookFilesAsync(
+        Runtime runtime, Action<string> complain, IReadOnlyDictionary<string, RemoteHeads?> headsByPath,
+        CancellationToken ct)
+    {
+        var checkouts = runtime.Checkouts.Where(c => c.Remote is not null).ToList();
+        if (checkouts.Count == 0) return;
+
+        PlaybookFilesDto stored;
+        try
+        {
+            stored = await runtime.QuietBoard.PlaybookFilesAsync(ct);
+        }
+        catch (HatchException e)
+        {
+            complain($"hatch: could not read the board's playbook files - {e.Message}");
+            return;
+        }
+
+        foreach (var checkout in checkouts)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var name = Path.GetFileName(checkout.Path.TrimEnd('/', '\\'));
+
+            try
+            {
+                var workspace = runtime.Workspace(checkout.Path, runtime.Settings.BaseBranch);
+
+                RemoteHeads? heads;
+                if (!headsByPath.TryGetValue(checkout.Path, out heads))
+                {
+                    heads = workspace.Heads();
+                    if (heads is null)
+                    {
+                        complain($"hatch: origin did not answer for {name}, so its playbook file was not checked");
+                        continue;
+                    }
+                }
+
+                if (heads?.TrunkSha is not { } sha) continue;
+
+                if (_seenPlaybookFile.TryGetValue(checkout.Path, out var seen) && seen == sha) continue;
+
+                var matched = stored.Files.FirstOrDefault(f => f.Remote == checkout.Remote && f.Trunk == heads.Trunk);
+
+                if (matched?.Sha == sha)
+                {
+                    _seenPlaybookFile[checkout.Path] = sha;
+                    continue;
+                }
+
+                if (!workspace.Fetch())
+                {
+                    complain($"hatch: could not fetch from origin for {name}, so its playbook file was not checked");
+                    continue;
+                }
+
+                var blob = workspace.ReadBlob(heads.Trunk, stored.Path);
+                if (blob.Outcome == BlobOutcome.Failed)
+                {
+                    complain($"hatch: could not read {stored.Path} in {name} - {blob.Why}");
+                    continue;
+                }
+
+                var content = blob.Outcome == BlobOutcome.Found ? Convert.ToBase64String(blob.Content!) : null;
+                var url = await runtime.Forge(checkout.Path, matched?.Canonical).FileUrlAsync(stored.Path, heads.Trunk, ct);
+
+                try
+                {
+                    await runtime.QuietBoard.PlaybookFileAsync(
+                        new PlaybookFileRequest(checkout.Remote!, heads.Trunk, sha, content, url, runtime.RunnerName), ct);
+                }
+                catch (HatchException e)
+                {
+                    // Not remembered: a write the board refused is asked
+                    // again next interval.
+                    complain($"hatch: could not put the playbook file in {name} - {e.Message}");
+                    continue;
+                }
+
+                _seenPlaybookFile[checkout.Path] = sha;
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                complain($"hatch: could not check the playbook file in {name} - {e.Message}");
             }
         }
     }
