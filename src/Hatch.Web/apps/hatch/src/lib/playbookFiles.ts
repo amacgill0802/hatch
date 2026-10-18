@@ -48,3 +48,22 @@ export function sortedFiles(files: PlaybookFileDto[]): PlaybookFileDto[] {
     (a, b) => a.canonical.localeCompare(b.canonical) || a.trunk.localeCompare(b.trunk),
   );
 }
+
+/** Every project whose primary repository resolves to this file's
+    `(canonical, trunk)` pair. `files` is the complete, unfiltered list from
+    `getPlaybookFiles()` - the ambiguous-trunk check below needs to see every
+    loaded file for a canonical, not just the ones a different, unrelated
+    filter happened to keep visible. */
+export function projectsReading(
+  file: PlaybookFileDto,
+  projects: Project[],
+  files: PlaybookFileDto[],
+): Project[] {
+  return projects.filter((p) => {
+    if (!p.repoSourced) return false;
+    const primary = p.repositories[0];
+    if (!primary || primary.canonical !== file.canonical) return false;
+    if (primary.baseBranch !== null) return primary.baseBranch === file.trunk;
+    return files.filter((f) => f.canonical === primary.canonical).length === 1;
+  });
+}
