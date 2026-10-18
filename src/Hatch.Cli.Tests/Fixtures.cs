@@ -191,6 +191,20 @@ public static class Fixtures
                 : [],
             DateTimeOffset.UnixEpoch, "runner", "hatch", bugIssueKey, projectKey, rerunCount);
 
+    /// <summary>
+    /// A playbook-file row as the board would hold it, parsed and clean, unless
+    /// said otherwise - at the default checkout's remote and the default trunk
+    /// sha <c>PollTests.Heads()</c> gives "main", the same convention <see
+    /// cref="TrunkBuild"/> follows, so a poll test that never mentions the
+    /// playbook file finds this one already current and reads nothing further.
+    /// </summary>
+    public static PlaybookFileDto PlaybookFile(
+        string remote = "https://example.test/repo.git", string canonical = "example.test/repo",
+        string trunk = "main", string? sha = null, string? url = null) =>
+        new(
+            1, remote, canonical, trunk, sha ?? new string('a', 40), "parsed", "hash",
+            [], null, null, null, url, DateTimeOffset.UnixEpoch, "runner", "hatch");
+
     /// <summary>One row of the review read: an issue in review, and what the board holds about its branch.</summary>
     public static ReviewCheckDto Review(
         string key, IReadOnlyList<WorkRepositoryDto>? repositories = null, string? pullRequestUrl = null,

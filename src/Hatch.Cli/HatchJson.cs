@@ -49,6 +49,8 @@ namespace Hatch.Cli;
 [JsonSerializable(typeof(List<TrunkBuildDto>))]
 [JsonSerializable(typeof(ProjectRepositoryDto))]
 [JsonSerializable(typeof(List<ProjectRepositoryDto>))]
+[JsonSerializable(typeof(PlaybookFilesDto))]
+[JsonSerializable(typeof(PlaybookFileDto))]
 
 // What is written.
 [JsonSerializable(typeof(IssueCreateRequest))]
@@ -74,6 +76,7 @@ namespace Hatch.Cli;
 [JsonSerializable(typeof(PullRequestPushbackRequest))]
 [JsonSerializable(typeof(NightState))]
 [JsonSerializable(typeof(List<ProjectRepositoryWriteRequest>))]
+[JsonSerializable(typeof(PlaybookFileRequest))]
 
 // What a hook prints for the session that ran it.
 [JsonSerializable(typeof(PostToolUseOutput))]

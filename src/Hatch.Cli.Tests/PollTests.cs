@@ -424,6 +424,17 @@ public sealed class PollTests
             rig.H.Workspace.Verdicts[(path, "AER-1")] = path.EndsWith("one", StringComparison.Ordinal) ? Clean() : Conflicted("x");
         }
 
+        // The harness's own playbook-files default only vouches for its one
+        // default checkout - these two are neither, so each needs its own row
+        // or the playbook half would fetch both, same as a trunk build would.
+        rig.H.Wire.Replace("GET", "/api/hatch/playbook-files", HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(
+            new PlaybookFilesDto(".hatch/playbooks.yaml",
+            [
+                Fixtures.PlaybookFile(remote: "https://example.test/one.git", canonical: "example.test/one"),
+                Fixtures.PlaybookFile(remote: "https://example.test/two.git", canonical: "example.test/two"),
+            ]),
+            Fixtures.Json));
+
         await rig.Poll.RunAsync(runtime, Interval, default);
 
         // One fetch per checkout, and each checkout is its own repository.
@@ -452,6 +463,12 @@ public sealed class PollTests
         };
         rig.H.Workspace.HeadsFor["/checkouts/two"] = Heads(branches: ("aer-1-thing", Tip));
         rig.H.Workspace.Verdicts[("/checkouts/two", "AER-1")] = Clean();
+
+        // See the sibling test above: this checkout is not the harness's own default one either.
+        rig.H.Wire.Replace("GET", "/api/hatch/playbook-files", HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(
+            new PlaybookFilesDto(".hatch/playbooks.yaml",
+                [Fixtures.PlaybookFile(remote: "https://example.test/two.git", canonical: "example.test/two")]),
+            Fixtures.Json));
 
         await rig.Poll.RunAsync(runtime, Interval, default);
 
@@ -576,10 +593,10 @@ public sealed class PollTests
 
         await rig.RunAsync();
 
-        // The review read, and the trunk half's own - which runs whether or
-        // not anything is in review, so a quiet board is not a poll that never
-        // gets there.
-        Assert.Equal(2, rig.H.Wire.Calls.Count);
+        // The review read, and the trunk and playbook-file halves' own -
+        // both run whether or not anything is in review, so a quiet board is
+        // not a poll that never gets there.
+        Assert.Equal(3, rig.H.Wire.Calls.Count);
         Assert.Equal([$"heads {rig.H.Root}"], rig.H.Workspace.Calls);
         Assert.Empty(rig.H.Say.Said);
         Assert.Empty(rig.H.Say.Complained);
