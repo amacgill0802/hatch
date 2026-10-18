@@ -2243,6 +2243,29 @@ public sealed class GoToWorkTests
         var written = UnpublishedComments(h);
         Assert.Single(written);
         Assert.DoesNotContain(written, c => c.Kind == "question");
+        Assert.Contains("no landing recorded", written[0].Body, StringComparison.Ordinal);
+        Assert.Contains("hatch landed", written[0].Body, StringComparison.Ordinal);
+        Assert.DoesNotContain("pull request", written[0].Body, StringComparison.Ordinal);
+
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Contains("outcome=dropped", released.Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task The_second_occurrence_in_a_row_on_a_trunk_landing_ticket_asks_with_landing_labelled_options()
+    {
+        using var h = new Harness();
+        UnpublishedBoard(h, branchOnOrigin: false, landing: Landings.Trunk, letGo: 1);
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        var written = UnpublishedComments(h);
+        Assert.Equal(2, written.Count);
+        Assert.Equal("question", written[1].Kind);
+
+        var options = written[1].Options!;
+        Assert.Contains(options, o => o.Label == Unpublished.Landed);
+        Assert.Contains(options, o => o.Label == Unpublished.LandingNotNeeded);
 
         var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
         Assert.Contains("outcome=dropped", released.Query, StringComparison.Ordinal);
@@ -2253,6 +2276,19 @@ public sealed class GoToWorkTests
     {
         using var h = new Harness();
         UnpublishedBoard(h, branchOnOrigin: false, landing: Landings.Trunk, landings: [Fixtures.Landing()]);
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        Assert.Empty(UnpublishedComments(h));
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Contains("outcome=worked", released.Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_trunk_landing_ticket_with_a_landing_recorded_is_never_flagged_even_with_a_branch_on_origin()
+    {
+        using var h = new Harness();
+        UnpublishedBoard(h, branchOnOrigin: true, landing: Landings.Trunk, landings: [Fixtures.Landing()]);
 
         Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
 
