@@ -660,16 +660,29 @@ public static class Prompt
 
     /// <summary>
     /// Which playbook spoke for this move, and whose it was - a board-wide
-    /// row, or the issue's own project's. Null exactly when nothing matched,
-    /// which never reaches a caller that has already refused the move.
+    /// row, the issue's own project's row, or a row read off that project's
+    /// own repo-sourced file. Null exactly when nothing matched, which never
+    /// reaches a caller that has already refused the move. Whenever
+    /// <see cref="WorkDto.PlaybookFile"/> is set, the trunk and a short sha of
+    /// the copy the dispatch was judged against is appended, regardless of
+    /// which of the three sources matched.
     /// </summary>
-    public static string? PlaybookLine(WorkDto work) =>
-        work.Playbook switch
+    public static string? PlaybookLine(WorkDto work)
+    {
+        if (work.Playbook is not { } playbook) return null;
+
+        var line = playbook.Source switch
         {
-            null => null,
-            { ProjectKey: { Length: > 0 } key } => $"playbook: {key}'s own",
+            "project" => $"playbook: {playbook.ProjectKey}'s own",
+            "file" => $"playbook: {playbook.ProjectKey}'s own file",
             _ => "playbook: board-wide",
         };
+
+        return work.PlaybookFile is { } file ? $"{line} on {file.Trunk} at {Short(file.Sha)}" : line;
+    }
+
+    /// <summary>The first 7 characters of a sha, for a dry-run line - unchanged where it is shorter.</summary>
+    private static string Short(string sha) => sha.Length > 7 ? sha[..7] : sha;
 
     /// <summary>
     /// What a task on its story's branch is told in place of the pull request
