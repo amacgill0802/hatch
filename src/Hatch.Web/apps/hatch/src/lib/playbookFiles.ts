@@ -67,3 +67,14 @@ export function projectsReading(
     return files.filter((f) => f.canonical === primary.canonical).length === 1;
   });
 }
+
+/** Why a repo-sourced project's `<option>` is disabled in the playbook create
+    dialog, or null where it may be chosen. Mirrors protectedColumns.ts's
+    bulkBlocked: same `string | null` shape, same `<option disabled title>`
+    consumption. The real refusal is the server's (HA-806) - this only makes
+    that outcome visible before submit. */
+export function repoSourcedReason(project: Project): string | null {
+  return project.repoSourced
+    ? `${project.key} reads its own playbooks from .hatch/playbooks.yaml on its trunk, not from a row here`
+    : null;
+}

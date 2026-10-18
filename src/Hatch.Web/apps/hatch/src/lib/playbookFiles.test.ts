@@ -3,6 +3,7 @@ import {
   absentSentence,
   boundCanonicals,
   projectsReading,
+  repoSourcedReason,
   shortSha,
   sortedFiles,
   stateLabel,
@@ -196,5 +197,19 @@ describe('projectsReading', () => {
     });
 
     expect(projectsReading(f, [p], [f])).toEqual([]);
+  });
+});
+
+describe('repoSourcedReason', () => {
+  it('names the key for a repo-sourced project', () => {
+    const p = project({ key: 'AE', repoSourced: true });
+
+    expect(repoSourcedReason(p)).toContain('AE');
+  });
+
+  it('returns null for a non-repo-sourced project', () => {
+    const p = project({ repoSourced: false });
+
+    expect(repoSourcedReason(p)).toBeNull();
   });
 });

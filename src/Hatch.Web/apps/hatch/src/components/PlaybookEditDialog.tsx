@@ -3,6 +3,7 @@ import { Button, Field, Modal, Text } from '@hatch/ui';
 import { createPlaybook, patchPlaybook } from '../api/client';
 import { boardColumns } from '../lib/columns';
 import { message } from '../lib/errors';
+import { repoSourcedReason } from '../lib/playbookFiles';
 import {
   briefLimitDraft,
   briefLimitRequest,
@@ -255,7 +256,12 @@ export function PlaybookEditDialog({
               <select value={draft.projectId} onChange={(e) => write({ projectId: e.target.value })}>
                 <option value="">All projects</option>
                 {projects.map((project) => (
-                  <option key={project.id} value={String(project.id)}>
+                  <option
+                    key={project.id}
+                    value={String(project.id)}
+                    disabled={repoSourcedReason(project) !== null}
+                    title={repoSourcedReason(project) ?? undefined}
+                  >
                     {project.key} — {project.name}
                   </option>
                 ))}
