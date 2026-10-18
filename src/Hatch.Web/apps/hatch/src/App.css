@@ -503,6 +503,11 @@
   font-variant-numeric: tabular-nums;
 }
 
+.hatch-column-horizon {
+  color: var(--muted);
+  font-size: var(--t-label);
+}
+
 /* The column's colour as a mark beside its name. Small, because the column
    already wears the same colour along its top edge and two loud statements of
    one fact is one too many. */

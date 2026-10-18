@@ -24,7 +24,9 @@ const LOCK_REASON = 'Only an owner or approver may move work in here';
 
 describe('ColumnHead', () => {
   it('carries the lock mark, with its title and accessible name, on a protected column', () => {
-    const html = renderToStaticMarkup(<ColumnHead status={status({ isProtected: true })} count={3} asking={0} />);
+    const html = renderToStaticMarkup(
+      <ColumnHead status={status({ isProtected: true })} count={3} asking={0} doneHorizonHours={null} />,
+    );
 
     expect(html).toContain('hatch-column-lock');
     expect(html).toContain(`title="${LOCK_REASON}"`);
@@ -33,17 +35,46 @@ describe('ColumnHead', () => {
   });
 
   it('carries neither the class nor the title on an unprotected column', () => {
-    const html = renderToStaticMarkup(<ColumnHead status={status({ isProtected: false })} count={3} asking={0} />);
+    const html = renderToStaticMarkup(
+      <ColumnHead status={status({ isProtected: false })} count={3} asking={0} doneHorizonHours={null} />,
+    );
 
     expect(html).not.toContain('hatch-column-lock');
     expect(html).not.toContain(LOCK_REASON);
   });
 
   it('still draws the asking badge beside the lock mark', () => {
-    const html = renderToStaticMarkup(<ColumnHead status={status({ isProtected: true })} count={3} asking={2} />);
+    const html = renderToStaticMarkup(
+      <ColumnHead status={status({ isProtected: true })} count={3} asking={2} doneHorizonHours={null} />,
+    );
 
     expect(html).toContain('hatch-column-lock');
     expect(html).toContain('hatch-column-asking');
     expect(html).toContain('?2');
+  });
+
+  it('draws the done horizon on a terminal column that has one', () => {
+    const html = renderToStaticMarkup(
+      <ColumnHead status={status({ isTerminal: true })} count={5} asking={0} doneHorizonHours={48} />,
+    );
+
+    expect(html).toContain('hatch-column-horizon');
+    expect(html).toContain('last 2 days');
+  });
+
+  it('draws nothing when a terminal column has no horizon', () => {
+    const html = renderToStaticMarkup(
+      <ColumnHead status={status({ isTerminal: true })} count={5} asking={0} doneHorizonHours={null} />,
+    );
+
+    expect(html).not.toContain('hatch-column-horizon');
+  });
+
+  it('never draws the horizon on a non-terminal column, even if given one', () => {
+    const html = renderToStaticMarkup(
+      <ColumnHead status={status({ isTerminal: false })} count={5} asking={0} doneHorizonHours={48} />,
+    );
+
+    expect(html).not.toContain('hatch-column-horizon');
   });
 });

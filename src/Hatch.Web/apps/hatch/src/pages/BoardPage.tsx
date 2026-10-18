@@ -621,6 +621,7 @@ export function BoardPage() {
                 wip={zoneIds.has(status.id) && tint !== null ? { text: wipText!, tint } : null}
                 projectsByKey={projectsByKey}
                 showProjectMark={showProjectMark}
+                doneHorizonHours={board.doneHorizonHours ?? null}
               />
             ))}
           </div>
@@ -661,6 +662,7 @@ export function BoardPage() {
                 onPeek={peek}
                 projectsByKey={projectsByKey}
                 showProjectMark={showProjectMark}
+                doneHorizonHours={board.doneHorizonHours ?? null}
               />
             ))}
           </div>
@@ -765,6 +767,7 @@ function Column({
   onPeek,
   projectsByKey,
   showProjectMark,
+  doneHorizonHours,
 }: {
   status: Status;
   cards: LineageCard[];
@@ -791,6 +794,8 @@ function Column({
   onPeek: (card: IssueCard) => void;
   projectsByKey: Map<string, Project>;
   showProjectMark: boolean;
+  /** The board's done-fold horizon, or null where the fold is off. */
+  doneHorizonHours: number | null;
 }) {
   const [showWaiting, setShowWaiting] = useState(false);
 
@@ -830,7 +835,7 @@ function Column({
       ref={setNodeRef}
     >
       <header className="hatch-column-head">
-        <ColumnHead status={status} count={workable.length} asking={asking} />
+        <ColumnHead status={status} count={workable.length} asking={asking} doneHorizonHours={doneHorizonHours} />
       </header>
 
       <div className="hatch-column-cards">
@@ -895,6 +900,7 @@ function PhoneColumn({
   wip,
   projectsByKey,
   showProjectMark,
+  doneHorizonHours,
 }: {
   status: Status;
   cards: LineageCard[];
@@ -908,6 +914,8 @@ function PhoneColumn({
   wip: { text: string; tint: Tightness } | null;
   projectsByKey: Map<string, Project>;
   showProjectMark: boolean;
+  /** The board's done-fold horizon, or null where the fold is off. */
+  doneHorizonHours: number | null;
 }) {
   const [showWaiting, setShowWaiting] = useState(false);
   const [open, setOpen] = useState(() => !startsCollapsed(status));
@@ -930,7 +938,7 @@ function PhoneColumn({
       onToggle={(e) => setOpen(e.currentTarget.open)}
     >
       <summary className="hatch-column-head">
-        <ColumnHead status={status} count={workable.length} asking={asking} />
+        <ColumnHead status={status} count={workable.length} asking={asking} doneHorizonHours={doneHorizonHours} />
         {wip && <span className={`hatch-column-wip-note hatch-wip-${wip.tint}`}>{wip.text}</span>}
       </summary>
 
