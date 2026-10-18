@@ -108,6 +108,16 @@ public sealed class Board(HatchClient client)
         Client.WriteAsync<TrunkBuildDto>(HttpMethod.Put, "/api/hatch/trunk-builds", request, ct);
 
     /// <summary>
+    /// Files the bug HA-95's button would have filed for this trunk build. A
+    /// key sends no body - express, the priority and the column are the
+    /// project's own standing permission (HA-792), not this call's to name. A
+    /// row that already has a bug answers that one again rather than filing a
+    /// second.
+    /// </summary>
+    public Task<IssueDto?> TrunkBuildBugAsync(long id, CancellationToken ct) =>
+        Client.WriteAsync<IssueDto>(HttpMethod.Post, $"/api/hatch/trunk-builds/{id}/bug", null, ct);
+
+    /// <summary>
     /// The dispatch for one named issue.
     /// </summary>
     /// <param name="heldToken">

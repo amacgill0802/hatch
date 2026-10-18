@@ -1,3 +1,5 @@
+using System.Net;
+
 namespace Hatch.Cli;
 
 /// <summary>
@@ -564,9 +566,35 @@ public sealed class Poll
                 if (concluded) _seenTrunk[checkout.Path] = sha;
 
                 if (reran)
+                {
                     runtime.Say.Line($"hatch: {TrunkWords(heads.Trunk, sha, read)} - re-running");
-                else if (matched is null || matched.Sha != sha || matched.Verdict != read.Verdict)
-                    runtime.Say.Line($"hatch: {TrunkWords(heads.Trunk, sha, read)}");
+                }
+                else
+                {
+                    if (matched is null || matched.Sha != sha || matched.Verdict != read.Verdict)
+                        runtime.Say.Line($"hatch: {TrunkWords(heads.Trunk, sha, read)}");
+
+                    if (read.Verdict == BuildVerdicts.Failed && kept is { BugIssueKey: null }
+                        && kept.ProjectKey is { } boundProjectKey && runtime.Readout.Drives(boundProjectKey))
+                    {
+                        try
+                        {
+                            var filed = await runtime.QuietBoard.TrunkBuildBugAsync(kept.Id, ct);
+                            if (filed is not null)
+                                runtime.Say.Line($"hatch: {TrunkWords(heads.Trunk, sha, read)} - filed {filed.Key}");
+                        }
+                        catch (HatchException e) when (e.Status == HttpStatusCode.BadRequest)
+                        {
+                            // The project has auto-filing off, or lost its repository
+                            // binding since the PUT above - the server's own "no," not a
+                            // fault.
+                        }
+                        catch (HatchException e)
+                        {
+                            complain($"hatch: could not file a bug for the trunk build in {name} - {e.Message}");
+                        }
+                    }
+                }
             }
             catch (Exception e) when (e is not OperationCanceledException)
             {
