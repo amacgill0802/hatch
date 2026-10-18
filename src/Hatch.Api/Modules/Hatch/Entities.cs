@@ -3,6 +3,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
+using NpgsqlTypes;
 
 namespace Hatch.Api.Modules.Hatch;
 
@@ -657,6 +658,13 @@ public class EfHatchIssue
     public DateTimeOffset? ClosedAt { get; set; }
 
     /// <summary>
+    /// <see cref="Title"/> weighted A, <see cref="Description"/> weighted B -
+    /// see <see cref="SearchQuery"/>. Never assigned in code: Postgres computes
+    /// it from the two columns above the moment either one is written.
+    /// </summary>
+    public NpgsqlTsVector SearchVector { get; private set; } = null!;
+
+    /// <summary>
     /// The epic above this story, or the story above this task. Nullable and
     /// usually null; validated server-side for existence, same project, legal
     /// type pairing, and no cycles.
@@ -1151,6 +1159,12 @@ public class EfHatchComment
     public required string Author { get; set; }
 
     public required string Body { get; set; }
+
+    /// <summary>
+    /// <see cref="Body"/> weighted C - see <see cref="SearchQuery"/>. Never
+    /// assigned in code.
+    /// </summary>
+    public NpgsqlTsVector SearchVector { get; private set; } = null!;
 
     /// <summary>
     /// <see cref="Note"/>, <see cref="Question"/> or <see cref="Answer"/>.
@@ -2347,6 +2361,12 @@ public class EfHatchWorkLogEntry
     /// <summary>The same, at length. Sessions are asked to keep it under 100 words.</summary>
     [MaxLength(MaxSummaryLength)]
     public string? Summary { get; set; }
+
+    /// <summary>
+    /// <see cref="Title"/> and <see cref="Summary"/>, both weighted D - see
+    /// <see cref="SearchQuery"/>. Never assigned in code.
+    /// </summary>
+    public NpgsqlTsVector SearchVector { get; private set; } = null!;
 
     /// <summary>
     /// Whether the session said what it did. Set by the server from
