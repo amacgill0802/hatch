@@ -44,6 +44,10 @@ const project = (over: Partial<Project> = {}): Project => ({
   landing: 'pull-request',
   checksRequired: false,
   onePullRequest: false,
+  autoHealBugEnabled: false,
+  autoHealBugPriority: 'emergency',
+  autoHealBugPreApproval: 'express',
+  autoHealBugStatusId: null,
   ...over,
 });
 

@@ -42,6 +42,15 @@ export interface Project {
   /** The project's default for whether a story's tasks share the story's branch
       and one pull request. See ProjectDto.OnePullRequest. */
   onePullRequest: boolean;
+  /** Whether a trunk failure files a bug at all. See ProjectDto.AutoHealBugEnabled. */
+  autoHealBugEnabled: boolean;
+  /** The priority a trunk-failure bug is filed at. */
+  autoHealBugPriority: 'normal' | 'expedited' | 'emergency' | 'low' | 'economy' | 'paused';
+  /** The pre-approval level a trunk-failure bug is born at. */
+  autoHealBugPreApproval: 'none' | 'express' | 'preapproved';
+  /** The column a trunk-failure bug is born in, or null to track the column
+      that feeds implementation. */
+  autoHealBugStatusId: number | null;
 }
 
 /** One git remote bound to a project, as the server reads it back. */
@@ -819,6 +828,10 @@ export interface ProjectLandingWriteRequest {
   landing?: 'pull-request' | 'trunk' | null;
   checksRequired?: boolean | null;
   onePullRequest?: boolean | null;
+  autoHealBugEnabled?: boolean | null;
+  autoHealBugPriority?: string | null;
+  autoHealBugPreApproval?: string | null;
+  autoHealBugStatusId?: string | null;
 }
 
 export interface StatusCreateRequest {

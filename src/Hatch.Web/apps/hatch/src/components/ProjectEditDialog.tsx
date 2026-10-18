@@ -4,7 +4,9 @@ import {
   claimProject,
   deleteProjectLogo,
   deleteProjectMember,
+  getAssignees,
   getPeople,
+  getStatuses,
   patchProject,
   putProjectLanding,
   putProjectLogo,
@@ -12,6 +14,7 @@ import {
   putProjectRepositories,
 } from '../api/client';
 import { message } from '../lib/errors';
+import { boardColumns } from '../lib/columns';
 import {
   openProjectDraft,
   projectDraftDiff,
@@ -34,6 +37,8 @@ import { projectLogoUrl } from '../lib/projectLogo';
 import { moved, repositoryObjection, withoutRemote, withRemote } from '../lib/repositories';
 import { useLoaded } from '../lib/useLoaded';
 import type { Project } from '../types';
+import { PreApprovalControl } from './PreApprovalControl';
+import { PriorityControl } from './PriorityControl';
 import { ProjectIconPicker } from './ProjectIconPicker';
 import { ProjectKeyField } from './ProjectKeyField';
 import { ProjectLogoField, type LogoPending } from './ProjectLogoField';
@@ -70,6 +75,8 @@ export function ProjectEditDialog({
   const landingName = useId();
 
   const { data: people } = useLoaded(getPeople);
+  const { data: directory } = useLoaded(getAssignees);
+  const { data: statuses } = useLoaded(getStatuses);
 
   // Reset whenever a different project is picked, so a half-typed
   // confirmation and a stale draft cannot be carried from one project to
@@ -323,9 +330,59 @@ export function ProjectEditDialog({
               The default for every story in this project; a story can override it either way.
               Off, each task gets its own branch and pull request, merged one after another.
             </p>
+            <label>
+              <input
+                type="checkbox"
+                checked={draft.autoHealBugEnabled}
+                onChange={(e) => setDraft((d) => d && { ...d, autoHealBugEnabled: e.target.checked })}
+              />
+              File a bug when the trunk fails
+            </label>
+            <p className="hatch-section-hint text-muted">
+              Files an emergency, pre-approved bug the moment a repository's trunk build fails, so the loop can start
+              healing it with no session.
+            </p>
+            <fieldset className="hatch-landing-choice" disabled={!draft.autoHealBugEnabled}>
+              <PriorityControl
+                issueKey=""
+                priority={draft.autoHealBugPriority}
+                priorityOwn={draft.autoHealBugPriority}
+                priorityFrom={null}
+                directory={directory}
+                onChange={(priority) => setDraft((d) => d && { ...d, autoHealBugPriority: priority })}
+              />
+              <PreApprovalControl
+                issueKey=""
+                preApproval={draft.autoHealBugPreApproval}
+                preApprovalOwn={draft.autoHealBugPreApproval}
+                preApprovalFrom={null}
+                directory={directory}
+                canApprove={project.canApprove}
+                onChange={(level) => setDraft((d) => d && { ...d, autoHealBugPreApproval: level })}
+              />
+              <Field label="Column">
+                <select
+                  value={draft.autoHealBugStatusId ?? ''}
+                  onChange={(e) =>
+                    setDraft((d) => d && { ...d, autoHealBugStatusId: e.target.value === '' ? null : Number(e.target.value) })
+                  }
+                >
+                  <option value="">Automatic (tracks the column that feeds implementation)</option>
+                  {(statuses ? boardColumns(statuses).filter((s) => !s.isTerminal) : []).map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </fieldset>
           </>
         ) : (
-          <p>{`${draft.landing === 'trunk' ? 'On the trunk' : 'By pull request'}, checks ${draft.checksRequired ? 'required' : 'not required'}, ${draft.onePullRequest ? 'one pull request per story' : 'one pull request per task'}.`}</p>
+          <p>{`${draft.landing === 'trunk' ? 'On the trunk' : 'By pull request'}, checks ${draft.checksRequired ? 'required' : 'not required'}, ${draft.onePullRequest ? 'one pull request per story' : 'one pull request per task'}, auto-heal ${
+            draft.autoHealBugEnabled
+              ? `files a ${draft.autoHealBugPriority} bug at ${draft.autoHealBugPreApproval} pre-approval in ${statuses?.find((s) => s.id === draft.autoHealBugStatusId)?.name ?? 'the automatic column'}`
+              : 'off'
+          }.`}</p>
         )}
 
         <h2 className="hatch-section-title">Members</h2>
