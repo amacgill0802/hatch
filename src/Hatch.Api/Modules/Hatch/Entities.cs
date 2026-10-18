@@ -2418,9 +2418,10 @@ public class EfHatchWorkLogEntry
     /// <summary>
     /// Notional API list price, in dollars, as the CLI reported it. Eight
     /// places because a short session costs a fraction of a cent and rounding
-    /// it to two would make a night of them add up to nothing.
+    /// it to two would make a night of them add up to nothing. Null means the
+    /// agent reported no price - unpriced, which is not the same as free.
     /// </summary>
-    public decimal CostUsd { get; set; }
+    public decimal? CostUsd { get; set; }
 
     /// <summary>
     /// The session's four token counts, summed over <see cref="ModelUsage"/>.

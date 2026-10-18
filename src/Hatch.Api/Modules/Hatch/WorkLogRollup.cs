@@ -168,7 +168,7 @@ public static class WorkLogRollup
 
         var ranked = sort switch
         {
-            WorkLogSort.Cost => rows.OrderByDescending(r => r.CostUsd),
+            WorkLogSort.Cost => rows.OrderByDescending(r => r.CostUsd ?? -1m),
             WorkLogSort.Ended => rows.OrderByDescending(r => r.EndedAt),
             WorkLogSort.Requests => rows.OrderByDescending(r => r.Requests ?? -1),
             WorkLogSort.PeakContext => rows.OrderByDescending(r => r.PeakContextTokens ?? -1),
@@ -271,7 +271,7 @@ public static class WorkLogRollup
         long OutputTokens,
         long CacheCreationTokens,
         long CacheReadTokens,
-        decimal CostUsd);
+        decimal? CostUsd);
 
     /// <summary>Shared, because an empty bucket is the common case and each one would otherwise allocate a list to say so.</summary>
     private static readonly List<Row> NoRows = [];
@@ -299,7 +299,7 @@ public static class WorkLogRollup
         bool Described,
         bool IsError,
         int Turns,
-        decimal CostUsd,
+        decimal? CostUsd,
         long InputTokens,
         long OutputTokens,
         long CacheCreationTokens,
@@ -384,7 +384,7 @@ public static class WorkLogRollup
             input + output + cacheCreation + cacheRead,
             // An errored session's spend counts. It ran, and it was billed for
             // running.
-            rows.Sum(r => r.CostUsd));
+            rows.Sum(r => r.CostUsd ?? 0m));
     }
 
     /// <summary>

@@ -307,6 +307,9 @@ public class HatchContextTests
         Assert.Equal(18, cost.GetPrecision());
         Assert.Equal(8, cost.GetScale());
 
+        // Null is an agent that reported no price, which is not a free one.
+        Assert.True(cost.IsNullable);
+
         var models = entry.FindProperty(nameof(EfHatchWorkLogEntry.ModelUsage))!;
         Assert.Equal("jsonb", models.FindAnnotation(RelationalAnnotationNames.ColumnType)?.Value);
     }

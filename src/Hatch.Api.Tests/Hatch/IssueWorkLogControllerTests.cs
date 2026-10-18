@@ -49,6 +49,62 @@ public class IssueWorkLogControllerTests
     }
 
     [Fact]
+    public async Task ASessionWithNoPrice_IsStoredAndReadBackAsNull_NotAsZero()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        var entry = await h.PostAsync(issue.Key, Reported() with { CostUsd = null });
+
+        Assert.Null(entry.CostUsd);
+        Assert.Null(Assert.Single(await h.RowsAsync(issue.Key)).CostUsd);
+
+        var log = await h.ReadAsync(issue.Key);
+        Assert.Null(Assert.Single(log.Entries).CostUsd);
+    }
+
+    [Fact]
+    public async Task AModelWithNoPrice_RoundTripsAsNull_BesideOneThatHasOne()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        var entry = await h.PostAsync(issue.Key, Reported() with
+        {
+            CostUsd = null,
+            Models =
+            [
+                new WorkLogModelUseDto("gpt-5", 900, 280, 0, 0, null),
+                new WorkLogModelUseDto("claude-haiku-4-5", 47, 1, 14, 57, 0.0006m),
+            ],
+        });
+
+        Assert.Null(entry.Models[0].CostUsd);
+        Assert.Equal(0.0006m, entry.Models[1].CostUsd);
+
+        var log = await h.ReadAsync(issue.Key);
+        var row = Assert.Single(log.Entries);
+        Assert.Null(row.Models[0].CostUsd);
+        Assert.Equal(0.0006m, row.Models[1].CostUsd);
+    }
+
+    [Fact]
+    public async Task ReportingAPricedSessionAgainWithNoPrice_LeavesItUnpriced()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        var priced = await h.PostAsync(issue.Key, Reported() with { CostUsd = 3.41m });
+        Assert.Equal(3.41m, priced.CostUsd);
+
+        var unpriced = await h.PostAsync(issue.Key, Reported() with { CostUsd = null });
+
+        Assert.Equal(priced.Id, unpriced.Id);
+        Assert.Null(unpriced.CostUsd);
+        Assert.Null(Assert.Single(await h.RowsAsync(issue.Key)).CostUsd);
+    }
+
+    [Fact]
     public async Task RequestsPeakContextAndPromptChars_ArePassedThroughUnchanged()
     {
         var h = await NewAsync();
