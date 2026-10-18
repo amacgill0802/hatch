@@ -114,6 +114,25 @@ public class ImportControllerTests
     }
 
     [Fact]
+    public async Task AnIssueImportedIntoATerminalColumn_IsStampedClosed()
+    {
+        var h = await NewAsync();
+        await h.ImportAsync("pjm.md", Plan);
+
+        foreach (var key in new[] { "AER-2", "AER-3", "AER-4" })
+        {
+            var issue = h.Issue(key);
+            Assert.Equal(h.Done, issue.StatusId);
+            Assert.Equal(Now, issue.ClosedAt);
+        }
+
+        // Not terminal: AER-1 (in progress) and AER-5/AER-6 (todo).
+        Assert.Null(h.Issue("AER-1").ClosedAt);
+        Assert.Null(h.Issue("AER-5").ClosedAt);
+        Assert.Null(h.Issue("AER-6").ClosedAt);
+    }
+
+    [Fact]
     public async Task AHalfFinishedPlan_LandsInProgress()
     {
         var h = await NewAsync();
