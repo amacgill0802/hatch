@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { AttentionHuman } from './AttentionHuman';
 import { approvedHeldEmptyWords, landingHeldEmptyWords, questionEmptyWords, reviewEmptyWords, trunkBuildEmptyWords } from '../lib/attention';
-import type { Attention, ApprovedHeld, LandingHeld, TrunkBuild } from '../types';
+import type { Attention, ApprovedHeld, LandingHeld, Review, TrunkBuild } from '../types';
 
 /* No DOM here, so this is structural - react-dom/server, the way
    Confirmations.test.tsx reads. What it pins is AC1's "same order, same
@@ -48,6 +48,18 @@ const attention = (over: Partial<Attention> = {}): Attention => ({
   questions: [],
   conflicts: [],
   reviewsHeldBack: 0,
+  ...over,
+});
+
+const review = (over: Partial<Review> = {}): Review => ({
+  key: 'AER-16',
+  title: 'A story up for review',
+  type: 'story',
+  pullRequestUrl: 'https://forge.example/pulls/16',
+  buildState: 'unknown',
+  holdsTrunk: null,
+  trunk: null,
+  playbookFilePath: null,
   ...over,
 });
 
@@ -149,6 +161,26 @@ describe('AttentionHuman', () => {
     expect(html).toContain(held.key);
     expect(html).toContain(held.title);
     expect(html).toContain(held.sentence);
+  });
+
+  it('says the playbook-file sentence for a review row that carries one', () => {
+    const r = review({ playbookFilePath: '.hatch/playbooks.yaml' });
+
+    const html = renderToStaticMarkup(
+      <AttentionHuman attention={attention({ reviews: [r] })} now={new Date()} reload={noop} />,
+    );
+
+    expect(html).toContain('this change also rewrites the instructions agents follow - .hatch/playbooks.yaml');
+  });
+
+  it('draws no playbook-file sentence for a review row without one', () => {
+    const r = review({ playbookFilePath: null });
+
+    const html = renderToStaticMarkup(
+      <AttentionHuman attention={attention({ reviews: [r] })} now={new Date()} reload={noop} />,
+    );
+
+    expect(html).not.toContain('this change also rewrites the instructions agents follow');
   });
 
   it('draws no outer heading and no .hatch-attention-group wrapper of its own', () => {

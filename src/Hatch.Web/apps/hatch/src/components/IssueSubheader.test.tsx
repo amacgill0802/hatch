@@ -150,6 +150,36 @@ describe('IssueSubheader', () => {
     expect(html).toContain('<button');
   });
 
+  it('draws the playbook-file chip when a merge check names a path', () => {
+    const html = render({
+      mergeChecks: [
+        {
+          remote: 'git@example.test:hatch/hatch.git',
+          canonical: 'example.test/hatch/hatch',
+          trunk: 'main',
+          trunkSha: '1'.repeat(40),
+          verdict: 'clean',
+          branch: 'aer-1-thing',
+          branchSha: '2'.repeat(40),
+          files: [],
+          holdsTrunk: true,
+          checkedAt: '2026-01-01T00:00:00Z',
+          runner: 'box:/work/repo',
+          checkedBy: 'runner',
+          playbookFilePath: '.hatch/playbooks.yaml',
+        },
+      ],
+    });
+
+    expect(html).toContain('this change also rewrites the instructions agents follow - .hatch/playbooks.yaml');
+  });
+
+  it('draws no playbook-file chip when no merge check names a path', () => {
+    const html = render({ mergeChecks: [] });
+
+    expect(html).not.toContain('hatch-chip-playbook-file');
+  });
+
   it('draws an unlinked chip per repository with a recorded landing', () => {
     const html = render({
       landings: [

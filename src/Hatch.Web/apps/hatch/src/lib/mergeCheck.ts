@@ -45,3 +45,13 @@ export function conflictWords(check: MergeCheck, several: boolean = false): stri
 export function conflictTitle(check: MergeCheck, several: boolean = false): string {
   return [conflictWords(check, several), ...check.files].join('\n');
 }
+
+/**
+ * `this change also rewrites the instructions agents follow - path/to/playbooks.yaml`.
+ *
+ * Shared by the issue page's chip and the attention panel's review row so the
+ * same fact reads as the same sentence in both places.
+ */
+export function playbookFileWords(path: string): string {
+  return `this change also rewrites the instructions agents follow - ${path}`;
+}

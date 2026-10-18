@@ -1051,6 +1051,7 @@ public record ActivityPageDto(IReadOnlyList<ActivityEventDto> Events, bool HasMo
 /// reaches this list at all. Defaults to <c>null</c> so an older client still
 /// reads.
 /// </param>
+/// <param name="PlaybookFilePath">See <see cref="MergeCheckDto.PlaybookFilePath"/>, from the counted repositories' clean merge checks - <c>null</c> when none has named one. Defaults to <c>null</c> so an older client still reads.</param>
 public record ReviewDto(
     string Key,
     string Title,
@@ -1059,7 +1060,8 @@ public record ReviewDto(
     string BuildState = ReviewBuildStates.Unknown,
     bool? HoldsTrunk = null,
     string? Trunk = null,
-    string? HeldSentence = null);
+    string? HeldSentence = null,
+    string? PlaybookFilePath = null);
 
 /// <summary>
 /// The two things that stop a night, in one read: a pull request nobody has
