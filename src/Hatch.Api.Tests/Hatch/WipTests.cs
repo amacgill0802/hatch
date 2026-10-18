@@ -660,7 +660,7 @@ public class WipTests
         {
             Db = db,
             Time = time,
-            Board = new BoardController(db, actors, claims, time),
+            Board = new BoardController(db, actors, claims, time, TestClaims.DoneHorizon()),
             Claims = claims,
             ProjectId = project.Id,
             Breakdown = breakdown.Id,

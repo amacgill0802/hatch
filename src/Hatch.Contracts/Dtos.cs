@@ -1239,6 +1239,12 @@ public record LandingHeldDto(string Key, string Title, string Type, string Sente
 /// server does not, because a default that silently drops rows leaves a client
 /// unable to tell an empty board from a filtered one - and an agent asking what
 /// it may work on has one comparison to make instead of a flag to know about.
+///
+/// The one card the server folds itself is the opposite case: a terminal
+/// card whose <see cref="IssueCardDto.ClosedAt"/> is older than
+/// <see cref="DoneHorizonHours"/> is withheld rather than handed over, because
+/// a done column only grows and nobody is asking "what may I work on" of a
+/// card that closed months ago.
 /// </remarks>
 /// <param name="Wip">
 /// How full the WIP section is right now, or null only where the board has
@@ -1247,7 +1253,14 @@ public record LandingHeldDto(string Key, string Title, string Type, string Sente
 /// slices' limits null, wherever a column is flagged but no limit has been
 /// typed.
 /// </param>
-public record BoardDto(IReadOnlyList<StatusDto> Statuses, IReadOnlyList<IssueCardDto> Issues, WipDto? Wip = null);
+/// <param name="DoneHorizonHours">
+/// The horizon itself, so the client can say so. Null exactly where the fold
+/// is off - an operator who set it to <c>0</c> - never wherever it is merely
+/// unset: the default is 48, not null.
+/// </param>
+public record BoardDto(
+    IReadOnlyList<StatusDto> Statuses, IReadOnlyList<IssueCardDto> Issues, WipDto? Wip = null,
+    int? DoneHorizonHours = null);
 
 /// <summary>
 /// How full the WIP section is right now, the shape <c>GET /board</c> carries

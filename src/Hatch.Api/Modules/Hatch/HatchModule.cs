@@ -42,6 +42,9 @@ public static class HatchModule
         // the instant it is judging against.
         services.AddSingleton<Runners>();
 
+        // The board's own horizon, on the same terms as Runners above it.
+        services.AddSingleton<DoneHorizon>();
+
         // Scoped, the same reason as Dispatch beside it: it holds a scoped
         // HatchContext, taken through DI here rather than constructed, via the
         // Dispatch it decides alongside.

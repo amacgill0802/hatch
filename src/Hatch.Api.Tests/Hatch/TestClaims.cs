@@ -40,6 +40,10 @@ internal static class TestClaims
     /// itself rather than a connection of its own, the way DI hands a request
     /// the same scoped context for both.
     /// </summary>
+    /// <summary>The done horizon every harness here uses unless it is testing the fold itself - 48 hours, the shipped default.</summary>
+    public static DoneHorizon DoneHorizon(int hours = 48) =>
+        new(Options.Create(new HatchOptions { DoneHorizonHours = hours }));
+
     public static Preemption Preemption(
         HatchContext db, TimeProvider time, IssueClaims? claims = null, IActorDirectory? actors = null,
         Runners? runners = null)

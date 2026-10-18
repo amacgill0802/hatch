@@ -95,7 +95,7 @@ public class IssueProjectionStallTests
         {
             Db = db,
             Issues = new IssuesController(db, new RankService(db), actors, TestClaims.With(), caller, time, new ProjectAccess(db, actors)),
-            Board = new BoardController(db, actors, TestClaims.With(), time),
+            Board = new BoardController(db, actors, TestClaims.With(), time, TestClaims.DoneHorizon()),
             ProjectId = hatch.Id,
         };
     }
