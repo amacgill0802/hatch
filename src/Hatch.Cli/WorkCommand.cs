@@ -682,7 +682,7 @@ public sealed class WorkCommand(Runtime runtime)
                 : $"hatch: the runner failed, before a ticket was settled on - {why}");
 
             if (ticketKey is { Length: > 0 })
-                await LetGo.CommentAsync(runtime.Board, runtime.Say, ticketKey, why, increment?.SessionId, CancellationToken.None);
+                await LetGo.CommentAsync(runtime.Board, runtime.Say, runtime.Adapter, ticketKey, why, increment?.SessionId, CancellationToken.None);
 
             // The runner fell over rather than the increment running to a
             // verdict, so the claim (where one was ever held) goes back the

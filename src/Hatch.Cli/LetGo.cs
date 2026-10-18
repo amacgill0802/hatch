@@ -17,9 +17,10 @@ public static class LetGo
     /// failing a second time over the same comment.
     /// </summary>
     public static Task CommentAsync(
-        Board board, Terminal say, string key, string why, string? sessionId, CancellationToken ct) =>
+        Board board, Terminal say, IAgentAdapter adapter, string key, string why, string? sessionId,
+        CancellationToken ct) =>
         WriteAsync(
-            board, say, key, $"An unattended runner failed and let {key} go: {why}.",
+            board, say, adapter, key, $"An unattended runner failed and let {key} go: {why}.",
             sessionId, "No session had started when it failed.", ct);
 
     /// <summary>
@@ -29,19 +30,20 @@ public static class LetGo
     /// for why a second one in a row is treated differently.
     /// </summary>
     public static Task LeftAsync(
-        Board board, Terminal say, string key, string why, string? sessionId, CancellationToken ct) =>
+        Board board, Terminal say, IAgentAdapter adapter, string key, string why, string? sessionId,
+        CancellationToken ct) =>
         WriteAsync(
-            board, say, key, $"An unattended increment left {key} where it found it and let it go: {why}.",
+            board, say, adapter, key, $"An unattended increment left {key} where it found it and let it go: {why}.",
             sessionId, "There is no session to resume: the run ended before it said what its id was.", ct);
 
     private static async Task WriteAsync(
-        Board board, Terminal say, string key, string opening, string? sessionId, string noSession,
-        CancellationToken ct)
+        Board board, Terminal say, IAgentAdapter adapter, string key, string opening, string? sessionId,
+        string noSession, CancellationToken ct)
     {
         var body = opening;
 
         body += sessionId is { Length: > 0 } session
-            ? $"\n\nThe session it ran in is still there, with everything it did in context:\n\n    claude --resume {session}"
+            ? $"\n\nThe session it ran in is still there, with everything it did in context:\n\n    {adapter.ResumeCommand(session)}"
             : $"\n\n{noSession}";
 
         try

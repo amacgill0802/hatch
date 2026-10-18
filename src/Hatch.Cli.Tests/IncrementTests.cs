@@ -1552,7 +1552,8 @@ public sealed class IncrementTests
         };
 
         var increment = new Increment(
-            h.Board, h.Sessions, new Settings { Base = "https://hatch.example", Key = "hatch_ak_test" }, h.Say,
+            h.Board, h.Sessions, new ClaudeAdapter(),
+            new Settings { Base = "https://hatch.example", Key = "hatch_ak_test" }, h.Say,
             [new CheckoutEntry(h.Root, "https://example.test/repo.git", Standing: true)], h.Runtime.Readout, h.Temp, controls,
             h.Workspace.For, h.Board);
 
