@@ -75,3 +75,27 @@ public interface IUsageProbe
     /// </summary>
     Task<IReadOnlyList<string>?> ProbeAsync(string tempDirectory, CancellationToken ct);
 }
+
+/// <summary>
+/// Picks the <see cref="ISessionRunner"/> an agent id names - today, only
+/// <c>claude</c> itself, behind <see cref="ClaudeAdapter"/> and the generic
+/// <see cref="AgentSessionRunner"/>. This is what makes <c>HATCH_AGENT</c>
+/// and <c>--agent</c> refuse an unknown id before anything is spawned.
+/// </summary>
+public static class Agents
+{
+    public static bool Resolve(
+        string id, string? claudeBin, Action<string>? warn, out ISessionRunner runner, out string refusal)
+    {
+        if (id == "claude")
+        {
+            runner = new AgentSessionRunner(new ClaudeAdapter(claudeBin, warn));
+            refusal = "";
+            return true;
+        }
+
+        runner = null!;
+        refusal = $"hatch: no such agent \"{id}\" - known: {string.Join(", ", Settings.KnownAgentIds)}";
+        return false;
+    }
+}
