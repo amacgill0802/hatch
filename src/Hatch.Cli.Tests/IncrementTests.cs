@@ -56,6 +56,54 @@ public sealed class IncrementTests
     }
 
     /// <summary>
+    /// HA-850: the seam <see cref="IAgentAdapter"/> draws is real, not merely
+    /// typed - a second adapter with its own id, its own resume wording and
+    /// its own stream format runs an increment end to end, through the same
+    /// claim/spawn/work-log path the first test above does, without a single
+    /// piece of what is said, spawned or posted carrying Claude's own
+    /// vocabulary.
+    /// </summary>
+    [Fact]
+    public async Task A_second_adapter_runs_an_increment_without_claudes_own_vocabulary()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+        var (claim, _) = await HoldingAsync(h, "AER-1", token);
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke("FAKE-RESULT fake-session-1|Did a fake thing|In fake detail.|7|2.5|45000");
+            return Task.FromResult(new SessionResult(0, ""));
+        };
+
+        var report = await (h.Runtime with { Adapter = new FakeAdapter() }).Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.True(report.Moved);
+        Assert.Equal("fake-session-1", report.SessionId);
+
+        var billed = h.Wire.To("POST", "/api/hatch/issues/AER-1/work-log")[0].Read<WorkLogEntryRequest>();
+        Assert.Equal("fake-session-1", billed.SessionId);
+        Assert.Equal("Did a fake thing", billed.Title);
+        Assert.Equal("In fake detail.", billed.Summary);
+        Assert.Equal(7, billed.Turns);
+
+        Assert.True(h.Say.Mentions("fake-agent"));
+
+        var billedBody = h.Wire.To("POST", "/api/hatch/issues/AER-1/work-log")[0].Body;
+        Assert.All(h.Say.Said, line => Assert.DoesNotContain("claude", line, StringComparison.OrdinalIgnoreCase));
+        Assert.All(h.Sessions.Spawned, s => Assert.DoesNotContain("claude", s.Prompt, StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain("claude", billedBody, StringComparison.OrdinalIgnoreCase);
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>
     /// HA-841: a board-wide playbook carries no file facts into the work-log row.
     /// </summary>
     [Fact]
