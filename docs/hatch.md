@@ -2707,7 +2707,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/local-person` | GET | What to call whoever is sitting here, and whether anybody said so. `204` wherever the wall is up |
 | `/settings` | GET, PUT | **Person only** — plain `[RequireRole(User)]`, so a key is refused the read as well as the write. The two settings a Hatch install of its own has — see [the token, still](#the-token-still). PUT follows the bulk rule: a field left out is left alone, `""` clears it |
 | `/settings/claude-token` | GET | The token itself, wrapped with `SecretProtector` for the wire. The one route in Hatch that hands a live secret back out, and it is cut the opposite way to `/settings` beside it — **a key or a keyless runner may take it**, because its ordinary caller is the container runner's entrypoint (`containers/hatch-runner/`) authenticating a `claude` CLI it starts itself. **Refused outright wherever the wall is up** — every caller, key or person — because a token crossing a network is a different question from one handed to a container on the same laptop. `204` when none is set |
-| `/issues/{key}/work-log` | GET, POST | What each session on this issue cost. **POST is a key only** — a browser is refused outright, because the only honest writer of a meter reading is the dispatcher that read it. See [the leaderboard](#the-leaderboard) |
+| `/issues/{key}/work-log` | GET, POST | What each session on this issue cost, each entry also carrying its playbook's source and, for a file-sourced row, the trunk, sha and hash it was confirmed against (`PlaybookSource`, `PlaybookFileTrunk`, `PlaybookFileSha`, `PlaybookFileHash`). **POST is a key only** — a browser is refused outright, because the only honest writer of a meter reading is the dispatcher that read it. See [the leaderboard](#the-leaderboard) |
 | `/work-log/sessions` | GET | The sessions in a range, ranked, with the range's own totals — see [the leaderboard](#the-leaderboard) |
 | `/work-log/history` | GET | The same rows folded into equal buckets of time, for the graph |
 | `/reports/timeline` | GET | When the work happened: top-level epics active in a range, and the work beneath each, as stretches in the board's active columns. `from`, `to` (default: the 90 days ending now), `projectId`, `createdBy`. Hatch-scoped, open to a key. `400` for an unparseable or inverted bound and for an unknown `projectId` — see [the timeline](#the-timeline) |
@@ -3220,7 +3220,11 @@ Every number on the page comes from one table: `hatch.work_log_entries`, the row
 the dispatcher writes at the end of every unattended increment. It carries the
 session id, the issue, both instants, the duration, the turns, the four token
 counts, the notional USD, whether the run errored, and what the session said it
-did in its `work-log` block. **No Claude credential is anywhere in this path.**
+did in its `work-log` block. For a repo-sourced project's session, the row
+also carries which of the three layers its playbook came from, and, for the
+file, the trunk, the sha and the hash it was confirmed against at spawn -
+null on a table-sourced row and on a row an older runner wrote. **No Claude
+credential is anywhere in this path.**
 A leaderboard on an installation with no subscription token is the whole
 leaderboard rather than a reduced one.
 
@@ -3572,7 +3576,10 @@ Nothing is hidden by it — `issue.modelOverride` rides the same payload, and is
 what a printed line reads to say where the value came from. The payload also
 names whose project chose it — `projectKey`/`projectName` ride the same
 playbook record, null where a board-wide row spoke, the issue's own
-project's key where a project-specific row won.
+project's key where a project-specific row won. Once the session ends, the
+same `Source` (as `PlaybookSource` on `WorkLogEntryDto`) and file reference
+ride the work-log row too, so the line a dry run printed before the session
+ran and the row read back on the issue page afterwards say the same thing.
 
 An override changes what a dispatch costs and never whether one happens.
 Nothing in the refusals below consults one: an issue with no playbook for its
