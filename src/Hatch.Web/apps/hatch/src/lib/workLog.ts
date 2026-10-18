@@ -19,7 +19,8 @@
      about the entries: an epic whose stories cost money has a log worth drawing
      with no session of its own. */
 
-import type { WorkLog, WorkLogTotals } from '../types';
+import { shortSha } from './playbookFiles';
+import type { WorkLog, WorkLogEntry, WorkLogTotals } from '../types';
 
 /**
  * The headline figure, short enough to sit in a row: `1.4M`, `912k`, `840`.
@@ -144,6 +145,33 @@ export const ownPhrase = (log: WorkLog): string =>
   log.own.sessions === 0
     ? 'none of it on this issue itself'
     : `${compactTokens(log.own.totalTokens)} of it on this issue itself`;
+
+/** What a row says about where its playbook came from - the boundary this
+    story makes visible every time it is crossed. Null for a hop's row (no
+    playbook at all) or one an older runner wrote (none of the four fields
+    sent). */
+export function playbookSourcePhrase(
+  entry: Pick<WorkLogEntry, 'playbookSource' | 'playbookFileTrunk' | 'playbookFileSha'>,
+): string | null {
+  switch (entry.playbookSource) {
+    case 'file':
+      return entry.playbookFileTrunk && entry.playbookFileSha
+        ? `playbooks from .hatch/playbooks.yaml on ${entry.playbookFileTrunk} at ${shortSha(entry.playbookFileSha)}`
+        : null;
+    case 'project':
+      return "playbooks from this project's own table row";
+    case 'board':
+      return 'playbooks from the board-wide table';
+    default:
+      return null;
+  }
+}
+
+/** The command that shows the exact bytes a file-sourced row's playbook was
+    read from - the full sha, not the short one, since this is what actually
+    runs. Built here rather than in JSX for the same reason resumeCommand is:
+    what is on screen and what lands on the clipboard must not drift apart. */
+export const playbookFileShowCommand = (sha: string): string => `git show ${sha}:.hatch/playbooks.yaml`;
 
 /** How many of the sessions in the total ended badly, or null when none did.
     Null rather than "0 errors": a log with nothing wrong should say nothing.

@@ -9,6 +9,8 @@ import {
   hasDescendantSpend,
   moneyPhrase,
   ownPhrase,
+  playbookFileShowCommand,
+  playbookSourcePhrase,
   resumeCommand,
   showsWorkLog,
   totalsPhrase,
@@ -48,6 +50,10 @@ const entry = (over: Partial<WorkLogEntry> = {}): WorkLogEntry => ({
   requests: 42,
   peakContextTokens: 140_000,
   promptChars: 16_533,
+  playbookSource: null,
+  playbookFileTrunk: null,
+  playbookFileSha: null,
+  playbookFileHash: null,
   ...over,
 });
 
@@ -121,6 +127,50 @@ describe('durationPhrase', () => {
 describe('resumeCommand', () => {
   it('is the whole command, so what is read is what is copied', () => {
     expect(resumeCommand('abc-123')).toBe('claude --resume abc-123');
+  });
+});
+
+describe('playbookSourcePhrase', () => {
+  it('names the board-wide table', () => {
+    expect(playbookSourcePhrase(entry({ playbookSource: 'board' }))).toBe('playbooks from the board-wide table');
+  });
+
+  it("names the project's own table row", () => {
+    expect(playbookSourcePhrase(entry({ playbookSource: 'project' }))).toBe(
+      "playbooks from this project's own table row",
+    );
+  });
+
+  it('names the trunk and the short sha for a file-sourced row with both', () => {
+    expect(
+      playbookSourcePhrase(
+        entry({ playbookSource: 'file', playbookFileTrunk: 'main', playbookFileSha: 'abcdef0123456789' }),
+      ),
+    ).toBe('playbooks from .hatch/playbooks.yaml on main at abcdef0');
+  });
+
+  it('says nothing rather than a half sentence when a file-sourced row is missing the trunk', () => {
+    expect(
+      playbookSourcePhrase(
+        entry({ playbookSource: 'file', playbookFileTrunk: null, playbookFileSha: 'abcdef0123456789' }),
+      ),
+    ).toBeNull();
+  });
+
+  it('says nothing rather than a half sentence when a file-sourced row is missing the sha', () => {
+    expect(
+      playbookSourcePhrase(entry({ playbookSource: 'file', playbookFileTrunk: 'main', playbookFileSha: null })),
+    ).toBeNull();
+  });
+
+  it('says nothing for a row with no source at all - an older runner, or a hop', () => {
+    expect(playbookSourcePhrase(entry({ playbookSource: null }))).toBeNull();
+  });
+});
+
+describe('playbookFileShowCommand', () => {
+  it('is the full sha, not shortened, since this is what actually runs', () => {
+    expect(playbookFileShowCommand('abcdef0123456789')).toBe('git show abcdef0123456789:.hatch/playbooks.yaml');
   });
 });
 
