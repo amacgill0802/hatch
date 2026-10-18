@@ -153,7 +153,7 @@ public class ImportController(HatchContext db, PlanImportParser parser, RankServ
         var statuses = await db.Statuses.AsNoTracking().OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync(ct);
         if (statuses.Count == 0) return Conflict("this board has no columns to put an issue in");
 
-        var columns = Columns.From(statuses);
+        var columns = PlanColumns.From(statuses);
         var actor = await caller.ActorNameAsync(ct);
         var now = time.GetUtcNow();
 
@@ -169,6 +169,7 @@ public class ImportController(HatchContext db, PlanImportParser parser, RankServ
             async Task<EfHatchIssue> AddAsync(string type, string title, string description, PlanState state, string source, EfHatchIssue? parent)
             {
                 var statusId = columns.For(state);
+                var status = statuses.Single(s => s.Id == statusId);
 
                 // The bottom of each column is asked for once and then walked
                 // down by hand. Issues added in this loop are not in the store
@@ -190,6 +191,9 @@ public class ImportController(HatchContext db, PlanImportParser parser, RankServ
                     CreatedBy = actor,
                     CreatedAt = now,
                     UpdatedAt = now,
+                    // Creation has no previous column, so a null `from` and
+                    // `current`: a terminal landing is stamped closed at `now`.
+                    ClosedAt = Columns.ClosedAt(null, status, now, null),
                 };
 
                 // One event, and it is `imported` rather than `created`: the
@@ -264,9 +268,9 @@ public class ImportController(HatchContext db, PlanImportParser parser, RankServ
     /// would file a plan into the wrong column the day somebody added a review
     /// step.
     /// </summary>
-    private sealed record Columns(int Todo, int InProgress, int Done)
+    private sealed record PlanColumns(int Todo, int InProgress, int Done)
     {
-        public static Columns From(IReadOnlyList<EfHatchStatus> all)
+        public static PlanColumns From(IReadOnlyList<EfHatchStatus> all)
         {
             // Deferred columns are not candidates for any of the three. A plan
             // being imported is work somebody has just decided to do, and none
@@ -293,7 +297,7 @@ public class ImportController(HatchContext db, PlanImportParser parser, RankServ
             // work goes rather than being rounded up to done.
             var inProgress = Named(ordered, "in progress") ?? todo;
 
-            return new Columns(todo.Id, inProgress.Id, done.Id);
+            return new PlanColumns(todo.Id, inProgress.Id, done.Id);
         }
 
         public int For(PlanState state) => state switch
