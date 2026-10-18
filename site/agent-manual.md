@@ -458,8 +458,11 @@ one names the ticket, the other narrows which one is picked. Any other
 Reads `GET /api/hatch/work/<key>` for a named ticket, or
 `GET /api/hatch/work/next?offsetMinutes=…[&ancestorKey=…]` otherwise, and
 never the claim walk. Prints a header of `# <KEY> <From> -> <To>`,
-`# model <m>, effort <e>`, `# playbook: <key>'s own` or
-`# playbook: board-wide`, `# tools: denied <…>` or `# tools: all`,
+`# model <m>, effort <e>`, `# playbook: <key>'s own`, `# playbook: <key>'s own
+file`, or `# playbook: board-wide` - and, for a repo-sourced project (any of
+the three), ` on <trunk> at <sha>` appended once the file was read, naming the
+trunk and a short sha of the copy the dispatch was judged against - `# tools:
+denied <…>` or `# tools: all`,
 then, for a check playbook only, `# check: pass -> <To>, fail -> <fail column>`
 (either name that is missing prints `?`), optionally `# <model and/or effort>
 from <KEY>, not the playbook`, and then the whole composed prompt. Nothing to do or blocked: exit 2.
