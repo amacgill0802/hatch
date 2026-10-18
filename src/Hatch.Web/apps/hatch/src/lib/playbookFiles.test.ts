@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   absentSentence,
   boundCanonicals,
+  fileForProject,
   projectsReading,
   repoSourcedReason,
   shortSha,
@@ -197,6 +198,47 @@ describe('projectsReading', () => {
     });
 
     expect(projectsReading(f, [p], [f])).toEqual([]);
+  });
+});
+
+describe('fileForProject', () => {
+  const f = file({ canonical: 'forge.example/owner/repo', trunk: 'main' });
+
+  it("returns the file matching a repo-sourced project's canonical and base branch", () => {
+    const p = project({
+      repoSourced: true,
+      repositories: [{ remote: 'r', canonical: f.canonical, baseBranch: 'main' }],
+    });
+
+    expect(fileForProject(p, [f])).toEqual(f);
+  });
+
+  it('falls back to the one file for the canonical when the project has no base branch', () => {
+    const p = project({
+      repoSourced: true,
+      repositories: [{ remote: 'r', canonical: f.canonical, baseBranch: null }],
+    });
+
+    expect(fileForProject(p, [f])).toEqual(f);
+  });
+
+  it('returns null for a project that is not repo-sourced', () => {
+    const p = project({
+      repoSourced: false,
+      repositories: [{ remote: 'r', canonical: f.canonical, baseBranch: 'main' }],
+    });
+
+    expect(fileForProject(p, [f])).toBeNull();
+  });
+
+  it.each(['absent', 'invalid'])('returns null when the project\'s file is %s', (state) => {
+    const p = project({
+      repoSourced: true,
+      repositories: [{ remote: 'r', canonical: f.canonical, baseBranch: 'main' }],
+    });
+    const bad = file({ canonical: f.canonical, trunk: 'main', state });
+
+    expect(fileForProject(p, [bad])).toBeNull();
   });
 });
 

@@ -68,6 +68,14 @@ export function projectsReading(
   });
 }
 
+/** The one file a repo-sourced project reads, if any - reusing
+    projectsReading's own rule rather than a second copy of it. Null when the
+    project is not repo-sourced, reads no file yet, or the file it would read
+    is absent or invalid (nothing parsed there to merge in). */
+export function fileForProject(project: Project, files: PlaybookFileDto[]): PlaybookFileDto | null {
+  return files.find((f) => f.state === 'parsed' && projectsReading(f, [project], files).length > 0) ?? null;
+}
+
 /** Why a repo-sourced project's `<option>` is disabled in the playbook create
     dialog, or null where it may be chosen. Mirrors protectedColumns.ts's
     bulkBlocked: same `string | null` shape, same `<option disabled title>`
