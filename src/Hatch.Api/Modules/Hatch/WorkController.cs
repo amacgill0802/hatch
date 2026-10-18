@@ -1085,6 +1085,7 @@ public class WorkController(
                 i.ReadyAt, i.ReadyAtHasTime, i.DueAt, i.DueAtHasTime,
                 i.AssigneePersonId, i.AssigneeApiKeyId, i.Priority, i.PreApproval,
                 i.StalledAt, i.StalledWhy, i.Held, i.PullRequestUrl,
+                i.ClosedAt,
                 Claim = new ClaimSnapshot(
                     i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
                     i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt),
@@ -1120,7 +1121,8 @@ public class WorkController(
                 PullRequestUrl: c.PullRequestUrl,
                 OnePr: onePr,
                 OnePrOwn: onePrOwn,
-                OnePrFrom: onePrFrom));
+                OnePrFrom: onePrFrom,
+                ClosedAt: c.ClosedAt));
         }
 
         var match = to is null

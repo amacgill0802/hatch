@@ -126,6 +126,7 @@ public class ReportsController(
                     i.StalledWhy,
                     i.Held,
                     i.PullRequestUrl,
+                    i.ClosedAt,
                     Claim = new ClaimSnapshot(
                         i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
                         i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt),
@@ -167,7 +168,8 @@ public class ReportsController(
                     PullRequestUrl: i.PullRequestUrl,
                     OnePr: onePr,
                     OnePrOwn: onePrOwn,
-                    OnePrFrom: onePrFrom);
+                    OnePrFrom: onePrFrom,
+                    ClosedAt: i.ClosedAt);
             }
         }
 

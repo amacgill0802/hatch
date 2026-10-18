@@ -266,6 +266,9 @@ export interface IssueCard {
   /** The story `onePr` was read from, or null when it is this issue's own, the
       project's, or does not exist. See IssueCardDto.OnePrFrom. */
   onePrFrom: string | null;
+  /** When this issue last entered a terminal column, or null. See
+      IssueCardDto.ClosedAt. */
+  closedAt?: string | null;
 }
 
 /** The lease a running dispatcher holds on an issue - see IssueClaimDto.
@@ -603,6 +606,9 @@ export interface Issue {
   /** When the forge's answer was read, or null. See
       IssueDto.PullRequestReadAt. */
   pullRequestReadAt?: string | null;
+  /** When this issue last entered a terminal column, or null. See
+      IssueCard.closedAt and IssueDto.ClosedAt. */
+  closedAt?: string | null;
   /** How many of an epic's stories may be in progress at once, or null for
       DEFAULT_EPIC_WIP_LIMIT - meaningful on an epic and on nothing else.
       Readable by anybody a dispatch reaches and writable only by a person,

@@ -239,7 +239,8 @@ public static class IssueProjection
                 issue.PullRequestMergeState,
                 issue.PullRequestReviewDecision,
                 issue.PullRequestHeadSha,
-                issue.PullRequestReadAt);
+                issue.PullRequestReadAt,
+                issue.ClosedAt);
         });
     }
 
