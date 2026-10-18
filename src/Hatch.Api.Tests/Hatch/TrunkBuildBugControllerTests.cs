@@ -290,7 +290,7 @@ public class TrunkBuildBugControllerTests
     }
 
     [Fact]
-    public void PostingIt_IsPersonOnly_WithNoHatchScope()
+    public void PostingIt_AcceptsTheHatchScope_AtPersonMinimum()
     {
         var guard = typeof(TrunkBuildBugController)
             .GetMethods()
@@ -300,7 +300,88 @@ public class TrunkBuildBugControllerTests
             .Single();
 
         Assert.Equal(PersonRole.User, guard.Minimum);
-        Assert.Null(guard.AcceptScope);
+        Assert.Equal(ApiKeyScopes.Hatch, guard.AcceptScope);
+    }
+
+    // ---- A key's call ----
+
+    [Fact]
+    public async Task AKey_WithAutoFilingOn_FilesAtTheProjectsConfiguredValues()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync(h.ProjectId, Canonical);
+        var doing = await h.AddStatusAsync("doing", sortOrder: 15);
+        await h.ConfigureAutoHealAsync(true, priority: PriorityLevels.Low, preApproval: PreApprovalLevels.PreApproved, statusId: doing.Id);
+        var row = await h.TrunkAsync(BuildVerdicts.Failed, failing: ["api"]);
+        h.Caller.Person = null;
+        h.Caller.Key = new EfApiKey { Name = "a key", Hash = [1], Prefix = "hatch_ak_x", CreatedAt = Now };
+
+        var dto = Value(await h.Bug.PostBug(row.Id, null, default));
+
+        Assert.Equal(PriorityLevels.LowName, dto.Priority);
+        Assert.Equal(PreApprovalLevels.PreApprovedName, dto.PreApproval);
+        Assert.Equal(doing.Id, dto.StatusId);
+    }
+
+    [Fact]
+    public async Task AKey_WithAutoFilingOff_IsRefusedNamingTheProjectsPage()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync(h.ProjectId, Canonical);
+        var row = await h.TrunkAsync(BuildVerdicts.Failed, failing: ["api"]);
+        h.Caller.Person = null;
+        h.Caller.Key = new EfApiKey { Name = "a key", Hash = [1], Prefix = "hatch_ak_x", CreatedAt = Now };
+
+        var reason = Assert.IsType<BadRequestObjectResult>((await h.Bug.PostBug(row.Id, null, default)).Result).Value!.ToString();
+
+        Assert.Contains("Projects page", reason);
+        Assert.Empty(await h.Db.Issues.Where(i => i.Type == "bug").ToListAsync());
+    }
+
+    [Fact]
+    public async Task AKey_WithNoProjectBindingTheRepository_IsRefusedNamingTheProjectsPage()
+    {
+        var h = await NewAsync();
+        var row = await h.TrunkAsync(BuildVerdicts.Failed, failing: ["api"]);
+        h.Caller.Person = null;
+        h.Caller.Key = new EfApiKey { Name = "a key", Hash = [1], Prefix = "hatch_ak_x", CreatedAt = Now };
+
+        var reason = Assert.IsType<BadRequestObjectResult>((await h.Bug.PostBug(row.Id, null, default)).Result).Value!.ToString();
+
+        Assert.Contains(Canonical, reason);
+        Assert.Contains("Projects page", reason);
+    }
+
+    [Fact]
+    public async Task ASecondKeyCall_AnswersTheSameBug_AndFilesNoSecondOne()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync(h.ProjectId, Canonical);
+        await h.ConfigureAutoHealAsync(true);
+        var row = await h.TrunkAsync(BuildVerdicts.Failed, failing: ["api"]);
+        h.Caller.Person = null;
+        h.Caller.Key = new EfApiKey { Name = "a key", Hash = [1], Prefix = "hatch_ak_x", CreatedAt = Now };
+
+        var first = Value(await h.Bug.PostBug(row.Id, null, default));
+        var second = Value(await h.Bug.PostBug(row.Id, null, default));
+
+        Assert.Equal(first.Key, second.Key);
+        Assert.Equal(1, await h.Db.Issues.CountAsync(i => i.Type == "bug"));
+    }
+
+    [Fact]
+    public async Task APerson_FilesRegardlessOfAutoHealEnabled()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync(h.ProjectId, Canonical);
+        var row = await h.TrunkAsync(BuildVerdicts.Failed, failing: ["api"]);
+
+        var dto = Value(await h.Bug.PostBug(row.Id, null, default));
+
+        Assert.True(dto.Expedited);
+        Assert.False(dto.Express);
+        var inbox = await h.Db.Statuses.OrderBy(s => s.SortOrder).ThenBy(s => s.Id).FirstAsync();
+        Assert.Equal(inbox.Id, dto.StatusId);
     }
 
     // ---- Harness ----
@@ -313,6 +394,7 @@ public class TrunkBuildBugControllerTests
         public required TrunkBuildBugController Bug { get; init; }
         public required StubActorDirectory Actors { get; init; }
         public required int ProjectId { get; init; }
+        public required MergeCheckControllerTests.StubCallerIdentity Caller { get; init; }
 
         private int nextRepoOrder = 1;
 
@@ -370,6 +452,17 @@ public class TrunkBuildBugControllerTests
             });
             await Db.SaveChangesAsync();
         }
+
+        public async Task ConfigureAutoHealAsync(
+            bool enabled, int priority = PriorityLevels.Emergency, int preApproval = PreApprovalLevels.Express, int? statusId = null)
+        {
+            var project = await Db.Projects.SingleAsync(p => p.Id == ProjectId);
+            project.AutoHealBugEnabled = enabled;
+            project.AutoHealBugPriority = priority;
+            project.AutoHealBugPreApproval = preApproval;
+            project.AutoHealBugStatusId = statusId;
+            await Db.SaveChangesAsync();
+        }
     }
 
     private static async Task<Harness> NewAsync()
@@ -400,6 +493,7 @@ public class TrunkBuildBugControllerTests
             },
             Actors = actors,
             ProjectId = hatch.Id,
+            Caller = caller,
         };
     }
 
