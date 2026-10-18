@@ -557,6 +557,7 @@ public class WorkController(
 
         issue.Rank = await ranks.BottomAsync(target.Id, ct);
         issue.StatusId = target.Id;
+        issue.ClosedAt = Columns.ClosedAt(from, target, now, issue.ClosedAt);
         issue.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
 
@@ -625,6 +626,7 @@ public class WorkController(
             });
             issue.Rank = await ranks.BottomAsync(target.Id, ct);
             issue.StatusId = target.Id;
+            issue.ClosedAt = Columns.ClosedAt(from, target, now, issue.ClosedAt);
         }
         else if (priorFails == 0)
         {
@@ -638,6 +640,7 @@ public class WorkController(
             });
             issue.Rank = await ranks.BottomAsync(target.Id, ct);
             issue.StatusId = target.Id;
+            issue.ClosedAt = Columns.ClosedAt(from, target, now, issue.ClosedAt);
         }
         else
         {
@@ -744,6 +747,7 @@ public class WorkController(
         });
         issue.Rank = await ranks.BottomAsync(to.Id, ct);
         issue.StatusId = to.Id;
+        issue.ClosedAt = Columns.ClosedAt(from, to, now, issue.ClosedAt);
         issue.UpdatedAt = now;
 
         // A story that shares one pull request takes its waiting tasks with it:
@@ -784,6 +788,7 @@ public class WorkController(
                     // reported with only some of them moved.
                     task.Rank = issue.Rank + RankService.Gap * ++below;
                     task.StatusId = to.Id;
+                    task.ClosedAt = Columns.ClosedAt(taskFrom, to, now, task.ClosedAt);
                     task.UpdatedAt = now;
                 }
             }
@@ -876,6 +881,7 @@ public class WorkController(
 
         issue.Rank = await ranks.BottomAsync(review.Id, ct);
         issue.StatusId = review.Id;
+        issue.ClosedAt = Columns.ClosedAt(from, review, now, issue.ClosedAt);
         issue.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
 
@@ -955,6 +961,7 @@ public class WorkController(
 
         issue.Rank = await ranks.BottomAsync(to.Id, ct);
         issue.StatusId = to.Id;
+        issue.ClosedAt = Columns.ClosedAt(from, to, now, issue.ClosedAt);
         issue.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
 
