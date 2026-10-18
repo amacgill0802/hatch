@@ -38,6 +38,41 @@ public class WorkLogRollupTests
     }
 
     [Fact]
+    public async Task UnpricedSessions_AreCounted_AddNoDollars_AndKeepTheirTokens()
+    {
+        var db = await NewAsync();
+        var (epic, story, task) = await ThreeLevelsAsync(db);
+
+        await SpendAsync(db, epic, tokens: 1_000, usd: 2.00m);
+        await SpendAsync(db, story, tokens: 20_000, usd: 3.00m);
+        await SpendAsync(db, story, tokens: 300_000, usd: null);
+        await SpendAsync(db, task, tokens: 4_000_000, usd: null);
+
+        var whole = await WorkLogRollup.TotalsAsync(db, epic, includeDescendants: true, default);
+
+        Assert.Equal(4, whole.Sessions);
+        Assert.Equal(2, whole.UnpricedSessions);
+        Assert.Equal(5.00m, whole.CostUsd);
+        Assert.Equal(4_321_000, whole.TotalTokens);
+    }
+
+    [Fact]
+    public async Task ASubtreeOfOnlyUnpricedSessions_CostsNothingAndIsAllUnpriced()
+    {
+        var db = await NewAsync();
+        var (epic, _, task) = await ThreeLevelsAsync(db);
+
+        await SpendAsync(db, task, tokens: 100, usd: null);
+        await SpendAsync(db, task, tokens: 200, usd: null);
+
+        var whole = await WorkLogRollup.TotalsAsync(db, epic, includeDescendants: true, default);
+
+        Assert.Equal(0m, whole.CostUsd);
+        Assert.Equal(2, whole.Sessions);
+        Assert.Equal(whole.Sessions, whole.UnpricedSessions);
+    }
+
+    [Fact]
     public async Task AnEpicWithNoSessionsOfItsOwn_ReportsItsStories()
     {
         var db = await NewAsync();
@@ -138,6 +173,7 @@ public class WorkLogRollupTests
         // An hour with nothing in it cost nothing, which is a measurement.
         Assert.Equal(0, history.Buckets[1].Totals.TotalTokens);
         Assert.Equal(0m, history.Buckets[1].Totals.CostUsd);
+        Assert.Equal(0, history.Buckets[1].Totals.UnpricedSessions);
         Assert.Equal(500, history.Buckets[2].Totals.TotalTokens);
         Assert.Equal(5m, history.Buckets[2].Totals.CostUsd);
     }
@@ -230,12 +266,14 @@ public class WorkLogRollupTests
         await SpendAsync(db, task, tokens: 1_000, usd: 0.10m, endedAt: At(0, 30));
         await SpendAsync(db, task, tokens: 20_000, usd: 2.00m, endedAt: At(2, 15));
         await SpendAsync(db, task, tokens: 300_000, usd: 30.00m, endedAt: At(5, 1), isError: true);
+        await SpendAsync(db, task, tokens: 4_000_000, usd: null, endedAt: At(2, 30));
 
         var history = await SeriesAsync(db, At(0, 0), At(6, 0), WorkLogBucketSize.Hour);
 
-        Assert.Equal(3, history.Totals.Sessions);
+        Assert.Equal(4, history.Totals.Sessions);
+        Assert.Equal(1, history.Totals.UnpricedSessions);
         Assert.Equal(1, history.Totals.Errors);
-        Assert.Equal(321_000, history.Totals.TotalTokens);
+        Assert.Equal(4_321_000, history.Totals.TotalTokens);
         Assert.Equal(32.10m, history.Totals.CostUsd);
 
         // True by construction rather than by a check somebody remembered.
@@ -243,6 +281,7 @@ public class WorkLogRollupTests
         Assert.Equal(history.Totals.Errors, history.Buckets.Sum(b => b.Totals.Errors));
         Assert.Equal(history.Totals.TotalTokens, history.Buckets.Sum(b => b.Totals.TotalTokens));
         Assert.Equal(history.Totals.CostUsd, history.Buckets.Sum(b => b.Totals.CostUsd));
+        Assert.Equal(history.Totals.UnpricedSessions, history.Buckets.Sum(b => b.Totals.UnpricedSessions));
     }
 
     [Fact]
@@ -387,14 +426,14 @@ public class WorkLogRollupTests
 
     /// <summary>One session against one issue, its tokens all in the input column.</summary>
     private static async Task SpendAsync(
-        HatchContext db, long issueId, long tokens, decimal usd, bool isError = false, DateTimeOffset? endedAt = null)
+        HatchContext db, long issueId, long tokens, decimal? usd, bool isError = false, DateTimeOffset? endedAt = null)
     {
         db.WorkLog.Add(Entry(db, issueId, tokens, usd, isError, endedAt ?? Now));
         await db.SaveChangesAsync();
     }
 
     private static EfHatchWorkLogEntry Entry(
-        HatchContext db, long issueId, long tokens, decimal usd, bool isError, DateTimeOffset endedAt) =>
+        HatchContext db, long issueId, long tokens, decimal? usd, bool isError, DateTimeOffset endedAt) =>
         new()
         {
             IssueId = issueId,
