@@ -4986,6 +4986,29 @@ still not carried across a night: a flag is one operator's opinion about one
 increment, while an override is a fact recorded on a ticket somebody read. The
 line naming the two values says which of them the issue chose.
 
+### Agents
+
+Between the loop and the CLI it spawns sits one seam, `IAgentAdapter`:
+everything that knows an agent's own vocabulary — the argument lists for an
+unattended and an attached spawn, the stream it reads back, the command that
+rejoins a session, the shape a hook answers with — is reached through the
+adapter rather than written into the loop. Today there is one, for `claude`; a
+second agent would be a second implementation, not a second loop. `HATCH_AGENT`
+chooses which, and `HATCH_CLAUDE_BIN` says where the claude adapter's
+executable is when it is not on `PATH` (another agent's binary is named by a
+setting of its own). `--agent <id>` on `hatch work` or `hatch go-to-work` beats
+the setting for that run, and an id nobody has an adapter for is refused before
+anything is spawned.
+
+It has the same shape as `--model` and `--effort` and the opposite lifetime, on
+purpose. Those are one operator's opinion about one increment, which is why a
+night never carries them. Which agent a runner can spawn is a fact about the
+machine it is on — where the binary is, whether it is logged in — and so is
+true of every ticket that runner touches tonight. `go-to-work` therefore
+resolves it once, before the loop starts, and carries it to the last
+increment. That is deliberate: do not "fix" it to be read per increment to
+match `--model`.
+
 ### What makes an issue actionable
 
 Twenty conditions, the eighteenth a way out of the seventeenth rather than one
