@@ -151,6 +151,17 @@ describe('BoardCard CardFace', () => {
     expect(html).not.toContain('hatch-card-marks');
   });
 
+  it('draws the parent chip from the card\'s own parentKey, with no parent card to look up', () => {
+    const child = card({ parentKey: 'AER-999' });
+    const html = renderToStaticMarkup(
+      <CardPreview card={child} waiting={false} terminal={false} project={null} />,
+    );
+
+    // Asserted apart: the arrow and the key may be separate text nodes.
+    expect(html).toContain('hatch-card-parent');
+    expect(html).toContain('AER-999');
+  });
+
   it('shows held and not stalled when both are set', () => {
     const both = card({ held: true, stalledAt: new Date().toISOString() });
     const html = renderToStaticMarkup(

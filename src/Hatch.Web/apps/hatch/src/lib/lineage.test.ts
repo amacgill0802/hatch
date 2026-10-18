@@ -87,6 +87,15 @@ describe('lineage', () => {
     expect(depths(result)).toEqual([0, 0]);
   });
 
+  it('keeps a card whose parent is absent from the whole array - folded off the board by the server - at depth 0', () => {
+    const orphan = card('C', TODO, 'GONE');
+
+    const result = lineage([orphan], [orphan]);
+
+    expect(keys(result)).toEqual(['C']);
+    expect(depths(result)).toEqual([0]);
+  });
+
   it('skips a missing generation rather than counting it', () => {
     const e = card('E', TODO, null);
     const s = card('S', DOING, 'E');
