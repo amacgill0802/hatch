@@ -64,10 +64,27 @@ public sealed class RunFacts
 /// update notice - and a log that ended on one would be a log lost for a line
 /// nobody needed.</para>
 /// </remarks>
-public sealed partial class StreamRender(string root, RunFacts facts)
+public sealed partial class StreamRender : IAgentStreamReader
 {
     private const int Width = 96;
     private const int ThinkingStep = 3_000;
+
+    private readonly string _root;
+    private readonly RunFacts _facts;
+    private readonly Func<string, string> _resumeCommand;
+
+    /// <param name="resumeCommand">
+    /// What <see cref="Resume"/> builds the join-back line from, given a
+    /// session id - defaulting to today's literal so every existing caller
+    /// keeps compiling unchanged. <see cref="ClaudeAdapter"/> is the first
+    /// caller to thread its own through.
+    /// </param>
+    internal StreamRender(string root, RunFacts facts, Func<string, string>? resumeCommand = null)
+    {
+        _root = root;
+        _facts = facts;
+        _resumeCommand = resumeCommand ?? (id => $"claude --resume {id}");
+    }
 
     private long _thinking;
     private long _said;
@@ -186,7 +203,7 @@ public sealed partial class StreamRender(string root, RunFacts facts)
         var id = Text(e, "session_id");
         if (id is null) yield break;
 
-        facts.SessionId = id;
+        _facts.SessionId = id;
         yield return $"hatch: session {id}";
         yield return Resume(id);
     }
@@ -220,7 +237,7 @@ public sealed partial class StreamRender(string root, RunFacts facts)
                     break;
 
                 case "text" when Flat(Text(part, "text") ?? "") is { Length: > 0 } text:
-                    facts.LastAssistantText = text;
+                    _facts.LastAssistantText = text;
                     yield return "";
                     foreach (var said in (Text(part, "text") ?? "").ReplaceLineEndings("\n").Split('\n'))
                         yield return said;
@@ -279,20 +296,20 @@ public sealed partial class StreamRender(string root, RunFacts facts)
 
     private IEnumerable<string> Result(JsonElement e)
     {
-        var id = Text(e, "session_id") ?? facts.SessionId ?? "";
+        var id = Text(e, "session_id") ?? _facts.SessionId ?? "";
         var cost = Decimal(e, "total_cost_usd");
         var duration = Long(e, "duration_ms");
         var turns = (int)Long(e, "num_turns");
         var failed = e.TryGetProperty("is_error", out var flag) && flag.ValueKind == JsonValueKind.True;
 
-        facts.SessionId = id;
-        if (cost is { } spent) facts.CostUsd = spent;
+        _facts.SessionId = id;
+        if (cost is { } spent) _facts.CostUsd = spent;
 
         var resultText = Text(e, "result") ?? "";
         var (title, summary) = WorkLog(resultText);
 
-        facts.ResultText = resultText;
-        facts.Result = new WorkLogEntryRequest(
+        _facts.ResultText = resultText;
+        _facts.Result = new WorkLogEntryRequest(
             SessionId: id,
             StartedAt: default,
             EndedAt: default,
@@ -406,7 +423,7 @@ public sealed partial class StreamRender(string root, RunFacts facts)
 
     // ---- Odds and ends ----
 
-    private static string Resume(string id) => $"hatch:   join it with  claude --resume {id}";
+    private string Resume(string id) => $"hatch:   join it with  {_resumeCommand(id)}";
 
     private static IEnumerable<JsonElement> Content(JsonElement e) =>
         e.TryGetProperty("message", out var message) &&
@@ -437,7 +454,7 @@ public sealed partial class StreamRender(string root, RunFacts facts)
     /// tree is most of a terminal line spent on the part that never changes.
     /// </summary>
     private string Here(string said) =>
-        root.Length > 0 ? said.Replace(root.TrimEnd('/') + "/", "") : said;
+        _root.Length > 0 ? said.Replace(_root.TrimEnd('/') + "/", "") : said;
 
     private static string Flat(string said) => Whitespace().Replace(said, " ").Trim();
 
