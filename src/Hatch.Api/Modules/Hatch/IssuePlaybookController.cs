@@ -62,13 +62,13 @@ public class IssuePlaybookController(
         var effort = request.Effort is null ? null : Blank(request.Effort.Trim());
 
         // Both refusals before either assignment, and each judged only on the
-        // field it was sent for. The sentences are PlaybooksController's own -
-        // an issue accepts exactly what a playbook accepts, because it is the
+        // field it was sent for. The sentences are PlaybookFile's own - an
+        // issue accepts exactly what a playbook accepts, because it is the
         // same rule called twice.
-        if (model is not null && PlaybooksController.InvalidModel(model) is { } modelError)
+        if (model is not null && PlaybookFile.InvalidModel(model) is { } modelError)
             return BadRequest(modelError);
 
-        if (effort is not null && PlaybooksController.InvalidEffort(effort) is { } effortError)
+        if (effort is not null && PlaybookFile.InvalidEffort(effort) is { } effortError)
             return BadRequest(effortError);
 
         var now = time.GetUtcNow();
