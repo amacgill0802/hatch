@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Text.Json;
 
 namespace Hatch.Cli.Tests;
@@ -94,6 +95,109 @@ public sealed class FakeSessions : ISessionRunner
         return Missing is null;
     }
 }
+
+/// <summary>
+/// A second agent, standing in for whatever one that is not Claude would be -
+/// its own id, its own resume wording, its own stream format, its own hook
+/// shape - so a call site that only works by accident of Claude's own
+/// vocabulary leaking through <see cref="IAgentAdapter"/> fails under this one
+/// instead of passing by coincidence.
+/// </summary>
+public sealed class FakeAdapter : IAgentAdapter
+{
+    public string Id => "fake-agent";
+
+    public string DisplayName => "Fake Agent";
+
+    public IHookOutputWriter HookOutput { get; } = new FakeHookOutputWriter();
+
+    public IUsageProbe? Probe => null;
+
+    public bool CanSpawn(out string refusal)
+    {
+        refusal = "";
+        return true;
+    }
+
+    public ProcessStartInfo BuildHeadless(SessionRequest request) => new() { FileName = "fake-agent" };
+
+    public ProcessStartInfo BuildAttached(SessionRequest request) => new() { FileName = "fake-agent" };
+
+    public IAgentStreamReader CreateReader(string root, RunFacts facts) => new FakeStreamReader(facts, ResumeCommand);
+
+    public string? ReadClosing(string json) => null;
+
+    public string ResumeCommand(string sessionId) => $"fake-agent --resume {sessionId}";
+
+    public IAgentHooks? WriteHooks(string temp, string key, string hatch, string? rtk) => SessionHooks.Write(temp, key, hatch, rtk);
+
+    public UsageLimit.Recognised? RecogniseLimit(string? said, DateTimeOffset endedAt, TimeZoneInfo? runnerZone = null) => null;
+}
+
+/// <summary>
+/// The fake's own stream format - a line read back by nothing Claude ever
+/// wrote: <c>FAKE-RESULT sessionId|title|summary|turns|costUsd|durationMs</c>,
+/// pipe-delimited, with none of <see cref="StreamRender"/>'s stream-json.
+/// </summary>
+internal sealed class FakeStreamReader(RunFacts facts, Func<string, string> resumeCommand) : IAgentStreamReader
+{
+    private const string Prefix = "FAKE-RESULT ";
+
+    public long TokensSoFar => 0;
+
+    public int Requests => 0;
+
+    public long PeakContextTokens => 0;
+
+    public IReadOnlyList<UsageWindow> Usage => [];
+
+    public DateTimeOffset? UsageReadAt => null;
+
+    public IEnumerable<string> Read(string raw)
+    {
+        if (!raw.StartsWith(Prefix, StringComparison.Ordinal)) yield break;
+
+        var fields = raw[Prefix.Length..].Split('|');
+        var sessionId = fields[0];
+        var title = fields[1];
+        var summary = fields[2];
+        var turns = int.Parse(fields[3], CultureInfo.InvariantCulture);
+        var costUsd = decimal.Parse(fields[4], CultureInfo.InvariantCulture);
+        var durationMs = long.Parse(fields[5], CultureInfo.InvariantCulture);
+
+        facts.SessionId = sessionId;
+        facts.CostUsd = costUsd;
+        facts.Result = new WorkLogEntryRequest(
+            SessionId: sessionId,
+            StartedAt: default,
+            EndedAt: default,
+            DurationMs: durationMs,
+            Title: title,
+            Summary: summary,
+            IsError: false,
+            Turns: turns,
+            CostUsd: costUsd,
+            Models: null);
+
+        yield return $"fake-agent: done in {turns} turns";
+        yield return $"hatch:   join it with  {resumeCommand(sessionId)}";
+    }
+}
+
+/// <summary>
+/// The fake's own hook-answer shape - a <c>Kind</c>/<c>Text</c> record, plainly
+/// serialised, obviously not <see cref="StopBlock"/>/<see cref="PostToolUseOutput"/>
+/// (neither "decision" nor "hookSpecificOutput" appear in it) and never
+/// mentioning Claude.
+/// </summary>
+internal sealed class FakeHookOutputWriter : IHookOutputWriter
+{
+    public string WriteStop(string text) => JsonSerializer.Serialize(new FakeHookLine("stop", text));
+
+    public string WritePostToolUse(string text) => JsonSerializer.Serialize(new FakeHookLine("post-tool-use", text));
+}
+
+internal sealed record FakeHookLine(string Kind, string Text);
 
 /// <summary>The tree between increments, without a remote to fetch from.</summary>
 /// <remarks>

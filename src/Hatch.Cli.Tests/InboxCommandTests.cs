@@ -363,6 +363,42 @@ public sealed class InboxCommandTests : IDisposable
         Assert.Contains("use the other table", root.GetProperty("reason").GetString(), StringComparison.Ordinal);
     }
 
+    // ---- HA-850: a second adapter's own hook shape ----
+
+    /// <summary>
+    /// <see cref="InboxCommand"/> prints whatever <see cref="IHookOutputWriter"/>
+    /// it was built with - a second adapter's own shape here, never
+    /// <see cref="StopBlock"/>/<see cref="PostToolUseOutput"/>, which is what
+    /// proves the hook door is not quietly Claude's own regardless of what it
+    /// was handed.
+    /// </summary>
+    [Theory]
+    [InlineData("post-tool-use")]
+    [InlineData("stop")]
+    public async Task A_second_adapters_hook_output_is_its_own_shape_not_claudes(string hook)
+    {
+        Waiting(Fixtures.Message(7, body: "use the other table"));
+
+        var command = new InboxCommand(
+            _h.Board, _h.Say, new StringReader("{\"tool_name\":\"Bash\"}"), new FrozenClock(Now), new FakeAdapter().HookOutput)
+        {
+            Limit = TimeSpan.FromSeconds(InboxCommand.CallSeconds),
+        };
+
+        var args = hook == "stop"
+            ? new[] { "AER-1", "--hook", "stop" }
+            : new[] { "AER-1", "--hook", "post-tool-use", "--stamp", Stamp };
+
+        Assert.Equal(0, await command.RunAsync(args, default));
+
+        var said = Assert.Single(_h.Say.Said);
+        var root = JsonDocument.Parse(said).RootElement;
+        Assert.Equal(["Kind", "Text"], root.EnumerateObject().Select(p => p.Name));
+        Assert.DoesNotContain("decision", said, StringComparison.Ordinal);
+        Assert.DoesNotContain("hookSpecificOutput", said, StringComparison.Ordinal);
+        Assert.Contains("use the other table", said, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task Several_messages_are_all_said_in_the_order_they_came_back()
     {
