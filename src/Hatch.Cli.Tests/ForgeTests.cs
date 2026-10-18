@@ -570,6 +570,57 @@ public sealed class ForgeTests
         Assert.Empty(runs.Calls);
     }
 
+    // ---- RerunAsync ----
+
+    [Fact]
+    public async Task It_asks_gh_run_rerun_by_job_id_with_the_repository_and_no_host()
+    {
+        var runs = new Runs { Answer = _ => new GhForge.Ran(0, "", "") };
+
+        var answer = await runs.Forge().RerunAsync(new FailingCheck("CI", null, 42), default);
+
+        Assert.Equal(RerunOutcomes.Reran, answer.Outcome);
+        Assert.Null(answer.Why);
+        var call = Assert.Single(runs.Calls);
+        Assert.Equal(["run", "rerun", "--job", "42"], call.Args);
+        Assert.Equal("forge.example/owner/repo", call.Env["GH_REPO"]);
+        Assert.DoesNotContain("--hostname", call.Args);
+    }
+
+    [Fact]
+    public async Task A_refused_rerun_answers_no_outcome_and_the_reason()
+    {
+        var runs = new Runs { Answer = _ => new GhForge.Ran(1, "", "HTTP 403: Resource not accessible by integration") };
+
+        var answer = await runs.Forge().RerunAsync(new FailingCheck("CI", null, 42), default);
+
+        Assert.Null(answer.Outcome);
+        Assert.Contains("HTTP 403: Resource not accessible by integration", answer.Why, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_check_with_no_job_id_cannot_be_rerun_and_says_so()
+    {
+        var runs = new Runs();
+
+        var answer = await runs.Forge().RerunAsync(new FailingCheck("ci/other", null), default);
+
+        Assert.Null(answer.Outcome);
+        Assert.Contains("no job to re-run", answer.Why, StringComparison.Ordinal);
+        Assert.Empty(runs.Calls);
+    }
+
+    [Fact]
+    public async Task A_missing_gh_is_said_in_one_line_for_a_rerun_too()
+    {
+        var runs = new Runs { Answer = _ => new GhForge.Ran(-1, "", "") };
+
+        var answer = await runs.Forge().RerunAsync(new FailingCheck("CI", null, 42), default);
+
+        Assert.Null(answer.Outcome);
+        Assert.Equal("gh is not installed", answer.Why);
+    }
+
     // ---- ReadPullRequestAsync's number ----
 
     [Fact]
