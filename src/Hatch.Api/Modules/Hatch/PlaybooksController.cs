@@ -54,7 +54,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
     {
         var types = EfHatchPlaybook.NormalizeTypes(request.Types);
         var shape = request.Shape?.Trim() ?? EfHatchPlaybook.DefaultShape;
-        if (InvalidShape(shape) is { } shapeError) return BadRequest(shapeError);
+        if (PlaybookFile.InvalidShape(shape) is { } shapeError) return BadRequest(shapeError);
 
         int? projectId = null;
         if (request.ProjectId is not null)
@@ -70,7 +70,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
             return BadRequest(error);
 
         var prompt = request.Prompt?.Trim() ?? "";
-        if (InvalidPrompt(prompt) is { } promptError) return BadRequest(promptError);
+        if (PlaybookFile.InvalidPrompt(prompt) is { } promptError) return BadRequest(promptError);
 
         var model = request.Model?.Trim() ?? EfHatchPlaybook.DefaultModel;
         var effort = request.Effort?.Trim() ?? EfHatchPlaybook.DefaultEffort;
@@ -79,7 +79,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
         int? budget = null;
         if (request.Budget is not null)
         {
-            var (value, budgetError) = ParseBudget(request.Budget);
+            var (value, budgetError) = PlaybookFile.ParseBudget(request.Budget);
             if (budgetError is not null) return BadRequest(budgetError);
             budget = value;
         }
@@ -87,13 +87,13 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
         int? briefLimit = null;
         if (request.BriefLimit is not null)
         {
-            var (value, briefLimitError) = ParseBriefLimit(request.BriefLimit);
+            var (value, briefLimitError) = PlaybookFile.ParseBriefLimit(request.BriefLimit);
             if (briefLimitError is not null) return BadRequest(briefLimitError);
             briefLimit = value;
         }
 
         var deniedTools = EfHatchPlaybook.NormalizeDeniedTools(request.DeniedTools);
-        if (InvalidDeniedTools(deniedTools) is { } deniedToolsError) return BadRequest(deniedToolsError);
+        if (PlaybookFile.InvalidDeniedTools(deniedTools) is { } deniedToolsError) return BadRequest(deniedToolsError);
 
         var now = time.GetUtcNow();
         var playbook = new EfHatchPlaybook
@@ -131,7 +131,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
         var to = request.ToStatusId ?? playbook.ToStatusId;
         var types = request.Types is null ? playbook.Types : EfHatchPlaybook.NormalizeTypes(request.Types);
         var shape = request.Shape?.Trim() ?? playbook.Shape;
-        if (InvalidShape(shape) is { } shapeError) return BadRequest(shapeError);
+        if (PlaybookFile.InvalidShape(shape) is { } shapeError) return BadRequest(shapeError);
 
         var projectId = playbook.ProjectId;
         if (request.ProjectId is not null)
@@ -148,7 +148,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
         if (request.Prompt is not null)
         {
             var prompt = request.Prompt.Trim();
-            if (InvalidPrompt(prompt) is { } promptError) return BadRequest(promptError);
+            if (PlaybookFile.InvalidPrompt(prompt) is { } promptError) return BadRequest(promptError);
             playbook.Prompt = prompt;
         }
 
@@ -159,7 +159,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
         var budget = playbook.Budget;
         if (request.Budget is not null)
         {
-            var (value, budgetError) = ParseBudget(request.Budget);
+            var (value, budgetError) = PlaybookFile.ParseBudget(request.Budget);
             if (budgetError is not null) return BadRequest(budgetError);
             budget = value;
         }
@@ -167,7 +167,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
         var briefLimit = playbook.BriefLimit;
         if (request.BriefLimit is not null)
         {
-            var (value, briefLimitError) = ParseBriefLimit(request.BriefLimit);
+            var (value, briefLimitError) = PlaybookFile.ParseBriefLimit(request.BriefLimit);
             if (briefLimitError is not null) return BadRequest(briefLimitError);
             briefLimit = value;
         }
@@ -176,7 +176,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
         if (request.DeniedTools is not null)
         {
             var normalized = EfHatchPlaybook.NormalizeDeniedTools(request.DeniedTools);
-            if (InvalidDeniedTools(normalized) is { } deniedToolsError) return BadRequest(deniedToolsError);
+            if (PlaybookFile.InvalidDeniedTools(normalized) is { } deniedToolsError) return BadRequest(deniedToolsError);
             deniedTools = EfHatchPlaybook.WriteDeniedTools(normalized);
         }
 
@@ -232,14 +232,8 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
 
         if (from == to)
         {
-            var review = Columns.AwaitingReview(await db.Statuses.AsNoTracking()
-                .OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync(ct));
-
-            if (review?.Id != from)
-                return "a playbook moves an issue between two columns - " +
-                       (review is null
-                           ? "this board has no review column, so none may name itself"
-                           : $"only the review column, \"{review.Name}\", may name itself, and that row is the review playbook");
+            var statuses = await db.Statuses.AsNoTracking().OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync(ct);
+            if (PlaybookFile.ReviewRefusal(from, to, statuses) is { } reviewError) return reviewError;
         }
 
         var clash = await db.Playbooks
@@ -251,109 +245,8 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
             : null;
     }
 
-    private static string? InvalidPrompt(string prompt) => prompt switch
-    {
-        "" => "a playbook needs a prompt - it is the whole instruction the agent gets",
-        { Length: > EfHatchPlaybook.MaxPromptLength } =>
-            $"a prompt is at most {EfHatchPlaybook.MaxPromptLength} characters",
-        _ => null,
-    };
-
     private static string? InvalidDispatch(string model, string effort) =>
-        InvalidModel(model) ?? InvalidEffort(effort);
-
-    /// <summary>
-    /// Why this is not a model, in the sentence the operator reads. Shared
-    /// with <see cref="IssuePlaybookController"/> rather than written twice:
-    /// an issue's override holds a playbook's value, and two copies of a
-    /// refusal are two things to keep in step. Per field, so a request naming
-    /// only an effort is not judged on a model it never sent.
-    /// </summary>
-    internal static string? InvalidModel(string model) =>
-        EfHatchPlaybook.IsValidModel(model)
-            ? null
-            : $"a model is one of {string.Join(", ", EfHatchPlaybook.ModelAliases)}, " +
-              $"or a pinned name like claude-opus-5 - not \"{model}\"";
-
-    /// <summary>The same, for the thinking budget.</summary>
-    internal static string? InvalidEffort(string effort) =>
-        EfHatchPlaybook.IsValidEffort(effort)
-            ? null
-            : $"an effort is one of {string.Join(", ", EfHatchPlaybook.Efforts)} - not \"{effort}\"";
-
-    /// <summary>The same, for the shape axis.</summary>
-    internal static string? InvalidShape(string shape) =>
-        EfHatchPlaybook.IsValidShape(shape)
-            ? null
-            : $"a shape is one of {string.Join(", ", EfHatchPlaybook.Shapes)} - not \"{shape}\"";
-
-    /// <summary>
-    /// The two size limits, then each rule's name - the part before an optional
-    /// <c>(pattern)</c> - checked against <see cref="ClaudeTools.BuiltIn"/>, <c>mcp__…</c>
-    /// and <c>*</c>, with any <c>(pattern)</c> suffix required to be single, balanced
-    /// and non-empty.
-    /// </summary>
-    private static string? InvalidDeniedTools(IReadOnlyList<string> tools)
-    {
-        if (tools.Count > EfHatchPlaybook.MaxDeniedTools)
-            return $"a playbook denies at most {EfHatchPlaybook.MaxDeniedTools} tools - not {tools.Count}";
-
-        foreach (var rule in tools)
-        {
-            if (rule.Length > EfHatchPlaybook.MaxToolRuleLength)
-                return $"a denied tool rule is at most {EfHatchPlaybook.MaxToolRuleLength} characters";
-
-            if (InvalidToolRule(rule))
-                return "a tool rule is a built-in name, \"mcp__…\", or \"*\", each optionally followed " +
-                       $"by one (pattern) - not \"{rule}\"";
-        }
-
-        return null;
-    }
-
-    /// <summary>The rule's name - the part before an optional (pattern) - names a tool, and any parens are balanced and non-empty.</summary>
-    private static bool InvalidToolRule(string rule)
-    {
-        var paren = rule.IndexOf('(');
-        if (paren < 0) return InvalidToolName(rule);
-
-        if (rule[^1] != ')' || rule.Count(c => c == '(') != 1 || rule.Count(c => c == ')') != 1) return true;
-        if (paren == rule.Length - 2) return true; // "Name()" - zero characters inside
-
-        return InvalidToolName(rule[..paren]);
-    }
-
-    private static bool InvalidToolName(string name) =>
-        name != "*" && !name.StartsWith("mcp__", StringComparison.Ordinal) && !ClaudeTools.BuiltIn.Contains(name);
-
-    /// <summary>
-    /// A non-null budget to either a cleared (blank) or set value, or the
-    /// sentence saying why neither. Called only once the caller already knows
-    /// <paramref name="budget"/> is not null - null means something different
-    /// on create and on patch, so that distinction is made by the caller.
-    /// </summary>
-    private static (int? Value, string? Error) ParseBudget(string budget)
-    {
-        var trimmed = budget.Trim();
-        if (trimmed.Length == 0) return (null, null);
-
-        if (int.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) && parsed >= 1)
-            return (parsed, null);
-
-        return (null, $"a budget is a whole number of one or more, in millions of tokens - not \"{trimmed}\"");
-    }
-
-    /// <summary>The same, for the brief's limit.</summary>
-    private static (int? Value, string? Error) ParseBriefLimit(string briefLimit)
-    {
-        var trimmed = briefLimit.Trim();
-        if (trimmed.Length == 0) return (null, null);
-
-        if (int.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) && parsed >= 1)
-            return (parsed, null);
-
-        return (null, $"a brief limit is a whole number of one or more, in characters - not \"{trimmed}\"");
-    }
+        PlaybookFile.InvalidModel(model) ?? PlaybookFile.InvalidEffort(effort);
 
     /// <summary>The same, for the project this row names - a whole number that still has to name a project, which the caller checks.</summary>
     private static (int? Value, string? Error) ParseProjectId(string projectId)
