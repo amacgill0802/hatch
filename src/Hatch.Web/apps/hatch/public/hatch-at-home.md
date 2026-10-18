@@ -93,6 +93,12 @@ On a phone, the board opens on what is waiting on you and a New issue button
 first, then the columns stacked one under another instead of side by side —
 a Full board toggle, remembered per browser, brings the usual columns back.
 
+A card that reaches Done does not sit there forever: by default it leaves the
+board two days after it closes, so the column's count stays a true read of
+what just shipped rather than a growing pile of everything that ever has. The
+card is not gone — it closed, and still can be found — only off this one
+screen.
+
 **Manage → Projects → New project** is therefore the first thing to do. A
 project is a key namespace rather than a container: give it a short key and
 every issue filed under it is numbered from that key onwards (`HOME` gives you

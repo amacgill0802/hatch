@@ -763,6 +763,10 @@ export interface Board {
       flagged but no limit has been typed. Optional so existing Board fixtures
       still type-check; the server always sends the key. */
   wip?: Wip | null;
+  /** The horizon itself, so the client can say so. Null exactly where the fold
+      is off, never wherever it is merely missing - a done card stays on the
+      board forever only when an operator set this to 0. */
+  doneHorizonHours?: number | null;
 }
 
 // ---- The importer ----

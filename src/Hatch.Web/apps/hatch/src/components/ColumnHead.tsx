@@ -1,5 +1,6 @@
 import { LockIcon } from '@hatch/ui';
 import { StatusDot } from './StatusPill';
+import { doneHorizonPhrase } from '../lib/doneHorizon';
 import type { Status } from '../types';
 
 /** Why a protected column's lock mark says what it says - the same sentence
@@ -16,7 +17,17 @@ const LOCK_REASON = 'Only an owner or approver may move work in here';
  * be tested with `renderToStaticMarkup` alone - `Column` and `PhoneColumn`
  * both sit inside dnd-kit's tree, and apps/hatch's vitest has no jsdom.
  */
-export function ColumnHead({ status, count, asking }: { status: Status; count: number; asking: number }) {
+export function ColumnHead({
+  status,
+  count,
+  asking,
+  doneHorizonHours,
+}: {
+  status: Status;
+  count: number;
+  asking: number;
+  doneHorizonHours: number | null;
+}) {
   const askingWords = `${asking} card${asking === 1 ? '' : 's'} waiting on an answer`;
 
   return (
@@ -24,6 +35,9 @@ export function ColumnHead({ status, count, asking }: { status: Status; count: n
       <StatusDot status={status} />
       <span className="hatch-column-name">{status.name}</span>
       <span className="hatch-column-count">{count}</span>
+      {status.isTerminal && doneHorizonHours !== null && (
+        <span className="hatch-column-horizon">last {doneHorizonPhrase(doneHorizonHours)}</span>
+      )}
       {status.isProtected && (
         <span className="hatch-column-lock" role="img" aria-label={LOCK_REASON} title={LOCK_REASON}>
           <LockIcon className="hatch-column-lock-glyph" />
