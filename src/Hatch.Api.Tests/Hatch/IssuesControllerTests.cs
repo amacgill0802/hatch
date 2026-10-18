@@ -1386,6 +1386,74 @@ public class IssuesControllerTests
         Assert.Equal(h.Done, Value(await h.Issues.GetIssue("AER-1", default)).StatusId);
     }
 
+    // ---- ClosedAt ----
+
+    private static async Task<DateTimeOffset?> ClosedAtAsync(Harness h, int number) =>
+        (await h.Db.Issues.AsNoTracking().FirstAsync(i => i.Number == number)).ClosedAt;
+
+    [Fact]
+    public async Task AMoveIntoATerminalColumn_StampsClosedAt()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the thing");
+        Assert.Null(await ClosedAtAsync(h, 1));
+
+        await h.Issues.MoveIssue("AER-1", new IssueMoveRequest(h.Done, null, null), default);
+
+        Assert.Equal(Now, await ClosedAtAsync(h, 1));
+    }
+
+    [Fact]
+    public async Task AMoveOutOfATerminalColumn_ClearsClosedAt()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the thing");
+        await h.Issues.MoveIssue("AER-1", new IssueMoveRequest(h.Done, null, null), default);
+
+        await h.Issues.MoveIssue("AER-1", new IssueMoveRequest(h.Todo, null, null), default);
+
+        Assert.Null(await ClosedAtAsync(h, 1));
+    }
+
+    [Fact]
+    public async Task AMoveBetweenTwoTerminalColumns_KeepsTheEarlierClosedAt()
+    {
+        var h = await NewAsync();
+        var shelved = new EfHatchStatus { Name = "shipped", SortOrder = 50, IsTerminal = true };
+        h.Db.Statuses.Add(shelved);
+        await h.Db.SaveChangesAsync();
+        await h.CreateAsync("story", "the thing");
+        await h.Issues.MoveIssue("AER-1", new IssueMoveRequest(h.Done, null, null), default);
+
+        h.Time.Advance(TimeSpan.FromHours(3));
+        await h.Issues.MoveIssue("AER-1", new IssueMoveRequest(shelved.Id, null, null), default);
+
+        Assert.Equal(Now, await ClosedAtAsync(h, 1));
+    }
+
+    [Fact]
+    public async Task APatchIntoATerminalColumn_StampsClosedAt()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the thing");
+
+        await h.Issues.PatchIssue("AER-1", Patch(statusId: h.Done), default);
+
+        Assert.Equal(Now, await ClosedAtAsync(h, 1));
+    }
+
+    [Fact]
+    public async Task ABulkMoveIntoATerminalColumn_StampsEveryIssue()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("task", "one");
+        await h.CreateAsync("task", "two");
+
+        await h.Issues.BulkEdit(Bulk(["AER-1", "AER-2"], statusId: h.Done), default);
+
+        Assert.Equal(Now, await ClosedAtAsync(h, 1));
+        Assert.Equal(Now, await ClosedAtAsync(h, 2));
+    }
     /// <summary>
     /// Tidying a column is board hygiene, not work. Logging it would bury the
     /// status changes that matter under a hundred lines of dragging.
