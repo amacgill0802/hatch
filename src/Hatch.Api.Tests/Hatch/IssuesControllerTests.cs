@@ -4059,7 +4059,7 @@ public class IssuesControllerTests
             Questions = new QuestionsController(db),
             Board = new BoardController(db, actors, TestClaims.With(), time),
             Projects = new ProjectsController(db, time, caller, actors, new ProjectAccess(db, actors), NullLogger<ProjectsController>.Instance),
-            Statuses = new StatusesController(db, caller),
+            Statuses = new StatusesController(db, caller, time),
             ProjectId = hatch.Id,
             OtherProjectId = ops.Id,
             Inbox = inbox.Id,

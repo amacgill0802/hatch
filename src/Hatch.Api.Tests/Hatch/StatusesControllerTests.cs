@@ -4,6 +4,7 @@ using Hatch.Api.Modules.Hatch;
 using Hatch.Api.Services.Auth;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Time.Testing;
 
 namespace Hatch.Api.Tests.Hatch;
 
@@ -132,6 +133,57 @@ public class StatusesControllerTests
         Assert.False(row.IsDeferred);
     }
 
+    // ---- PatchStatus's own terminal flip stamps and clears ClosedAt ----
+
+    [Fact]
+    public async Task PatchingIsTerminalFromFalseToTrue_StampsIssuesInThatColumnAndLeavesOthersAlone()
+    {
+        var h = await NewAsync();
+        var status = await h.SeedAsync();
+        var other = await h.SeedAsync(name: "doing");
+        var inColumn = await h.FileIssueAsync(status.Id);
+        var elsewhere = await h.FileIssueAsync(other.Id);
+
+        h.Time.Advance(TimeSpan.FromMinutes(5));
+        var now = h.Time.GetUtcNow();
+
+        var result = Value(await h.Statuses.PatchStatus(status.Id, new StatusPatchRequest(null, null, true), default));
+
+        Assert.True(result.IsTerminal);
+        Assert.Equal(now, await h.ClosedAtAsync(inColumn));
+        Assert.Null(await h.ClosedAtAsync(elsewhere));
+    }
+
+    [Fact]
+    public async Task PatchingIsTerminalFromTrueToFalse_ClearsClosedAtOnIssuesInThatColumn()
+    {
+        var h = await NewAsync();
+        var status = await h.SeedAsync();
+        var issueId = await h.FileIssueAsync(status.Id);
+        Value(await h.Statuses.PatchStatus(status.Id, new StatusPatchRequest(null, null, true), default));
+        Assert.NotNull(await h.ClosedAtAsync(issueId));
+
+        var result = Value(await h.Statuses.PatchStatus(status.Id, new StatusPatchRequest(null, null, false), default));
+
+        Assert.False(result.IsTerminal);
+        Assert.Null(await h.ClosedAtAsync(issueId));
+    }
+
+    [Fact]
+    public async Task PatchingIsTerminalToItsCurrentValue_TouchesNoIssue()
+    {
+        var h = await NewAsync();
+        var status = await h.SeedAsync(isTerminal: true);
+        var issueId = await h.FileIssueAsync(status.Id);
+        Value(await h.Statuses.PatchStatus(status.Id, new StatusPatchRequest(null, null, true), default));
+        var stampedAt = await h.ClosedAtAsync(issueId);
+
+        h.Time.Advance(TimeSpan.FromMinutes(5));
+        Value(await h.Statuses.PatchStatus(status.Id, new StatusPatchRequest(null, null, true), default));
+
+        Assert.Equal(stampedAt, await h.ClosedAtAsync(issueId));
+    }
+
     // ---- POST and PATCH have no such fields ----
 
     [Fact]
@@ -171,8 +223,11 @@ public class StatusesControllerTests
     {
         public required HatchContext Db { get; init; }
         public required StatusesController Statuses { get; init; }
+        public required FakeTimeProvider Time { get; init; }
 
         private int _nextSortOrder = 10;
+        private int _nextIssueNumber = 1;
+        private int? _projectId;
 
         public async Task<EfHatchStatus> SeedAsync(string name = "review", bool isTerminal = false, bool isDeferred = false)
         {
@@ -190,6 +245,38 @@ public class StatusesControllerTests
         }
 
         public async Task<EfHatchStatus> RowAsync(int id) => await Db.Statuses.AsNoTracking().FirstAsync(s => s.Id == id);
+
+        /// <summary>A minimal issue standing in a column, the shape <c>IssueClaimTests.FileAsync</c> uses.</summary>
+        public async Task<long> FileIssueAsync(int statusId)
+        {
+            if (_projectId is null)
+            {
+                var project = new EfHatchProject { Key = "AER", Name = "Hatch", CreatedAt = Now };
+                Db.Add(project);
+                await Db.SaveChangesAsync();
+                _projectId = project.Id;
+            }
+
+            var number = _nextIssueNumber++;
+            var issue = new EfHatchIssue
+            {
+                ProjectId = _projectId.Value,
+                Number = number,
+                Type = "task",
+                Title = "a thing to do",
+                StatusId = statusId,
+                Rank = 1024 * number,
+                CreatedBy = "operator",
+                CreatedAt = Now,
+                UpdatedAt = Now,
+            };
+            Db.Add(issue);
+            await Db.SaveChangesAsync();
+            return issue.Id;
+        }
+
+        public async Task<DateTimeOffset?> ClosedAtAsync(long issueId) =>
+            (await Db.Issues.AsNoTracking().FirstAsync(i => i.Id == issueId)).ClosedAt;
     }
 
     private static async Task<Harness> NewAsync(bool program = false)
@@ -211,10 +298,13 @@ public class StatusesControllerTests
             }
             : new StubCallerIdentity { Person = new EfPerson { Name = "Nathan", CreatedAt = Now, UpdatedAt = Now } };
 
+        var time = new FakeTimeProvider(Now);
+
         return new Harness
         {
             Db = db,
-            Statuses = new StatusesController(db, caller),
+            Statuses = new StatusesController(db, caller, time),
+            Time = time,
         };
     }
 

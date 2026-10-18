@@ -584,7 +584,7 @@ public class IssuePreApprovalControllerTests
             Issues = new IssuesController(db, new RankService(db), actors, TestClaims.With(), caller, time, new ProjectAccess(db, actors)),
             Board = new BoardController(db, actors, TestClaims.With(), time),
             Thread = new IssueThreadController(db, caller, time),
-            Statuses = new StatusesController(db, caller),
+            Statuses = new StatusesController(db, caller, time),
             Time = time,
             ProjectId = hatch.Id,
             InboxId = inbox.Id,
