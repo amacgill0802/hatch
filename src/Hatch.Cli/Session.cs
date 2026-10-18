@@ -79,6 +79,30 @@ public interface IUsageProbe
     Task<IReadOnlyList<string>?> ProbeAsync(string tempDirectory, CancellationToken ct);
 }
 
+/// <summary>
+/// Picks the <see cref="ISessionRunner"/> an agent id names - today, only
+/// <c>claude</c> itself. Threading <see cref="IAgentAdapter"/> through this
+/// seam is HA-851/852's job; this resolver is what makes <c>HATCH_AGENT</c>
+/// and <c>--agent</c> refuse an unknown id before anything is spawned.
+/// </summary>
+public static class Agents
+{
+    public static bool Resolve(
+        string id, string? claudeBin, Action<string>? warn, out ISessionRunner runner, out string refusal)
+    {
+        if (id == "claude")
+        {
+            runner = new ClaudeSessionRunner(claudeBin, warn);
+            refusal = "";
+            return true;
+        }
+
+        runner = null!;
+        refusal = $"hatch: no such agent \"{id}\" - known: {string.Join(", ", Settings.KnownAgentIds)}";
+        return false;
+    }
+}
+
 /// <summary>The claude CLI, actually spawned.</summary>
 public sealed class ClaudeSessionRunner(string? configured = null, Action<string>? warn = null)
     : ISessionRunner, IUsageProbe

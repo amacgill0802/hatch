@@ -33,6 +33,7 @@ public sealed class WorkCommand(Runtime runtime)
         "  --quiet            say nothing until the increment is finished",
         "  --model            beat the playbook, for this run only",
         "  --effort           ...and likewise",
+        "  --agent <id>       beats HATCH_AGENT, for this run only",
         "  --dry-run          print the prompt and exit: claims nothing, spawns nothing,",
         "                     and clones nothing even where a workspace is configured",
         "  --no-keys          read no keys from this terminal - Ctrl-C and --stop-file still work",
@@ -53,7 +54,7 @@ public sealed class WorkCommand(Runtime runtime)
     {
         if (Usage.Wanted(args)) return Usage.Print(runtime.Say, WorkUsage);
 
-        string? key = null, under = null, model = null, effort = null;
+        string? key = null, under = null, model = null, effort = null, agent = null;
         var dry = false;
         var attach = false;
         var quiet = false;
@@ -68,6 +69,9 @@ public sealed class WorkCommand(Runtime runtime)
                 case "--mine": mine = true; break;
                 case "--model" when i + 1 < args.Length: model = args[++i]; break;
                 case "--effort" when i + 1 < args.Length: effort = args[++i]; break;
+                case "--agent" when i + 1 < args.Length: agent = args[++i]; break;
+                case "--agent":
+                    return Usage.Refuse(runtime.Say, "work --agent takes an id", WorkUsage);
                 case "--under" when i + 1 < args.Length: under = args[++i]; break;
                 case "--dry-run": dry = true; break;
                 case "--quiet": quiet = true; break;
@@ -86,6 +90,19 @@ public sealed class WorkCommand(Runtime runtime)
                 default: key = args[i]; break;
             }
         }
+
+        var agentId = agent ?? runtime.Settings.Agent;
+        if (!Agents.Resolve(agentId, runtime.Settings.ClaudeBin, runtime.Say.Complain, out var agentSessions, out var agentRefusal))
+        {
+            runtime.Say.Complain(agentRefusal);
+            return 1;
+        }
+
+        // Only an explicit flag replaces Sessions - exactly how --repo only
+        // rebuilds the board when actually given. Harness hands every test a
+        // FakeSessions; rebuilding unconditionally would silently swap it for
+        // a real ClaudeSessionRunner on every run this command is tested with.
+        if (agent is not null) runtime = runtime with { Sessions = agentSessions };
 
         if (repoFlags.Count > 0 || workspaceFlag is not null)
         {
@@ -157,7 +174,7 @@ public sealed class WorkCommand(Runtime runtime)
         }
 
         return dry
-            ? await DryRunAsync(key, under, mine, model, effort, ct)
+            ? await DryRunAsync(key, under, mine, model, effort, agentId, ct)
             : await SpendAsync(key, under, mine, model, effort, attach, quiet, ct);
     }
 
@@ -167,7 +184,7 @@ public sealed class WorkCommand(Runtime runtime)
     /// that took a lease would be exactly the thing it is a dry run of.
     /// </summary>
     private async Task<int> DryRunAsync(
-        string? key, string? under, bool mine, string? model, string? effort, CancellationToken ct)
+        string? key, string? under, bool mine, string? model, string? effort, string agent, CancellationToken ct)
     {
         var clones = runtime.Settings.Workspace is not null;
 
@@ -221,6 +238,7 @@ public sealed class WorkCommand(Runtime runtime)
             : work.Kind == WorkKinds.Build ? $"# {work.Issue.Key} {work.FromStatus.Name}, {Builds.Words(work.Issue)}"
             : $"# {work.Issue.Key} {work.FromStatus.Name} -> {work.ToStatus?.Name}");
         runtime.Say.Line($"# model {model}, effort {effort}");
+        runtime.Say.Line($"# agent {agent}");
         if (Prompt.PlaybookLine(work) is { } playbookLine) runtime.Say.Line($"# {playbookLine}");
         runtime.Say.Line(
             work.Playbook?.DeniedTools is { Count: > 0 } denied

@@ -159,6 +159,52 @@ public sealed class SettingsTests : IDisposable
         Assert.Equal(Settings.Layer.User, userWins.SourceOf("HATCH_REPOS"));
     }
 
+    // ---- HATCH_AGENT ----
+
+    [Fact]
+    public void HATCH_AGENT_is_read_from_the_environment()
+    {
+        Assert.True(Settings.TryLoad(
+            null, Env(("HATCH_BASE", "https://mine"), ("HATCH_AGENT", "claude")), out var settings, out _,
+            Path.Combine(_temp, "does-not-exist")));
+
+        Assert.Equal("claude", settings.Agent);
+        Assert.Equal(Settings.Layer.Environment, settings.SourceOf("HATCH_AGENT"));
+    }
+
+    [Fact]
+    public void HATCH_AGENT_is_read_from_the_checkout_file()
+    {
+        var checkout = Write("checkout.env", "HATCH_BASE=https://mine", "HATCH_AGENT=claude");
+
+        Assert.True(Settings.TryLoad(checkout, Env(), out var settings, out _, Path.Combine(_temp, "does-not-exist")));
+
+        Assert.Equal("claude", settings.Agent);
+        Assert.Equal(Settings.Layer.Checkout, settings.SourceOf("HATCH_AGENT"));
+    }
+
+    [Fact]
+    public void HATCH_AGENT_is_read_from_the_per_user_file()
+    {
+        var user = Write("user.config", "HATCH_BASE=https://mine", "HATCH_AGENT=claude");
+
+        Assert.True(Settings.TryLoad(null, Env(), out var settings, out _, user));
+
+        Assert.Equal("claude", settings.Agent);
+        Assert.Equal(Settings.Layer.User, settings.SourceOf("HATCH_AGENT"));
+    }
+
+    [Fact]
+    public void HATCH_AGENT_defaults_to_claude_when_unset()
+    {
+        Assert.True(Settings.TryLoad(
+            null, Env(("HATCH_BASE", "https://mine")), out var settings, out _,
+            Path.Combine(_temp, "does-not-exist")));
+
+        Assert.Equal("claude", settings.Agent);
+        Assert.Equal(Settings.Layer.Unset, settings.SourceOf("HATCH_AGENT"));
+    }
+
     // ---- HATCH_WORKSPACE ----
 
     [Fact]

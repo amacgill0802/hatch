@@ -355,6 +355,20 @@ public sealed class WorkCommandTests
     }
 
     [Fact]
+    public async Task An_unknown_agent_refuses_before_it_reads_the_board()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
+
+        var runtime = h.Runtime with { Settings = h.Runtime.Settings with { Agent = "nope" } };
+
+        Assert.Equal(1, await new WorkCommand(runtime).RunAsync(["AER-1"], default));
+
+        Assert.Contains(h.Say.Complained, l => l.Contains("nope", StringComparison.Ordinal) && l.Contains("claude", StringComparison.Ordinal));
+        Assert.Empty(h.Wire.Calls);
+    }
+
+    [Fact]
     public async Task A_dry_run_prints_its_prompt_with_no_CLI_installed()
     {
         using var h = new Harness();
@@ -508,6 +522,7 @@ public sealed class WorkCommandTests
         Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["--dry-run"], default));
 
         Assert.Contains(h.Say.Said, l => l == "# tools: all");
+        Assert.Contains(h.Say.Said, l => l == "# agent claude");
     }
 
     [Fact]
