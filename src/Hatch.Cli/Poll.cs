@@ -461,7 +461,7 @@ public sealed class Poll
     /// the rest are left alone this interval.
     /// </remarks>
     private async Task ReadTrunksAsync(
-        Runtime runtime, Action<string> complain, IReadOnlyDictionary<string, RemoteHeads?> headsByPath,
+        Runtime runtime, Action<string> complain, Dictionary<string, RemoteHeads?> headsByPath,
         CancellationToken ct)
     {
         var checkouts = runtime.Checkouts.Where(c => c.Remote is not null).ToList();
@@ -490,6 +490,7 @@ public sealed class Poll
                 if (!headsByPath.TryGetValue(checkout.Path, out heads))
                 {
                     heads = runtime.Workspace(checkout.Path, runtime.Settings.BaseBranch).Heads();
+                    headsByPath[checkout.Path] = heads;
                     if (heads is null)
                     {
                         complain($"hatch: origin did not answer for {name}, so its trunk build was not checked");
@@ -625,7 +626,7 @@ public sealed class Poll
     /// the poll: every failure is one line and nothing more.
     /// </remarks>
     private async Task ReadPlaybookFilesAsync(
-        Runtime runtime, Action<string> complain, IReadOnlyDictionary<string, RemoteHeads?> headsByPath,
+        Runtime runtime, Action<string> complain, Dictionary<string, RemoteHeads?> headsByPath,
         CancellationToken ct)
     {
         var checkouts = runtime.Checkouts.Where(c => c.Remote is not null).ToList();
@@ -656,6 +657,7 @@ public sealed class Poll
                 if (!headsByPath.TryGetValue(checkout.Path, out heads))
                 {
                     heads = workspace.Heads();
+                    headsByPath[checkout.Path] = heads;
                     if (heads is null)
                     {
                         complain($"hatch: origin did not answer for {name}, so its playbook file was not checked");

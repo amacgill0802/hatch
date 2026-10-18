@@ -30,6 +30,9 @@ public sealed class Wire : HttpMessageHandler
     private sealed record Rule(string Route, HttpStatusCode Code, string Body)
     {
         public int Left { get; set; } = int.MaxValue;
+
+        /// <summary>Where the body is computed fresh from the request rather than fixed in advance. Overrides <see cref="Body"/> when set.</summary>
+        public Func<Call, string>? Compute { get; init; }
     }
 
     private readonly List<Rule> _rules = [];
@@ -77,6 +80,17 @@ public sealed class Wire : HttpMessageHandler
         return this;
     }
 
+    /// <summary>
+    /// Answer this route with a body computed fresh from each request - for a
+    /// stub whose answer depends on state a test changes between requests
+    /// rather than once at setup, the way a real server's own would.
+    /// </summary>
+    public Wire Serve(string method, string path, Func<Call, string> body)
+    {
+        lock (_gate) _rules.Add(new Rule($"{method} {path}", HttpStatusCode.OK, "") { Compute = body });
+        return this;
+    }
+
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
     {
         // A real server call would observe this - and HA-133's own tests tell
@@ -106,7 +120,7 @@ public sealed class Wire : HttpMessageHandler
             }
             : new HttpResponseMessage(matched.Code)
             {
-                Content = new StringContent(matched.Body, Encoding.UTF8, "application/json"),
+                Content = new StringContent(matched.Compute?.Invoke(call) ?? matched.Body, Encoding.UTF8, "application/json"),
             };
 
         return Task.FromResult(response);

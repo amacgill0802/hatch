@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json;
 
 namespace Hatch.Cli.Tests;
 
@@ -533,6 +534,21 @@ public sealed class Harness : IDisposable
         // it is vouched for on sight and costs nothing further. A test about
         // the trunk half itself overrides this with its own stub.
         Wire.Json("GET", "/api/hatch/trunk-builds", new[] { Fixtures.TrunkBuild() });
+
+        // The default checkout's playbook file is read fresh off
+        // Workspace.HeadsFor on every request rather than fixed at setup, so
+        // it is always already current at whatever sha the trunk holds - a
+        // test that moves the trunk sha mid-test still finds it current and
+        // reads nothing further, the free pass the trunk-builds stub above
+        // gives by a fixed sha instead. A test about the playbook file itself
+        // overrides this with its own stub.
+        Wire.Serve("GET", "/api/hatch/playbook-files", _ =>
+        {
+            var files = Workspace.HeadsFor.GetValueOrDefault(Root)?.TrunkSha is { } sha
+                ? new[] { Fixtures.PlaybookFile(sha: sha) }
+                : [];
+            return JsonSerializer.Serialize(new PlaybookFilesDto(".hatch/playbooks.yaml", files), Fixtures.Json);
+        });
 
         Runtime = new Runtime(
             Settings: settings,
