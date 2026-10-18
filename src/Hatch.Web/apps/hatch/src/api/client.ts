@@ -47,6 +47,7 @@ import type {
   ProjectLandingWriteRequest,
   ProjectMember,
   ProjectPatchRequest,
+  ProjectRepoSourcedWriteRequest,
   ProjectRepository,
   ProjectRepositoryWriteRequest,
   QueueEntry,
@@ -123,6 +124,8 @@ export const putProjectRepositories = (id: number, request: ProjectRepositoryWri
   fetchJson<ProjectRepository[]>(`/api/hatch/projects/${id}/repositories`, { method: 'PUT', ...asJson(request) });
 export const putProjectLanding = (id: number, request: ProjectLandingWriteRequest) =>
   fetchJson<Project>(`/api/hatch/projects/${id}/landing`, { method: 'PUT', ...asJson(request) });
+export const putProjectPlaybooksSource = (id: number, request: ProjectRepoSourcedWriteRequest) =>
+  fetchJson<Project>(`/api/hatch/projects/${id}/playbooks-source`, { method: 'PUT', ...asJson(request) });
 export const putProjectMember = (id: number, personId: string, role: string) =>
   fetchJson<ProjectMember[]>(`/api/hatch/projects/${id}/members/${seg(personId)}`, { method: 'PUT', ...asJson({ role }) });
 export const deleteProjectMember = (id: number, personId: string) =>

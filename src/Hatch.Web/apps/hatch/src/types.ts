@@ -51,6 +51,13 @@ export interface Project {
   /** The column a trunk-failure bug is born in, or null to track the column
       that feeds implementation. */
   autoHealBugStatusId: number | null;
+  /** Whether this project's playbooks are sourced from its repository rather
+      than written on the board. See ProjectDto.RepoSourced. */
+  repoSourced: boolean;
+  /** Who last set repoSourced, or null until the first write. */
+  repoSourcedBy: string | null;
+  /** When repoSourced was last set, or null until the first write. */
+  repoSourcedAt: string | null;
 }
 
 /** One git remote bound to a project, as the server reads it back. */
@@ -832,6 +839,10 @@ export interface ProjectLandingWriteRequest {
   autoHealBugPriority?: string | null;
   autoHealBugPreApproval?: string | null;
   autoHealBugStatusId?: string | null;
+}
+
+export interface ProjectRepoSourcedWriteRequest {
+  repoSourced: boolean;
 }
 
 export interface StatusCreateRequest {

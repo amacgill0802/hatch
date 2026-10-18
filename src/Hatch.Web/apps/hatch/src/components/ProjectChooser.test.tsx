@@ -26,6 +26,9 @@ function project(overrides: Partial<Project>): Project {
     autoHealBugPriority: 'emergency',
     autoHealBugPreApproval: 'express',
     autoHealBugStatusId: null,
+    repoSourced: false,
+    repoSourcedBy: null,
+    repoSourcedAt: null,
     ...overrides,
   };
 }

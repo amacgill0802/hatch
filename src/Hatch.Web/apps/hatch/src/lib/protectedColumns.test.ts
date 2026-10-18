@@ -70,6 +70,9 @@ const project = (over: Partial<Project> = {}): Project => ({
   autoHealBugPriority: 'emergency',
   autoHealBugPreApproval: 'express',
   autoHealBugStatusId: null,
+  repoSourced: false,
+  repoSourcedBy: null,
+  repoSourcedAt: null,
   ...over,
 });
 

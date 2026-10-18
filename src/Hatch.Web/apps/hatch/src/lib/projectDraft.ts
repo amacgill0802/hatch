@@ -7,7 +7,13 @@
 import { normalizeProjectKey, rekeyObjection } from './projectKey';
 import type { Priority } from '../components/PriorityControl';
 import type { PreApproval } from '../components/PreApprovalControl';
-import type { Project, ProjectLandingWriteRequest, ProjectPatchRequest, ProjectRepositoryWriteRequest } from '../types';
+import type {
+  Project,
+  ProjectLandingWriteRequest,
+  ProjectPatchRequest,
+  ProjectRepoSourcedWriteRequest,
+  ProjectRepositoryWriteRequest,
+} from '../types';
 
 export interface ProjectDraft {
   known: {
@@ -23,6 +29,7 @@ export interface ProjectDraft {
     autoHealBugPriority: Priority;
     autoHealBugPreApproval: PreApproval;
     autoHealBugStatusId: number | null;
+    repoSourced: boolean;
   };
   name: string;
   key: string;
@@ -36,6 +43,7 @@ export interface ProjectDraft {
   autoHealBugPriority: Priority;
   autoHealBugPreApproval: PreApproval;
   autoHealBugStatusId: number | null;
+  repoSourced: boolean;
 }
 
 export interface ProjectDraftDiff {
@@ -64,6 +72,7 @@ export function openProjectDraft(project: Project): ProjectDraft {
       autoHealBugPriority: project.autoHealBugPriority,
       autoHealBugPreApproval: project.autoHealBugPreApproval,
       autoHealBugStatusId: project.autoHealBugStatusId,
+      repoSourced: project.repoSourced,
     },
     name: project.name,
     key: project.key,
@@ -77,6 +86,7 @@ export function openProjectDraft(project: Project): ProjectDraft {
     autoHealBugPriority: project.autoHealBugPriority,
     autoHealBugPreApproval: project.autoHealBugPreApproval,
     autoHealBugStatusId: project.autoHealBugStatusId,
+    repoSourced: project.repoSourced,
   };
 }
 
@@ -117,4 +127,10 @@ export function projectLandingDiff(draft: ProjectDraft): ProjectLandingWriteRequ
   }
 
   return Object.keys(fields).length > 0 ? fields : null;
+}
+
+/** Its own route and its own request shape - whether the project reads its
+    playbooks from its repository, never folded into projectLandingDiff. */
+export function projectRepoSourcedDiff(draft: ProjectDraft): ProjectRepoSourcedWriteRequest | null {
+  return draft.repoSourced !== draft.known.repoSourced ? { repoSourced: draft.repoSourced } : null;
 }
