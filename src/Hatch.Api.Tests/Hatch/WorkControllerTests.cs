@@ -4869,6 +4869,36 @@ public class WorkControllerTests
     }
 
     [Fact]
+    public async Task AChildWhoseParentHasReachedReview_IsPulledNotFolded()
+    {
+        var h = await NewAsync();
+        var parent = await h.FileAsync("story", "the epic, up for review", h.Review);
+        var child = await h.FileAsync("task", "the child", h.Todo, parentId: parent.Id);
+        await h.TickParentPullsAsync(h.Todo);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(child));
+
+        Assert.Null(entry.Blocked);
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Parent, entry.HopKind);
+    }
+
+    [Fact]
+    public async Task AChildWhoseParentIsDone_IsPulledNotFolded()
+    {
+        var h = await NewAsync();
+        var parent = await h.FileAsync("story", "the epic, already shipped", h.Done);
+        var child = await h.FileAsync("task", "the child", h.Todo, parentId: parent.Id);
+        await h.TickParentPullsAsync(h.Todo);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(child));
+
+        Assert.Null(entry.Blocked);
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Parent, entry.HopKind);
+    }
+
+    [Fact]
     public async Task AChildWithASiblingInFlight_IsFoldedNamingThat()
     {
         var h = await NewAsync();
@@ -4983,7 +5013,7 @@ public class WorkControllerTests
     }
 
     [Fact]
-    public async Task Ticked_AParentInBuildingPullsItsChild_AndOneInQaDoesNot()
+    public async Task Ticked_AParentInBuildingPullsItsChild_AndSoDoesOneInQa_WhichStandsPastImplementation()
     {
         var h = await NewAsync();
         var nine = await h.NineColumnsAsync();
@@ -4991,7 +5021,7 @@ public class WorkControllerTests
         var building = await h.FileAsync("story", "building", h.InProgress);
         var pulled = await h.FileAsync("task", "pulled", nine.Backlog, parentId: building.Id);
         var inQa = await h.FileAsync("story", "in qa", nine.Qa);
-        var waiting = await h.FileAsync("task", "waiting", nine.Backlog, parentId: inQa.Id);
+        var alsoPulled = await h.FileAsync("task", "also pulled", nine.Backlog, parentId: inQa.Id);
 
         var queue = await h.Work.GetQueue(0, null, default);
 
@@ -5001,9 +5031,10 @@ public class WorkControllerTests
         Assert.Equal(HopKinds.Parent, yes.HopKind);
         Assert.Equal(h.Todo, Value(await h.Work.HopWork(Key(pulled), null, null, null, default)).StatusId);
 
-        var no = Row(queue, waiting);
-        Assert.Equal(NotReached, no.Blocked);
-        Assert.False(no.Hop);
+        var alsoYes = Row(queue, alsoPulled);
+        Assert.Null(alsoYes.Blocked);
+        Assert.True(alsoYes.Hop);
+        Assert.Equal(HopKinds.Parent, alsoYes.HopKind);
     }
 
     [Fact]

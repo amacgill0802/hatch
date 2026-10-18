@@ -3559,9 +3559,10 @@ order:
    reaches. "Inside the section" is measured off the flagged columns, never
    off a column's name, so an epic sitting in the review column still counts.
 4. **parent** — a child standing in a column marked [`ParentPulls`](#status),
-   whose parent stands in the implementation column and none of whose
-   siblings is standing further along, in board order, than the column this
-   issue would be pulled into (HA-149).
+   whose parent has reached the implementation column — stands in it, or in
+   any column to its right, a terminal column included; a deferred column
+   never counts — and none of whose siblings is standing further along, in
+   board order, than the column this issue would be pulled into (HA-149).
 5. **sendback** — a childless issue standing in a column, to the right
    (strictly, in board order) of `Columns.SendBack` — the column whose own
    `Target` is the implementation column (`Columns.Implementation`),
@@ -4933,15 +4934,15 @@ which one it failed is what `work/queue` reports:
     [running an epic](#running-an-epic).
 
     A child standing in a column marked [`ParentPulls`](#status) is a fourth
-    kind of hop, for a different reason again: its parent stands in the
-    implementation column, and none of its siblings is standing further
-    along, in board order, than the column this issue would be pulled into.
-    Where the column is so marked but one of those two is not yet true, the
-    refinement is its own two-sentence fold rather than a fall-through to the
-    seventeenth condition's "no playbook covers this": "its parent has not
-    reached the implementation column, so nothing pulls it forward yet", or "a
-    sibling is already in flight, so only one child is pulled through at a
-    time".
+    kind of hop, for a different reason again: its parent has reached the
+    implementation column (see [the hop](#the-hop)), and none of its siblings
+    is standing further along, in board order, than the column this issue
+    would be pulled into. Where the column is so marked but one of those two
+    is not yet true, the refinement is its own two-sentence fold rather than a
+    fall-through to the seventeenth condition's "no playbook covers this":
+    "its parent has not reached the implementation column, so nothing pulls
+    it forward yet", or "a sibling is already in flight, so only one child is
+    pulled through at a time".
 
     A childless issue whose brief is longer than its matched playbook's own
     `BriefLimit` is a fifth kind of hop, where `Columns.SendBack` — the
