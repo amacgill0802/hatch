@@ -970,13 +970,15 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             return "its children are the work, and some are still open";
 
         // An epic is verified by its own stories, not merely cleared off one
-        // column: it is held wherever it stands in the WIP section, not only
-        // the implementation column, and a deferred child does not count
-        // against it the way OpenChildren does for everything else above -
-        // the operator shelving a story is not a gap in the epic (HA-114,
-        // Taken here). Never on the move to itself: an epic in review is
-        // folded by a conflict or a failing build, not by this.
-        if (issue.Type == "epic" && !conflicts && from.IsWip && family.EpicFold(issue.Id, statuses) is { } epicBlock)
+        // column: it is held wherever it stands at or past the implementation
+        // column, not only while leaving it, and a deferred child does not
+        // count against it the way OpenChildren does for everything else
+        // above - the operator shelving a story is not a gap in the epic
+        // (HA-114, Taken here). Never on the move to itself: an epic in
+        // review is folded by a conflict or a failing build, not by this.
+        if (issue.Type == "epic" && !conflicts && wip is not null
+            && Columns.AtOrPastImplementation(statuses, from.Id)
+            && family.EpicFold(issue.Id, statuses) is { } epicBlock)
             return epicBlock;
 
         // A full section, or an epic at its own limit, needs other work to
@@ -1000,20 +1002,21 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         if (hop) return null;
 
         // Reached only when hop is false and an epic is otherwise entering the
-        // WIP section - one of HopKind's own epic branch conditions has failed:
-        // its own parent, or its children. Asked in that order - is anything
-        // above it running, then has it anything under it - so a top-level
-        // epic, or one whose parent epic is not running, never reads as merely
-        // childless, and never silently "no playbook covers this" (HA-113,
-        // HA-202).
-        if (issue.Type == "epic" && wip is not null && !wip.Inside(from.Id) && to is not null && wip.Inside(to.Id))
+        // implementation column - one of HopKind's own epic branch conditions
+        // has failed: its own parent, or its children. Asked in that order -
+        // is anything above it running, then has it anything under it - so a
+        // top-level epic, or one whose parent epic is not running, never
+        // reads as merely childless, and never silently "no playbook covers
+        // this" (HA-113, HA-202).
+        if (issue.Type == "epic" && wip is not null && !Columns.AtOrPastImplementation(statuses, from.Id)
+            && to is not null && Columns.AtOrPastImplementation(statuses, to.Id))
         {
             var epicParent = family.ParentOf(issue.Id);
 
             if (epicParent is null)
                 return "a top-level epic is moved in by a person - its own column is the signal for everything under it";
 
-            if (epicParent is not { Type: "epic" } || !wip.Inside(epicParent.StatusId))
+            if (epicParent is not { Type: "epic" } || !Columns.AtOrPastImplementation(statuses, epicParent.StatusId))
                 return "its parent epic is not running, so nothing pulls it in";
 
             return FamilyGate.NothingUnder;
@@ -1050,11 +1053,12 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// hop is.
     /// </summary>
     /// <remarks>
-    /// Asked in order: an express issue in a ticked column; an epic standing
-    /// outside the WIP section whose next column is inside it, with something
-    /// filed under it and its own direct parent a running epic; a story or bug
-    /// in a ticked column whose parent is a running epic; a child a ParentPulls
-    /// column pulls (HA-149); a childless issue whose brief is over its
+    /// Asked in order: an express issue in a ticked column; an epic still
+    /// short of the implementation column, carried on every move right while
+    /// it stays short of it, with something filed under it and its own direct
+    /// parent a running epic; a story or bug in a ticked column whose parent
+    /// is a running epic; a child a ParentPulls column pulls (HA-149); a
+    /// childless issue whose brief is over its
     /// playbook's BriefLimit, with <see cref="Columns.SendBack"/> naming a
     /// column strictly left of the one it stands in (HA-394); and last, a
     /// pre-approved issue standing in the review column whose branch
@@ -1081,9 +1085,9 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
 
         if (crosses && wip is not null)
         {
-            if (issue.Type == "epic" && !wip.Inside(from.Id) && wip.Inside(to!.Id)
+            if (issue.Type == "epic" && !Columns.AtOrPastImplementation(statuses, from.Id) && wip.Inside(to!.Id)
                 && family.Children(issue.Id).Count > 0
-                && parent is { Type: "epic" } parentEpic && wip.Inside(parentEpic.StatusId))
+                && parent is { Type: "epic" } parentEpic && Columns.AtOrPastImplementation(statuses, parentEpic.StatusId))
                 return HopKinds.Epic;
 
             if (issue.Type is "story" or "bug" && from.ExpressSkips

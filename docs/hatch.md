@@ -2567,7 +2567,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/work/next` | GET | See [the dispatcher](#the-dispatcher). `?heldToken=` names a [claim](#claim) of one's own, so it is not folded past as somebody else's. `?remote=` (repeatable), `?standing=` and `?clones=` declare what the runner has; absent is undeclared and folds nothing. `?mine=true` narrows the pass to the caller's own tickets — see [one more, on `next` alone](#one-more-on-next-alone); `400` when the calling key belongs to nobody. Carries `letGo`, the count of this issue's trailing dropped releases — `0` on a client too old to read it |
 | `/work/{key}` | GET | See [the dispatcher](#the-dispatcher). Same `?heldToken=`, `?remote=`, `?standing=` and `?clones=` as `/work/next`. `?mine=` is ignored — somebody who names a ticket has already chosen it. Carries `letGo` the same way. Also carries `failStatusName` — the implementation column's name, the column a failed [check](#check) sends the issue back to, set on every dispatch and null where the board has none — and `lastCheckFindings`, the newest check's findings, set only for an issue standing in that column whose most recent `status_changed` event carries `verdict: fail`, null otherwise |
 | `/work/queue` | GET | The same walk `next` takes, reported rather than acted on, and the same three repository flags — see [what a pass skipped](#what-a-pass-skipped). Same `?mine=true`, folding every ticket that is not the caller's own with a sentence naming whose it is. `?asRunner=<name>` answers off that runner's own row instead of the query string — `remote`, `standing`, `clones`, `mine` and `ancestorKey` come from it and may not be given alongside it; a name no live row answers to is a `400` naming it. `clearNote` names a row that is clear only because a stall mark's resume window passed, e.g. `"it stalled 18 minutes ago and resumes itself after 15 minutes"` — null on every ordinary clear row |
-| `/work/{key}/hop` | POST | Carries one of seven kinds one column right with no session — see [the hop](#the-hop): an issue [pre-approved](#pre-approval) at `express` or above standing in a column marked `ExpressSkips`; an epic entering the WIP section; a story or bug under a running epic; a child its parent pulls; a childless issue over its playbook's `BriefLimit`, sent back; a pre-approved issue in review whose branch merges cleanly or needs only bringing current; or a pre-approved parent in review with no pull request and every child done, carried past review into the first terminal column. Takes the same query parameters as `GET /work/{key}` and no `heldToken`: a hop takes no claim. `409` carrying the fold's sentence where the issue is blocked, and `409` where it is clear but not a hop |
+| `/work/{key}/hop` | POST | Carries one of seven kinds one column right with no session — see [the hop](#the-hop): an issue [pre-approved](#pre-approval) at `express` or above standing in a column marked `ExpressSkips`; an epic still short of the implementation column, on each move right while it stays short of it; a story or bug under a running epic; a child its parent pulls; a childless issue over its playbook's `BriefLimit`, sent back; a pre-approved issue in review whose branch merges cleanly or needs only bringing current; or a pre-approved parent in review with no pull request and every child done, carried past review into the first terminal column. Takes the same query parameters as `GET /work/{key}` and no `heldToken`: a hop takes no claim. `409` carrying the fold's sentence where the issue is blocked, and `409` where it is clear but not a hop |
 | `/work/{key}/merged` | POST | Advances an issue in the review column whose pull request has merged, one column right, with no claim and no session. `{ url, runner }` — `runner` rides the body unused, for shape parity with the requests that do read it. `409` for a column other than review, for no pull request recorded, for a `url` that does not match the one recorded (trimmed, ordinal), for no column after review, and for a claimed issue; `404` on an unknown key. See [the four paths past the terminal guard](#the-four-paths-past-the-terminal-guard) |
 | `/work/{key}/closed` | POST | Records that an issue's pull request was closed without merging (`PullRequestClosedAt`) — a runner's poll calls it once, on the first read, and does nothing further; `MergeWork.Judge` holds an approval on this until a person acts. `{ url, runner }`, the same shape parity as `/merged`. `409` for a column that does not merge the pull request, for no pull request recorded, and for a `url` that does not match the one recorded; `404` on an unknown key |
 | `/work/{key}/pushback` | POST | Carries an issue in the merge column back to the review column, with no claim and no session — judged by `MergeWork` itself, off the issue's own stored merge and build checks, not by the caller. `{ url, runner }` — `runner` rides the body unused, for shape parity. `409` for a column that does not merge the pull request, for no pull request recorded, for a `url` that does not match the one recorded (trimmed, ordinal), for a judged kind other than `pushback` (carrying the judge's own sentence), for no review column on the board or one that is the merge column itself, and for a claimed issue; `404` on an unknown key |
@@ -3544,10 +3544,11 @@ order:
 
 1. **express** — an issue that is [express](#pre-approval) and stands in a column
    marked [`ExpressSkips`](#status), with no unanswered question.
-2. **epic** — an epic standing in a column outside the [WIP](#wip) section
-   whose next column is inside it, with something filed under it — any direct
-   child, of any type, in any column — and whose own direct parent is itself
-   an epic standing inside the WIP section. A top-level epic — one with no
+2. **epic** — an epic standing in a column short of the implementation
+   column, carried on each move right until it reaches that column, with
+   something filed under it — any direct child, of any type, in any column —
+   and whose own direct parent is itself an epic that has reached the
+   implementation column. A top-level epic — one with no
    parent, or a parent that is not a running epic — is never carried this way:
    its own column is the whole signal, and only a person moves it in
    (HA-202). An epic that clears the parent test but has nothing filed under
@@ -4860,8 +4861,9 @@ which one it failed is what `work/queue` reports:
     so it is folded rather than carried into review. A deferred child counts as
     open, the same rule [Dependency](#dependency) already holds for a blocker.
     A childless issue is unaffected. An epic reads this differently: it is held
-    wherever it stands in the WIP section, not only the column where the code
-    gets written, and a deferred child does not count against it at all — see
+    wherever it stands at or past the implementation column, not only the
+    column where the code gets written, and a deferred child does not count
+    against it at all — see
     [Running an epic](#running-an-epic) for why. The sentence names how many of
     its counted children are still open, that its only child is not done, or
     that nothing is filed under it at all.
@@ -4923,9 +4925,10 @@ which one it failed is what `work/queue` reports:
     not an escape from being the first clear row the walk saw, so a clear hop
     in a higher tier still parks the tiers below it.
 
-    An epic standing in a column outside the WIP section whose next column is
-    inside it is a second kind of hop: something is filed under it, of any
-    type. Where nothing is, the refinement is its own fold rather than a
+    An epic standing in a column short of the implementation column, carried
+    on each move right until it reaches that column, is a second kind of hop:
+    something is filed under it, of any type. Where nothing is, the
+    refinement is its own fold rather than a
     fall-through to the seventeenth condition: "nothing is filed under it — an
     epic runs its stories, and it has none". A story or bug standing in a
     column marked `ExpressSkips`, whose parent is an epic standing inside the
