@@ -451,7 +451,7 @@ public sealed class Increment(
             // Before the board is asked anything, so a row exists even when the
             // reads after it fail. Money was spent on that ticket either way, and
             // a meter reading is not a claim to have done the work.
-            await PostWorkLogAsync(report, facts, started, ct);
+            await PostWorkLogAsync(report, facts, started, work, ct);
 
             // A run that ended in error, or one that ended before it could report
             // at all, may have ended because the account it ran under ran out of
@@ -1049,7 +1049,7 @@ public sealed class Increment(
     /// Nothing here may fail the increment. The work happened either way, and a
     /// loop must not stop because a meter did not.
     /// </remarks>
-    private async Task PostWorkLogAsync(IncrementReport report, RunFacts facts, DateTimeOffset started, CancellationToken ct)
+    private async Task PostWorkLogAsync(IncrementReport report, RunFacts facts, DateTimeOffset started, WorkDto work, CancellationToken ct)
     {
         var key = report.Key;
 
@@ -1067,7 +1067,16 @@ public sealed class Increment(
         // occupied the machine, and DurationMs says how long it was thinking,
         // which is the smaller number and the honest answer to "how long did
         // this take".
-        var row = entry with { StartedAt = started, EndedAt = DateTimeOffset.UtcNow };
+        var source = work.Playbook?.Source;
+        var row = entry with
+        {
+            StartedAt = started,
+            EndedAt = DateTimeOffset.UtcNow,
+            PlaybookSource = source,
+            PlaybookFileTrunk = source == "file" ? work.PlaybookFile?.Trunk : null,
+            PlaybookFileSha = source == "file" ? work.PlaybookFile?.Sha : null,
+            PlaybookFileHash = source == "file" ? work.PlaybookFile?.Hash : null,
+        };
 
         try
         {

@@ -56,6 +56,100 @@ public sealed class IncrementTests
     }
 
     /// <summary>
+    /// HA-841: a board-wide playbook carries no file facts into the work-log row.
+    /// </summary>
+    [Fact]
+    public async Task An_increment_bills_a_board_sourced_playbook_with_no_file_facts()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+        var (claim, _) = await HoldingAsync(h, "AER-1", token);
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        var billed = h.Wire.To("POST", "/api/hatch/issues/AER-1/work-log")[0].Read<WorkLogEntryRequest>();
+        Assert.Equal("board", billed.PlaybookSource);
+        Assert.Null(billed.PlaybookFileTrunk);
+        Assert.Null(billed.PlaybookFileSha);
+        Assert.Null(billed.PlaybookFileHash);
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>
+    /// HA-841: a file-sourced playbook carries its repository's trunk, sha and hash into the work-log row.
+    /// </summary>
+    [Fact]
+    public async Task An_increment_bills_a_file_sourced_playbook_with_its_file_facts()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+        var (claim, _) = await HoldingAsync(h, "AER-1", token);
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        var playbookFile = new PlaybookFileReferenceDto(".hatch/playbooks.yaml", "canonical", "main", "abcdef0123456789", "deadbeef");
+        var work = Fixtures.Work("AER-1", playbookFile: playbookFile) with
+        {
+            Playbook = Fixtures.Playbook(projectKey: "AER") with { Source = "file" },
+        };
+
+        await h.Runtime.Increment().RunAsync(
+            work, h.Root, "opus", "high", quiet: false, claim, default);
+
+        var billed = h.Wire.To("POST", "/api/hatch/issues/AER-1/work-log")[0].Read<WorkLogEntryRequest>();
+        Assert.Equal("file", billed.PlaybookSource);
+        Assert.Equal("main", billed.PlaybookFileTrunk);
+        Assert.Equal("abcdef0123456789", billed.PlaybookFileSha);
+        Assert.Equal("deadbeef", billed.PlaybookFileHash);
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>
+    /// HA-841: a board-wide row under a repo-sourced project still carries no file facts -
+    /// the guard is on the row's own source, not on whether a file reference happens to be present.
+    /// </summary>
+    [Fact]
+    public async Task An_increment_bills_a_board_sourced_row_with_no_file_facts_even_under_a_repo_sourced_project()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+        var (claim, _) = await HoldingAsync(h, "AER-1", token);
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        var playbookFile = new PlaybookFileReferenceDto(".hatch/playbooks.yaml", "canonical", "main", "abcdef0123456789", "deadbeef");
+        var work = Fixtures.Work("AER-1", playbookFile: playbookFile) with
+        {
+            Playbook = Fixtures.Playbook(),
+        };
+
+        await h.Runtime.Increment().RunAsync(
+            work, h.Root, "opus", "high", quiet: false, claim, default);
+
+        var billed = h.Wire.To("POST", "/api/hatch/issues/AER-1/work-log")[0].Read<WorkLogEntryRequest>();
+        Assert.Equal("board", billed.PlaybookSource);
+        Assert.Null(billed.PlaybookFileTrunk);
+        Assert.Null(billed.PlaybookFileSha);
+        Assert.Null(billed.PlaybookFileHash);
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>
     /// HA-245: <see cref="IncrementReport.EndedInReview"/> is the board's own
     /// read of whether the ticket is sitting in the review column right now,
     /// taken in the same call <see cref="IncrementReport.Ended"/> is - not the
