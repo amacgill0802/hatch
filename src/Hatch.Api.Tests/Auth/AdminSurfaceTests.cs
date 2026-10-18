@@ -320,6 +320,11 @@ public class AdminSurfaceTests
         // issue its own thread would refuse to.
         "ActivityController.GetActivity",
 
+        // The search across every issue, its comments and its work log -
+        // another cross-issue read, Hatch-scoped and open to a person like
+        // IssuesController.SearchIssues, whose cards it returns.
+        "SearchController.GetSearch",
+
         // What landed in the newest night, across every issue rather than
         // about one - Hatch-scoped and open to a person the same way
         // WorkLogController's and ActivityController's reads are. See

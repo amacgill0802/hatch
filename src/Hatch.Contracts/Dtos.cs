@@ -1022,6 +1022,30 @@ public record ActivityEventDto(
 /// </param>
 public record ActivityPageDto(IReadOnlyList<ActivityEventDto> Events, bool HasMore);
 
+/// <summary>
+/// One issue a search found: the card the board would show for it, and why it was found.
+/// </summary>
+/// <param name="ClosedAt">
+/// The same instant as <see cref="IssueCardDto.ClosedAt"/>, beside <paramref name="CreatedAt"/>
+/// so a result row reads its two dates from one place.
+/// </param>
+/// <param name="Matched">
+/// Which parts of the issue held the words searched for, in this order and no other:
+/// <c>title</c>, <c>description</c>, <c>comment</c>, <c>work-log</c>. Empty when the search
+/// named no words, because then nothing was matched against.
+/// </param>
+public record SearchHitDto(
+    IssueCardDto Card, DateTimeOffset CreatedAt, DateTimeOffset? ClosedAt, IReadOnlyList<string> Matched);
+
+/// <summary>
+/// A page of search results.
+/// </summary>
+/// <param name="Total">
+/// How many issues matched every filter, before the page was cut - so a client can say
+/// "12 of 340" and know whether to ask for more.
+/// </param>
+public record SearchDto(int Total, IReadOnlyList<SearchHitDto> Hits);
+
 // ---- What is waiting on a person ----
 
 /// <summary>
