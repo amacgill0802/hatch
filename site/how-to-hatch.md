@@ -167,6 +167,16 @@ section shows, for every repository, the commit the board read the file at
 and what it parsed there, or the one sentence saying what is wrong with it,
 before any project reads from the file itself.
 
+A project switches to the file with the setting on its edit dialog (an
+owner's to flip, like its landing policy); the file then stands in for that
+project's own rows, in file order, and a move it has no row for still falls
+through to the board-wide rows above. A project that binds no repository, or
+that still has rows on this page naming it, is refused with a sentence saying
+which - delete or hand over the rows, or bind a repository, first. A project
+reading a file that is missing or fails to parse has every one of its moves
+held, with a sentence naming the file and the trunk, until the file is fixed
+- not only the moves the file would otherwise have answered.
+
 ## What the agent picks up
 
 Every pass the runner asks the board for the next actionable issue. The server

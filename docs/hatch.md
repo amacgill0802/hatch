@@ -233,8 +233,13 @@ merge-column branch, with no checks run on it counts as green; see
 list](#landing-on-the-trunk)), and `OnePullRequest` (`bool`, default `false` -
 the project's default for whether a story's tasks share the story's branch and
 one pull request, which a story can override either way - see
-[One pull request](#one-pull-request)). A project may also carry an uploaded
-logo, in its own table — see [Logo](#logo).
+[One pull request](#one-pull-request)), and `RepoSourced` (`bool`, default
+`false` - whether the project's playbooks are read from
+`.hatch/playbooks.yaml` on its primary repository's trunk instead of from
+rows naming it on the Playbooks page - see [Playbooks](#playbooks)), with
+`RepoSourcedBy` and `RepoSourcedAt` beside it - who set it last and when, a
+name and an instant, null until the first write. A project may also carry an
+uploaded logo, in its own table — see [Logo](#logo).
 
 An owner alone sets how a project's work lands. `Landing`, `ChecksRequired` and
 `OnePullRequest` are written through `PUT /projects/{id}/landing`
@@ -248,6 +253,22 @@ false it shows a person who is not an owner the choice read out as a sentence
 (*"On the trunk|By pull request, checks required|not required, one pull
 request per story|task."*) in place of the controls
 (`ProjectEditDialog.tsx`).
+
+`RepoSourced` is a fourth field that sentence does not reach: it is written
+through its own route, `PUT /projects/{id}/playbooks-source`
+(`ProjectsController.PutPlaybooksSource`), guarded exactly the way
+`PutLanding` is - `[RequireRole(User)]`, `NotAPerson` checked again in the
+action, then an owner check answering `403` naming the project's key (*"only
+an owner of `<KEY>` may change whether its playbooks are sourced from its
+repository"*) to anyone else. Turning it on is refused for a project that
+binds no repository (*"`<KEY>` binds no repository - bind one on the
+Projects page first"*) and for one that table rows still name - naming the
+count: *"`<N>` playbook row(s) still name(s) this project - delete it/them or
+hand it/them to the board first"*. Turning it off writes nothing else; the
+playbook rows are untouched either way, on or off. `PlaybooksController`
+refuses to create a row naming a repo-sourced project, or to re-point one at
+it: *"project `<KEY>` reads its playbooks from .hatch/playbooks.yaml on its
+trunk, not from a row here"* (`PlaybooksController.cs:73-74`, `:158-159`).
 
 A project exists so an issue can be called `AER-12` rather than `#4471`, and so
 two efforts can number themselves independently. It is deliberately **not a
@@ -2017,7 +2038,7 @@ runner's poll reads once a poll to know whether it has already put this sha.
 
 The runner's poll ([below](#checking-the-branches-in-review)) reads the file
 off every checkout's trunk that has an origin, whether or not anything of its
-is in review and whether or not any project yet reads it, so a quiet board
+is in review and whether or not any project reads it, so a quiet board
 still has a current copy on the page.
 
 ### Comment, question and answer
@@ -4699,6 +4720,46 @@ or shape - a project row never loses to a board-wide row, and a row naming a
 different project is never a candidate at all. Only once that is settled, or
 neither row names a project, does specificity run.
 
+**A repo-sourced project's own layer is a file, not a table row.** Its rows in
+`.hatch/playbooks.yaml` on its primary repository's trunk stand in for its
+own-project table rows, in the order drawn above between a project's own
+layer and the board-wide one - a file row beats a board-wide row whatever
+either names, specificity and the older-row tie-break run exactly as above,
+and a file row's age for that tie-break is its position in the file, earlier
+entries winning ties. A move the file has no row for falls through to the
+board-wide row; its own table rows are never a candidate at all while the
+setting is on (`Dispatch.MatchAsync` excludes them from the query itself, not
+by filtering afterward). `Dispatch.ScanAsync` builds this list once per
+project per pass and `Dispatch.MatchAsync` for one dispatch; `PlaybookDto.Source`
+says which layer spoke - `board`, `project` or `file`.
+
+**Every move of a repo-sourced project folds** on a problem with the file
+before a playbook is even asked for, each sentence naming the file, the
+trunk and a sha: bound to no repository, *"`<KEY>` is repo-sourced but is
+bound to no repository - bind one on the Projects page"*; naming no base
+branch where more than one `.hatch/playbooks.yaml` trunk exists for its
+canonical, *"`<KEY>` names no base branch and more than one
+.hatch/playbooks.yaml trunk exists for `<canonical>` - set the base branch on
+the Projects page"*; no copy ever read, *"no runner has read
+.hatch/playbooks.yaml on `<trunk>` of `<remote>` yet"*; the copy `absent`,
+*".hatch/playbooks.yaml is missing on `<trunk>` at `<sha>`"*; the copy
+`invalid`, its own stored sentence followed by *" - fix it on the trunk"*. A
+good copy that simply names nothing of its own (`playbooks: []`) folds
+nothing by itself. Where the copy is good and no row speaks - not the file's,
+not a board-wide one - the fallback sentence names the file too: *"no
+playbook covers "`<from>`" to "`<to>`" for `<a/an issue type>` - add one to
+.hatch/playbooks.yaml on `<trunk>`, or a board-wide one on the Playbooks
+page"*, in place of the table-only project's "...add one on the Playbooks
+page". Every one of these folds every move of the project, not only the ones
+the file would have covered - a project that said its instructions live in
+the file and cannot be read is misconfigured for everything, not just for
+the transitions the file happens to mention.
+
+The board's copy of the file decides *which* issue is dispatched; the
+runner's own read of the trunk at spawn, below, decides *what the session is
+told*. Nothing a key writes to the copy ever reaches a session's prompt,
+model, effort or budget - see [What a runner does, in order](#what-a-runner-does-in-order).
+
 Specificity is one number, 0 through 3, and the ordering it produces is
 type+shape > type-only > shape-only > neither: naming the type is worth more
 than naming the shape, so a row that names only a shape (1) never outranks one
@@ -5288,9 +5349,28 @@ One pass, from the board to the release:
    us: the lease goes straight back, and the walk goes on.
 5. **Reset the workspace**, then spawn. In that order, and after the claim: a
    ticket held is a ticket nothing else will start, and a reset before the claim
-   would be a fetch spent on an increment that never happens. Three things are
-   done at the spawn: two so that a message to the agent is heard, and one
-   limiting what it can reach for:
+   would be a fetch spent on an increment that never happens.
+
+   For a repo-sourced project's issue, between the reset and the spawn the
+   runner reads the trunk itself. The dispatch carries the file reference it
+   was judged against - path, canonical, trunk, sha and hash - whichever
+   layer spoke, file or board-wide; the runner brings the primary
+   repository's `origin/<trunk>` current, reads the blob at
+   `origin/<trunk>:<path>` through git (never a checked-out file, whose line
+   endings the tree may have rewritten), and hashes it. Equal to the
+   reference's hash means the playbook the server handed back - folded with
+   the issue's own override, as today - is exactly what the trunk says, and
+   the spawn goes on to the three things below. Unequal, or no file where the
+   copy had one, refuses the increment instead: a sentence naming the file,
+   the trunk, the copy's own sha and the trunk's current one, the copy put
+   again with the bytes just read so the next pass dispatches on them, and
+   the ticket let go uncounted - this is not one of its stalls, because
+   nothing happened to the ticket. A fetch or a read that fails, or an origin
+   that does not answer, spawns anyway and says so rather than refusing a
+   session over a question it could not even ask.
+
+   Three things are done at the spawn: two so that a message to the agent is
+   heard, and one limiting what it can reach for:
    - **The hooks.** The runner writes a settings file into a directory of its
      own under the system's temporary directory — outside every checkout, so
      `git status` shows only what the session changed — and hands it to the
@@ -5719,7 +5799,7 @@ asked once, `pending` every interval, `none` until ten minutes after
 
 **The playbook file, read the same way.** For the same reason and on the same
 schedule — once per checkout that has an origin, whether or not anything of
-its is in review, and whether or not any project yet reads the file — the
+its is in review, and whether or not any project reads the file — the
 poll reads [`.hatch/playbooks.yaml`](#playbook-file) off the trunk, reusing
 the `ls-remote` heads already taken and fetching only where the sha moved. It
 reads the blob itself through git (`origin/<trunk>:<path>`, never a file the
