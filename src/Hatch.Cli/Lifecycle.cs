@@ -266,7 +266,7 @@ public sealed class Lifecycle(Runtime runtime)
             if (hardLimit is not null)
             {
                 var filed = await FileContinuationAsync(key, work, chosen, pushed, hardLimit, ct);
-                await runtime.Board.CommentAsync(key, HardLimitBody(hardLimit, chosen, pushed, lines, filed), ct);
+                await runtime.Board.CommentAsync(key, HardLimitBody(hardLimit, chosen, pushed, lines, filed, runtime.Adapter), ct);
                 return new LeaveOutcome(pullRequest, false, filed?.Key);
             }
 
@@ -302,7 +302,7 @@ public sealed class Lifecycle(Runtime runtime)
             : "This runner ran out of Claude usage, and the reset time it gave could not be read - "
               + $"treating it as an hour away, until {UsageLimit.Clock(limit.ResetAt, known: false, runtime.Clock)}.";
 
-        return body + PushedTidyAndResumeBody(chosen, pushed, tidyLines, limit.SessionId);
+        return body + PushedTidyAndResumeBody(chosen, pushed, tidyLines, limit.SessionId, runtime.Adapter);
     }
 
     /// <summary>
@@ -319,7 +319,7 @@ public sealed class Lifecycle(Runtime runtime)
         var origin = runtime.Board.Client.Origin;
         var body = $"This runner was preempted by [{preempted.EmergencyKey}]({origin}/apps/hatch/issues/{preempted.EmergencyKey}) - {preempted.EmergencyTitle}.";
 
-        return body + PushedTidyAndResumeBody(chosen, pushed, tidyLines, preempted.SessionId);
+        return body + PushedTidyAndResumeBody(chosen, pushed, tidyLines, preempted.SessionId, runtime.Adapter);
     }
 
     /// <summary>
@@ -379,7 +379,7 @@ public sealed class Lifecycle(Runtime runtime)
         }
 
         body += hardLimit.SessionId is { Length: > 0 } session
-            ? $"\n\nThe session it ran in is still there, with everything it did in context:\n\n    claude --resume {session}"
+            ? $"\n\nThe session it ran in is still there, with everything it did in context:\n\n    {runtime.Adapter.ResumeCommand(session)}"
             : "\n\nThere is no session to resume: the run ended before it said what its id was.";
 
         return body;
@@ -396,12 +396,12 @@ public sealed class Lifecycle(Runtime runtime)
     /// </summary>
     private static string HardLimitBody(
         HardLimitInfo hardLimit, Checkouts.Choice chosen, IReadOnlyList<(string Path, LimitPushed Result)> pushed,
-        IReadOnlyList<string> tidyLines, IssueDto? filed)
+        IReadOnlyList<string> tidyLines, IssueDto? filed, IAgentAdapter adapter)
     {
         var body = $"This runner hit its hard limit, at {Format.Compact(hardLimit.Tokens)} tokens"
             + (hardLimit.Requests is { } requests ? $", {requests} requests" : "") + ".";
 
-        body += PushedTidyAndResumeBody(chosen, pushed, tidyLines, hardLimit.SessionId);
+        body += PushedTidyAndResumeBody(chosen, pushed, tidyLines, hardLimit.SessionId, adapter);
 
         body += filed is not null
             ? $"\n\nFiled {filed.Key} to continue: {filed.Title}"
@@ -417,7 +417,7 @@ public sealed class Lifecycle(Runtime runtime)
     /// </summary>
     private static string PushedTidyAndResumeBody(
         Checkouts.Choice chosen, IReadOnlyList<(string Path, LimitPushed Result)> pushed, IReadOnlyList<string> tidyLines,
-        string? sessionId)
+        string? sessionId, IAgentAdapter adapter)
     {
         var body = "\n\n" + string.Join('\n', pushed.Select(p =>
         {
@@ -433,7 +433,7 @@ public sealed class Lifecycle(Runtime runtime)
         if (tidyLines.Count > 0) body += "\n\n" + string.Join('\n', tidyLines);
 
         body += sessionId is { Length: > 0 } session
-            ? $"\n\nJoin it with\n\n    claude --resume {session}"
+            ? $"\n\nJoin it with\n\n    {adapter.ResumeCommand(session)}"
             : "\n\nThere is no session to resume: the run ended before it said what its id was.";
 
         return body;
