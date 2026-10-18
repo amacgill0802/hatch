@@ -1,8 +1,7 @@
-import { Badge, Button, ProjectMark, Text } from '@hatch/ui';
+import { Badge, Button, Text } from '@hatch/ui';
 import { StatusPill } from './StatusPill';
 import { TypeBadge } from './TypeBadge';
-import { isReviewPlaybook, isUncheckedEdit, transitionLabel } from '../lib/playbooks';
-import { projectLogoUrl } from '../lib/projectLogo';
+import { isReviewPlaybook, isUncheckedEdit, playbookLabel, transitionLabel } from '../lib/playbooks';
 import { hasMultipleProjects } from '../lib/useProjects';
 import type { Playbook, Project, Status } from '../types';
 
@@ -20,18 +19,19 @@ export function PlaybookRow({
   playbook,
   projects,
   statuses,
+  shadowed,
   onEdit,
   onDelete,
 }: {
   playbook: Playbook;
   projects: Project[];
   statuses: Status[];
+  shadowed?: boolean;
   onEdit: () => void;
   onDelete: () => void;
 }) {
   const fromStatus = statuses.find((s) => s.id === playbook.fromStatusId);
   const toStatus = statuses.find((s) => s.id === playbook.toStatusId);
-  const project = projects.find((p) => p.id === playbook.projectId);
   const multipleProjects = hasMultipleProjects(projects);
 
   return (
@@ -56,22 +56,7 @@ export function PlaybookRow({
             </>
           )}
 
-          {multipleProjects &&
-            (playbook.projectId === null ? (
-              <Text tone="muted" as="span">All projects</Text>
-            ) : project ? (
-              <>
-                <ProjectMark
-                  size="sm"
-                  letters={project.key}
-                  color={project.color}
-                  icon={project.icon}
-                  logoUrl={projectLogoUrl(project)}
-                  title={project.name}
-                />
-                {project.key}
-              </>
-            ) : null)}
+          {multipleProjects && <Text tone="muted" as="span">{playbookLabel(playbook)}</Text>}
 
           {playbook.types.length > 0 ? (
             playbook.types.map((t) => <TypeBadge key={t} type={t} />)
@@ -84,6 +69,7 @@ export function PlaybookRow({
           </span>
 
           {isUncheckedEdit(playbook) && <Badge tone="danger">a check with no denied tools can edit</Badge>}
+          {shadowed && <Badge tone="muted">shadowed by the file</Badge>}
         </button>
       </td>
       <td>
