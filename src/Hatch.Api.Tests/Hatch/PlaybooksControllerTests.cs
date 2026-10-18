@@ -349,6 +349,63 @@ public class PlaybooksControllerTests
         Assert.Null((await h.ReadAsync(row.Id)).ProjectId);
     }
 
+    [Fact]
+    public async Task ACreateNamingARepoSourcedProject_IsRefused()
+    {
+        var h = await NewAsync();
+
+        var refusal = await h.Playbooks.CreatePlaybook(
+            new PlaybookCreateRequest(h.Todo, h.InProgress, [], "do it", "sonnet", "high", ProjectId: h.ProjectRepoSourced.ToString()), default);
+
+        Assert.Equal(
+            "project R reads its playbooks from .hatch/playbooks.yaml on its trunk, not from a row here",
+            Reason(refusal.Result));
+    }
+
+    [Fact]
+    public async Task APatchSettingProjectIdToARepoSourcedProject_IsRefused()
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync();
+
+        var refusal = await h.Playbooks.PatchPlaybook(
+            row.Id, new PlaybookPatchRequest(null, null, null, null, null, null, ProjectId: h.ProjectRepoSourced.ToString()), default);
+
+        Assert.Equal(
+            "project R reads its playbooks from .hatch/playbooks.yaml on its trunk, not from a row here",
+            Reason(refusal.Result));
+        Assert.Null((await h.ReadAsync(row.Id)).ProjectId);
+    }
+
+    [Fact]
+    public async Task APatchSettingProjectIdToARepoSourcedProject_FromADifferentProject_IsRefused()
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync(projectId: h.ProjectA.ToString());
+
+        var refusal = await h.Playbooks.PatchPlaybook(
+            row.Id, new PlaybookPatchRequest(null, null, null, null, null, null, ProjectId: h.ProjectRepoSourced.ToString()), default);
+
+        Assert.Equal(
+            "project R reads its playbooks from .hatch/playbooks.yaml on its trunk, not from a row here",
+            Reason(refusal.Result));
+        Assert.Equal(h.ProjectA, (await h.ReadAsync(row.Id)).ProjectId);
+    }
+
+    [Fact]
+    public async Task APatchClearingProjectIdOnARepoSourcedRow_Succeeds()
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync();
+        var tracked = await h.Db.Playbooks.SingleAsync(p => p.Id == row.Id);
+        tracked.ProjectId = h.ProjectRepoSourced;
+        await h.Db.SaveChangesAsync();
+
+        var cleared = await h.SetAsync(row.Id, projectId: "");
+
+        Assert.Null(cleared.ProjectId);
+    }
+
     // ---- DeniedTools ----
 
     [Fact]
@@ -521,10 +578,12 @@ public class PlaybooksControllerTests
 
     private sealed class Harness
     {
+        public required HatchContext Db { get; init; }
         public required PlaybooksController Playbooks { get; init; }
         public required int Todo { get; init; }
         public required int InProgress { get; init; }
         public required int ProjectA { get; init; }
+        public required int ProjectRepoSourced { get; init; }
 
         public async Task<PlaybookDto> CreateAsync(
             string? budget = null, string? briefLimit = null, string? projectId = null, IReadOnlyList<string>? deniedTools = null,
@@ -552,15 +611,18 @@ public class PlaybooksControllerTests
         var todo = new EfHatchStatus { Name = "todo", SortOrder = 20 };
         var doing = new EfHatchStatus { Name = "in progress", SortOrder = 30 };
         var projectA = new EfHatchProject { Key = "A", Name = "A", CreatedAt = Now };
-        db.AddRange(todo, doing, projectA);
+        var projectRepoSourced = new EfHatchProject { Key = "R", Name = "R", CreatedAt = Now, RepoSourced = true };
+        db.AddRange(todo, doing, projectA, projectRepoSourced);
         await db.SaveChangesAsync();
 
         return new Harness
         {
+            Db = db,
             Playbooks = new PlaybooksController(db, new FakeTimeProvider(Now)),
             Todo = todo.Id,
             InProgress = doing.Id,
             ProjectA = projectA.Id,
+            ProjectRepoSourced = projectRepoSourced.Id,
         };
     }
 

@@ -63,8 +63,16 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
             if (projectIdError is not null) return BadRequest(projectIdError);
             projectId = value;
         }
-        if (projectId is not null && !await db.Projects.AnyAsync(p => p.Id == projectId, ct))
-            return BadRequest($"there is no project {projectId}");
+        if (projectId is not null)
+        {
+            var project = await db.Projects
+                .Where(p => p.Id == projectId)
+                .Select(p => new { p.Key, p.RepoSourced })
+                .FirstOrDefaultAsync(ct);
+            if (project is null) return BadRequest($"there is no project {projectId}");
+            if (project.RepoSourced)
+                return BadRequest($"project {project.Key} reads its playbooks from .hatch/playbooks.yaml on its trunk, not from a row here");
+        }
 
         if (await Refusal(request.FromStatusId, request.ToStatusId, types, shape, projectId, id: null, ct) is { } error)
             return BadRequest(error);
@@ -140,8 +148,16 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
             if (projectIdError is not null) return BadRequest(projectIdError);
             projectId = value;
         }
-        if (projectId is not null && !await db.Projects.AnyAsync(p => p.Id == projectId, ct))
-            return BadRequest($"there is no project {projectId}");
+        if (projectId is not null)
+        {
+            var project = await db.Projects
+                .Where(p => p.Id == projectId)
+                .Select(p => new { p.Key, p.RepoSourced })
+                .FirstOrDefaultAsync(ct);
+            if (project is null) return BadRequest($"there is no project {projectId}");
+            if (project.RepoSourced)
+                return BadRequest($"project {project.Key} reads its playbooks from .hatch/playbooks.yaml on its trunk, not from a row here");
+        }
 
         if (await Refusal(from, to, types, shape, projectId, id, ct) is { } error) return BadRequest(error);
 
