@@ -45,7 +45,7 @@ describe('ProjectEditDialog', () => {
   it('summarizes auto-heal as off when the switch is off', () => {
     const html = render(project({ autoHealBugEnabled: false }));
 
-    expect(html).toContain('auto-heal off.');
+    expect(html).toContain('auto-heal off,');
   });
 
   it('summarizes auto-heal with its priority, pre-approval and column when the switch is on', () => {
@@ -58,6 +58,18 @@ describe('ProjectEditDialog', () => {
       }),
     );
 
-    expect(html).toContain('files a emergency bug at express pre-approval in the automatic column.');
+    expect(html).toContain('files a emergency bug at express pre-approval in the automatic column,');
+  });
+
+  it('summarizes playbooks as written on the board when repoSourced is off', () => {
+    const html = render(project({ repoSourced: false }));
+
+    expect(html).toContain('playbooks written on the board.');
+  });
+
+  it('summarizes playbooks as sourced from the repository when repoSourced is on', () => {
+    const html = render(project({ repoSourced: true }));
+
+    expect(html).toContain('playbooks sourced from the repository.');
   });
 });

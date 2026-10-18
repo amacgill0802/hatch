@@ -11,6 +11,7 @@ import {
   putProjectLanding,
   putProjectLogo,
   putProjectMember,
+  putProjectPlaybooksSource,
   putProjectRepositories,
 } from '../api/client';
 import { message } from '../lib/errors';
@@ -20,6 +21,7 @@ import {
   projectDraftDiff,
   projectDraftKeyObjection,
   projectLandingDiff,
+  projectRepoSourcedDiff,
   type ProjectDraft,
 } from '../lib/projectDraft';
 import {
@@ -126,11 +128,13 @@ export function ProjectEditDialog({
   async function save() {
     const diff = projectDraftDiff(draft!);
     const landingDiff = projectLandingDiff(draft!);
+    const repoSourcedDiff = projectRepoSourcedDiff(draft!);
     const membersDiff = projectMembersDiff(membersDraft!);
     if (
       diff.patch === null &&
       diff.repositories === null &&
       landingDiff === null &&
+      repoSourcedDiff === null &&
       logoPending === null &&
       membersDiff.puts.length === 0 &&
       membersDiff.deletes.length === 0
@@ -144,6 +148,7 @@ export function ProjectEditDialog({
       if (diff.patch !== null) await patchProject(project!.id, diff.patch);
       if (diff.repositories !== null) await putProjectRepositories(project!.id, diff.repositories);
       if (landingDiff !== null) await putProjectLanding(project!.id, landingDiff);
+      if (repoSourcedDiff !== null) await putProjectPlaybooksSource(project!.id, repoSourcedDiff);
       for (const put of membersDiff.puts) await putProjectMember(project!.id, put.personId, put.role);
       for (const personId of membersDiff.deletes) await deleteProjectMember(project!.id, personId);
       if (logoPending === 'removed') await deleteProjectLogo(project!.id);
@@ -376,13 +381,32 @@ export function ProjectEditDialog({
                 </select>
               </Field>
             </fieldset>
+            <label>
+              <input
+                type="checkbox"
+                checked={draft.repoSourced}
+                disabled={list.length === 0}
+                onChange={(e) => setDraft((d) => d && { ...d, repoSourced: e.target.checked })}
+              />
+              Read playbooks from <code>.hatch/playbooks.yaml</code> on the trunk
+            </label>
+            {list.length === 0 && (
+              <p className="hatch-section-hint text-muted">
+                {project.key} binds no repository - bind one on the Projects page first.
+              </p>
+            )}
+            {(project.repoSourcedBy || project.repoSourcedAt) && (
+              <p className="hatch-section-hint text-muted">
+                set by {project.repoSourcedBy} on {project.repoSourcedAt ? new Date(project.repoSourcedAt).toLocaleDateString() : ''}
+              </p>
+            )}
           </>
         ) : (
           <p>{`${draft.landing === 'trunk' ? 'On the trunk' : 'By pull request'}, checks ${draft.checksRequired ? 'required' : 'not required'}, ${draft.onePullRequest ? 'one pull request per story' : 'one pull request per task'}, auto-heal ${
             draft.autoHealBugEnabled
               ? `files a ${draft.autoHealBugPriority} bug at ${draft.autoHealBugPreApproval} pre-approval in ${statuses?.find((s) => s.id === draft.autoHealBugStatusId)?.name ?? 'the automatic column'}`
               : 'off'
-          }.`}</p>
+          }, playbooks ${draft.repoSourced ? 'sourced from the repository' : 'written on the board'}.`}</p>
         )}
 
         <h2 className="hatch-section-title">Members</h2>
