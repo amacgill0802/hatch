@@ -564,6 +564,8 @@ public class EfHatchStatus
 [Index(nameof(ProjectId), nameof(Number), IsUnique = true)]
 // The board's one query - every issue, ordered by column then rank.
 [Index(nameof(StatusId), nameof(Rank))]
+// The terminal columns' own query - what closed lately, column by column.
+[Index(nameof(StatusId), nameof(ClosedAt))]
 public class EfHatchIssue
 {
     public const int MaxTitleLength = 300;
@@ -644,6 +646,15 @@ public class EfHatchIssue
 
     public required int StatusId { get; set; }
     public EfHatchStatus? Status { get; set; }
+
+    /// <summary>
+    /// The instant this issue last entered a terminal column, null while it stands
+    /// in any other. A column kept by every write that changes <see cref="StatusId"/>
+    /// - see <see cref="Columns.ClosedAt"/> - not a read computed from the event
+    /// trail: the trail stays the record of history, and this is the board's and
+    /// the search's fast answer.
+    /// </summary>
+    public DateTimeOffset? ClosedAt { get; set; }
 
     /// <summary>
     /// The epic above this story, or the story above this task. Nullable and
