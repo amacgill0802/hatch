@@ -215,6 +215,57 @@ public class TrunkBuildControllerTests
         Assert.Equal(Now.AddMinutes(4), moved.ShaSince);
     }
 
+    // ---- The re-run count ----
+
+    [Fact]
+    public async Task ARerun_RaisesTheCount()
+    {
+        var h = await NewAsync();
+        await h.PutAsync(Failed("a"));
+
+        var once = Value(await h.PutAsync(Failed("a") with { Reran = true }));
+        Assert.Equal(1, once.RerunCount);
+
+        var twice = Value(await h.PutAsync(Failed("a") with { Reran = true }));
+        Assert.Equal(2, twice.RerunCount);
+    }
+
+    [Fact]
+    public async Task ARepeatVerdictWithNoRerun_HoldsTheCount()
+    {
+        var h = await NewAsync();
+        await h.PutAsync(Failed("a"));
+        await h.PutAsync(Failed("a") with { Reran = true });
+
+        var kept = Value(await h.PutAsync(Failed("a")));
+
+        Assert.Equal(1, kept.RerunCount);
+    }
+
+    [Fact]
+    public async Task TheShaMoving_ResetsTheCount()
+    {
+        var h = await NewAsync();
+        await h.PutAsync(Failed("a"));
+        await h.PutAsync(Failed("a") with { Reran = true });
+
+        var moved = Value(await h.PutAsync(Failed("a") with { Sha = NextSha }));
+
+        Assert.Equal(0, moved.RerunCount);
+    }
+
+    [Fact]
+    public async Task APassingVerdict_ResetsTheCount()
+    {
+        var h = await NewAsync();
+        await h.PutAsync(Failed("a"));
+        await h.PutAsync(Failed("a") with { Reran = true });
+
+        var passed = Value(await h.PutAsync(Passed()));
+
+        Assert.Equal(0, passed.RerunCount);
+    }
+
     // ---- No event, and no question ----
 
     [Fact]

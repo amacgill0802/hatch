@@ -1022,6 +1022,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
 
+                    b.Property<int>("RerunCount")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Runner")
                         .IsRequired()
                         .HasMaxLength(240)
