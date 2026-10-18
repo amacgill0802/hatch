@@ -94,4 +94,12 @@ public class HatchOptions
     /// else.
     /// </remarks>
     public int StallResumeLimit { get; set; } = 3;
+
+    /// <summary>
+    /// How long a card sits in a terminal column before the board stops handing
+    /// it over - see <see cref="DoneHorizon.Cutoff"/>. Zero turns the fold off
+    /// and is kept as the operator's own choice; only a negative falls back to
+    /// the default, exactly as <see cref="StallLapseMinutes"/> does.
+    /// </summary>
+    public int DoneHorizonHours { get; set; } = 48;
 }

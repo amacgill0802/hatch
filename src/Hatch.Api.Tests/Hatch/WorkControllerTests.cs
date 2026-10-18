@@ -3749,7 +3749,7 @@ public class WorkControllerTests
         await h.FileAsync("task", "todo, second", h.Todo, rank: 2048);
         await h.FileAsync("epic", "in progress, third", h.InProgress, rank: 4096);
 
-        var board = Value(await new BoardController(h.Db, h.Actors, TestClaims.With(), h.Time).GetBoard(default));
+        var board = Value(await new BoardController(h.Db, h.Actors, TestClaims.With(), h.Time, TestClaims.DoneHorizon()).GetBoard(default));
         var queue = Value(await h.Work.GetQueue(0, null, default));
 
         // Per column, not flat: the board is ordered by status id and the
@@ -4784,7 +4784,7 @@ public class WorkControllerTests
         await h.TickExpressSkipsAsync(h.Todo);
 
         var queueBefore = Value(await h.Work.GetQueue(0, null, default)).Select(e => e.Issue.Key).ToList();
-        var boardBefore = Value(await new BoardController(h.Db, h.Actors, TestClaims.With(), h.Time).GetBoard(default))
+        var boardBefore = Value(await new BoardController(h.Db, h.Actors, TestClaims.With(), h.Time, TestClaims.DoneHorizon()).GetBoard(default))
             .Issues.Select(c => c.Key).ToList();
 
         // Flip every row to Express at once, Todo's own ExpressSkips included -
@@ -4793,7 +4793,7 @@ public class WorkControllerTests
             await h.ExpressAsync(row);
 
         var queueAfter = Value(await h.Work.GetQueue(0, null, default)).Select(e => e.Issue.Key).ToList();
-        var boardAfter = Value(await new BoardController(h.Db, h.Actors, TestClaims.With(), h.Time).GetBoard(default))
+        var boardAfter = Value(await new BoardController(h.Db, h.Actors, TestClaims.With(), h.Time, TestClaims.DoneHorizon()).GetBoard(default))
             .Issues.Select(c => c.Key).ToList();
 
         Assert.Equal(queueBefore, queueAfter);
@@ -4838,7 +4838,7 @@ public class WorkControllerTests
             new[] { first, second }.Select(Key),
             Value(await h.Work.GetQueue(0, null, default)).Select(e => e.Issue.Key));
 
-        var board = Value(await new BoardController(h.Db, h.Actors, TestClaims.With(), h.Time).GetBoard(default));
+        var board = Value(await new BoardController(h.Db, h.Actors, TestClaims.With(), h.Time, TestClaims.DoneHorizon()).GetBoard(default));
         Assert.Equal(
             new[] { first, second }.Select(Key),
             board.Issues.Where(c => c.StatusId == h.Todo).Select(c => c.Key));
@@ -4852,7 +4852,7 @@ public class WorkControllerTests
         var marked = await h.FileAsync("story", "express", h.Todo);
         await h.ExpressAsync(marked);
 
-        var board = Value(await new BoardController(h.Db, h.Actors, TestClaims.With(), h.Time).GetBoard(default));
+        var board = Value(await new BoardController(h.Db, h.Actors, TestClaims.With(), h.Time, TestClaims.DoneHorizon()).GetBoard(default));
         var plainCard = board.Issues.Single(c => c.Key == Key(plain));
         var markedCard = board.Issues.Single(c => c.Key == Key(marked));
 
@@ -9197,7 +9197,7 @@ public class WorkControllerTests
             + "nothing more of it is pulled in until one leaves";
         Assert.Equal(sentence, Value(await h.Work.GetWork(Key(s3), null, default)).Blocked);
 
-        var board = Value(await new BoardController(h.Db, h.Actors, TestClaims.With(), h.Time).GetBoard(default));
+        var board = Value(await new BoardController(h.Db, h.Actors, TestClaims.With(), h.Time, TestClaims.DoneHorizon()).GetBoard(default));
         var storyBug = board.Wip!.Slices.Single(s => s.Types.SequenceEqual(new[] { "story", "bug" }));
         Assert.Equal(2, storyBug.Load);
         Assert.Equal(1, storyBug.ClaimedInbound);

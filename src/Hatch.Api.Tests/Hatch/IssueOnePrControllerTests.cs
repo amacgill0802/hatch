@@ -539,7 +539,7 @@ public class IssueOnePrControllerTests
             Caller = caller,
             OnePr = new IssueOnePrController(db, actors, TestClaims.With(), caller, time),
             Issues = new IssuesController(db, new RankService(db), actors, TestClaims.With(), caller, time, new ProjectAccess(db, actors)),
-            Board = new BoardController(db, actors, TestClaims.With(), time),
+            Board = new BoardController(db, actors, TestClaims.With(), time, TestClaims.DoneHorizon()),
             Thread = new IssueThreadController(db, caller, time),
             Time = time,
             ProjectId = project.Id,

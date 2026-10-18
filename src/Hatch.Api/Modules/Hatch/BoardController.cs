@@ -22,7 +22,7 @@ namespace Hatch.Api.Modules.Hatch;
 [Route("api/hatch/board")]
 [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
 public class BoardController(
-    HatchContext db, IActorDirectory actors, IssueClaims claims, TimeProvider time) : ControllerBase
+    HatchContext db, IActorDirectory actors, IssueClaims claims, TimeProvider time, DoneHorizon horizon) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<BoardDto>> GetBoard(CancellationToken ct)
@@ -37,6 +37,14 @@ public class BoardController(
                 s.Id, s.Name, s.SortOrder, s.IsTerminal, s.IsDeferred, s.IsWip, s.Color, s.ExpressSkips, s.ParentPulls,
                 IsImplementation: s.IsImplementation))
             .ToList();
+
+        // One instant for the whole board, so two cards claimed a second apart
+        // are not judged against two different clocks - and so the WIP load
+        // below is judged against the same clock as every card's own claim.
+        var now = time.GetUtcNow();
+
+        var terminalStatusIds = statuses.Where(s => s.IsTerminal).Select(s => s.Id).ToHashSet();
+        var cutoff = horizon.Cutoff(now);
 
         // Ordered by (StatusId, effective priority desc, Rank, Id) so the client can
         // slice the one list into columns without sorting, and so two cards
@@ -56,7 +64,12 @@ public class BoardController(
         // they never answer.
         var waiting = await Questions.WaitingCountsAsync(db, ct);
 
-        var issues = await db.Issues.AsNoTracking()
+        var issuesQuery = db.Issues.AsNoTracking().AsQueryable();
+        if (cutoff is { } notBefore)
+            issuesQuery = issuesQuery.Where(i =>
+                !terminalStatusIds.Contains(i.StatusId) || i.ClosedAt == null || i.ClosedAt >= notBefore);
+
+        var issues = await issuesQuery
             .OrderBy(i => i.StatusId)
             .ThenBy(i => i.Rank)
             .ThenBy(i => i.Id)
@@ -108,11 +121,6 @@ public class BoardController(
         foreach (var i in issues)
             assignees[i.Id] = await IssueProjection.ToAssigneeAsync(actors, i.AssigneePersonId, i.AssigneeApiKeyId, ct);
 
-        // One instant for the whole board, so two cards claimed a second apart
-        // are not judged against two different clocks - and so the WIP load
-        // below is judged against the same clock as every card's own claim.
-        var now = time.GetUtcNow();
-
         var wip = await Wip.LoadAsync(db, claims, statuses, now, ct);
 
         var cards = issues.Select(i =>
@@ -151,6 +159,6 @@ public class BoardController(
                 ClosedAt: i.ClosedAt);
         }).ToList();
 
-        return new BoardDto(statusDtos, cards, wip?.ToDto());
+        return new BoardDto(statusDtos, cards, wip?.ToDto(), horizon.Hours > 0 ? horizon.Hours : (int?)null);
     }
 }
