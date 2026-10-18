@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { openProjectDraft, projectDraftDiff, projectDraftKeyObjection, projectLandingDiff, type ProjectDraft } from './projectDraft';
+import {
+  openProjectDraft,
+  projectDraftDiff,
+  projectDraftKeyObjection,
+  projectLandingDiff,
+  projectRepoSourcedDiff,
+  type ProjectDraft,
+} from './projectDraft';
 
 describe('openProjectDraft', () => {
   it('seeds known and the working fields from a Project', () => {
@@ -290,6 +297,40 @@ describe('projectLandingDiff', () => {
       repoSourced: off.repoSourced,
     };
     expect(projectLandingDiff(draft)).toBeNull();
+  });
+});
+
+describe('projectRepoSourcedDiff', () => {
+  const known = {
+    name: 'Aerial',
+    key: 'AER',
+    color: '#6b7280',
+    icon: 'rocket',
+    repositories: [{ remote: 'a', baseBranch: 'main' }],
+    landing: 'pull-request' as const,
+    checksRequired: true,
+    onePullRequest: false,
+    autoHealBugEnabled: true,
+    autoHealBugPriority: 'emergency' as const,
+    autoHealBugPreApproval: 'express' as const,
+    autoHealBugStatusId: null,
+    repoSourced: false,
+  };
+
+  it('is null when nothing changed', () => {
+    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: known.icon, repositories: known.repositories, landing: known.landing, checksRequired: known.checksRequired, onePullRequest: known.onePullRequest, autoHealBugEnabled: known.autoHealBugEnabled, autoHealBugPriority: known.autoHealBugPriority, autoHealBugPreApproval: known.autoHealBugPreApproval, autoHealBugStatusId: known.autoHealBugStatusId, repoSourced: known.repoSourced };
+    expect(projectRepoSourcedDiff(draft)).toBeNull();
+  });
+
+  it('carries repoSourced when it changed from false to true', () => {
+    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: known.icon, repositories: known.repositories, landing: known.landing, checksRequired: known.checksRequired, onePullRequest: known.onePullRequest, autoHealBugEnabled: known.autoHealBugEnabled, autoHealBugPriority: known.autoHealBugPriority, autoHealBugPreApproval: known.autoHealBugPreApproval, autoHealBugStatusId: known.autoHealBugStatusId, repoSourced: true };
+    expect(projectRepoSourcedDiff(draft)).toEqual({ repoSourced: true });
+  });
+
+  it('carries repoSourced when it changed from true to false', () => {
+    const trueKnown = { ...known, repoSourced: true };
+    const draft: ProjectDraft = { known: trueKnown, name: trueKnown.name, key: trueKnown.key, color: trueKnown.color, icon: trueKnown.icon, repositories: trueKnown.repositories, landing: trueKnown.landing, checksRequired: trueKnown.checksRequired, onePullRequest: trueKnown.onePullRequest, autoHealBugEnabled: trueKnown.autoHealBugEnabled, autoHealBugPriority: trueKnown.autoHealBugPriority, autoHealBugPreApproval: trueKnown.autoHealBugPreApproval, autoHealBugStatusId: trueKnown.autoHealBugStatusId, repoSourced: false };
+    expect(projectRepoSourcedDiff(draft)).toEqual({ repoSourced: false });
   });
 });
 
