@@ -1550,6 +1550,15 @@ export interface WorkLogEntry {
   /** How long the prompt the session was handed was, in characters. Known
       regardless of `--quiet`. */
   promptChars: number | null;
+  /** Which of the three tables the playbook this session ran came from.
+      Null on a row an older runner wrote, or a hop's. */
+  playbookSource: string | null;
+  /** The trunk a file-sourced playbook was read from. */
+  playbookFileTrunk: string | null;
+  /** The sha a file-sourced playbook was read at. */
+  playbookFileSha: string | null;
+  /** The hash of a file-sourced playbook's contents. */
+  playbookFileHash: string | null;
 }
 
 /** What a set of sessions cost, added up. Mirrors WorkLogTotalsDto. */

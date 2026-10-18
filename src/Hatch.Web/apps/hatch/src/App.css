@@ -2614,6 +2614,17 @@ input.hatch-inline-title-input {
   margin: var(--sp-2) 0;
 }
 
+/* The resume command and the playbook show command, read as one pair rather
+   than a second row of metrics - a tighter gap than .hatch-worklog-facts, and
+   no margin of its own: .hatch-worklog-facts's bottom margin and the next
+   .hatch-worklog-entry's top margin/border already bound it. */
+.hatch-worklog-commands {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  align-items: baseline;
+}
+
 /* A left edge rather than a fill: an errored session is still a row of numbers
    to be read, and a tinted block would make the figures harder to read to say
    something the badge beside them already says. */
