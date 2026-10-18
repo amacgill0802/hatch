@@ -297,6 +297,67 @@ public class TrunkBuildControllerTests
         Assert.Equal(bug.Key, Assert.Single(rows).BugIssueKey);
     }
 
+    // ---- The project key ----
+
+    [Fact]
+    public async Task ABoundRepository_AnswersItsProjectKey()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync(h.ProjectId, "forge.example/owner/repo");
+
+        var kept = Value(await h.PutAsync(Passed()));
+
+        Assert.Equal("AER", kept.ProjectKey);
+    }
+
+    [Fact]
+    public async Task AnUnboundRepository_AnswersNullProjectKey()
+    {
+        var h = await NewAsync();
+
+        var kept = Value(await h.PutAsync(Passed()));
+
+        Assert.Null(kept.ProjectKey);
+    }
+
+    [Fact]
+    public async Task ARepositoryTwoProjectsBind_AnswersThePrimarysKey()
+    {
+        var h = await NewAsync();
+        var ops = await h.NewProjectAsync("OPS");
+        await h.BindRepositoryAsync(ops, "forge.example/owner/repo", sortOrder: 0);
+        await h.BindRepositoryAsync(h.ProjectId, "forge.example/owner/repo", sortOrder: 1);
+
+        var kept = Value(await h.PutAsync(Passed()));
+
+        Assert.Equal("OPS", kept.ProjectKey);
+    }
+
+    [Fact]
+    public async Task ARepositoryBoundNonPrimary_StillAnswersItsKey()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync(h.ProjectId, "forge.example/owner/repo", sortOrder: 2);
+
+        var kept = Value(await h.PutAsync(Passed()));
+
+        Assert.Equal("AER", kept.ProjectKey);
+    }
+
+    [Fact]
+    public async Task GetTrunkBuilds_CarriesEachRowsOwnProjectKey()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync(h.ProjectId, "forge.example/owner/repo");
+        await h.PutAsync(Passed());
+        await h.PutAsync(Passed() with { Remote = "git@forge.example:owner/another.git" });
+
+        var rows = Value(await h.Build.GetTrunkBuilds(default));
+
+        Assert.Equal("AER", rows.Single(r => r.Canonical == "forge.example/owner/repo").ProjectKey);
+        Assert.Null(rows.Single(r => r.Canonical == "forge.example/owner/another").ProjectKey);
+    }
+
     // ---- The gate ----
 
     [Fact]
@@ -333,7 +394,30 @@ public class TrunkBuildControllerTests
         public required FakeTimeProvider Time { get; init; }
         public required int ProjectId { get; init; }
 
+        private int nextRepoOrder = 1;
+
         public Task<ActionResult<TrunkBuildDto>> PutAsync(TrunkBuildRequest request) => Build.PutTrunkBuild(request, default);
+
+        public async Task<int> NewProjectAsync(string key)
+        {
+            var project = new EfHatchProject { Key = key, Name = key, CreatedAt = Now };
+            Db.Projects.Add(project);
+            await Db.SaveChangesAsync();
+            return project.Id;
+        }
+
+        public async Task BindRepositoryAsync(int projectId, string canonical, int? sortOrder = null)
+        {
+            Db.ProjectRepositories.Add(new EfHatchProjectRepository
+            {
+                ProjectId = projectId,
+                Remote = canonical,
+                Canonical = canonical,
+                SortOrder = sortOrder ?? nextRepoOrder++,
+                CreatedAt = Now,
+            });
+            await Db.SaveChangesAsync();
+        }
 
         /// <summary>Files a bug the way a person would, and answers with its key and its row id.</summary>
         public async Task<(string Key, long Id)> FileBugAsync()

@@ -57,7 +57,7 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
                 .Include(t => t.BugIssue).ThenInclude(i => i!.Project)
                 .OrderBy(t => t.Canonical).ThenBy(t => t.Trunk)
                 .ToListAsync(ct))
-            .Select(TrunkBuildProjection.Project)
+            .Select(t => TrunkBuildProjection.Project(t, projectKey: null))
             .ToList();
 
         // A board too short to have a review column has nothing in review, and

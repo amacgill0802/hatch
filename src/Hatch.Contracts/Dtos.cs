@@ -2686,6 +2686,11 @@ public record TrunkBuildRequest(
 /// <param name="CheckedAt">When the board took it.</param>
 /// <param name="CheckedBy">The name of the credential it arrived under.</param>
 /// <param name="BugIssueKey">The bug filed while this trunk was failing, or null when none is attached yet - see HA-95.</param>
+/// <param name="ProjectKey">
+/// The project that binds this repository - the one that names it primary,
+/// lowest project id first, else the lowest-id project that binds it at all.
+/// Null when nothing binds it.
+/// </param>
 public record TrunkBuildDto(
     long Id,
     string Remote,
@@ -2698,7 +2703,8 @@ public record TrunkBuildDto(
     DateTimeOffset CheckedAt,
     string Runner,
     string CheckedBy,
-    string? BugIssueKey);
+    string? BugIssueKey,
+    string? ProjectKey = null);
 
 /// <summary>
 /// The optional body of <c>POST .../trunk-builds/{id}/bug</c>. All three
