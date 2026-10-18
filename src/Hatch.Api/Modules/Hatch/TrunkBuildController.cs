@@ -31,7 +31,11 @@ public class TrunkBuildController(HatchContext db, ICallerIdentity caller, TimeP
             .OrderBy(t => t.Canonical).ThenBy(t => t.Trunk)
             .ToListAsync(ct);
 
-        return rows.Select(TrunkBuildProjection.Project).ToList();
+        var winners = await ProjectRepositoryBinding.WinnersAsync(
+            db, rows.Select(r => r.Canonical).Distinct().ToList(), ct);
+
+        return rows.Select(t => TrunkBuildProjection.Project(
+            t, winners.TryGetValue(t.Canonical, out var w) ? w.Key : null)).ToList();
     }
 
     /// <summary>
@@ -140,7 +144,8 @@ public class TrunkBuildController(HatchContext db, ICallerIdentity caller, TimeP
 
         await db.SaveChangesAsync(ct);
 
-        return TrunkBuildProjection.Project(row);
+        var winner = await ProjectRepositoryBinding.WinnerAsync(db, canonical, ct);
+        return TrunkBuildProjection.Project(row, winner?.Key);
     }
 
     /// <summary>The names, trimmed, deduplicated and sorted, each with its link only where it is a web address a page may draw.</summary>
@@ -173,8 +178,9 @@ public class TrunkBuildController(HatchContext db, ICallerIdentity caller, TimeP
 /// <summary>The stored trunk verdict, as a client reads it.</summary>
 public static class TrunkBuildProjection
 {
-    public static TrunkBuildDto Project(EfHatchTrunkBuild t) => new(
+    public static TrunkBuildDto Project(EfHatchTrunkBuild t, string? projectKey) => new(
         t.Id, t.Remote, t.Canonical, t.Trunk, t.Sha, t.ShaSince, t.Verdict,
         EfHatchBuildCheck.ReadFailing(t.Failing), t.CheckedAt, t.Runner, t.CheckedBy,
-        t.BugIssue is null ? null : IssueKey.Format(t.BugIssue.Project!.Key, t.BugIssue.Number));
+        t.BugIssue is null ? null : IssueKey.Format(t.BugIssue.Project!.Key, t.BugIssue.Number),
+        projectKey);
 }
