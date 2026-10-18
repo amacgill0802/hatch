@@ -3,6 +3,7 @@ import {
   absentSentence,
   boundCanonicals,
   projectsReading,
+  repoSourcedOverrideHint,
   repoSourcedReason,
   shortSha,
   sortedFiles,
@@ -211,5 +212,21 @@ describe('repoSourcedReason', () => {
     const p = project({ repoSourced: false });
 
     expect(repoSourcedReason(p)).toBeNull();
+  });
+});
+
+describe('repoSourcedOverrideHint', () => {
+  it('returns the sentence for a repo-sourced project', () => {
+    const p = project({ repoSourced: true });
+
+    expect(repoSourcedOverrideHint(p)).toBe(
+      "This project's playbooks come from .hatch/playbooks.yaml on its trunk; a board-wide row speaks where that file is silent.",
+    );
+  });
+
+  it('returns null for a non-repo-sourced project', () => {
+    const p = project({ repoSourced: false });
+
+    expect(repoSourcedOverrideHint(p)).toBeNull();
   });
 });

@@ -55,6 +55,7 @@ import { assigneeHint } from '../lib/assignee';
 import { onePrSaid } from '../lib/onePr';
 import { childTypes } from '../lib/childTypes';
 import { parentCandidates, parentHint } from '../lib/parents';
+import { repoSourcedOverrideHint } from '../lib/playbookFiles';
 import { moveBlocked } from '../lib/protectedColumns';
 import { statusVars } from '../lib/color';
 import { closeOffer } from '../lib/closeSubtree';
@@ -755,6 +756,8 @@ export function IssuePage() {
               apart. A pinned `claude-…` id somebody set through the API is
               offered back rather than swapped for an alias - that is Choice's
               own doing. */}
+          {project?.repoSourced && <p className="text-muted">{repoSourcedOverrideHint(project)}</p>}
+
           <Field label="Model" hint="What an agent dispatched for this issue runs on.">
             <Choice
               value={issue.modelOverride ?? ''}
