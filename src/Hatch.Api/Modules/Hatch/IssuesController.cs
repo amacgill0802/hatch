@@ -759,6 +759,7 @@ public class IssuesController(
             events.Add(Event(actor, EfHatchIssueEvent.StatusChanged, IssueEventPayload.StatusChanged(from, status), now));
 
             issue.StatusId = status.Id;
+            issue.ClosedAt = Columns.ClosedAt(from, status, now, issue.ClosedAt);
             // A column change through PATCH has no neighbours to sit between,
             // so the card goes to the bottom of the new column. The board sends
             // its drops to `move`, which does have them.
@@ -981,6 +982,7 @@ public class IssuesController(
                     issue.Events.Add(Event(actor, EfHatchIssueEvent.WipOverridden, WipOverriddenPayload(over, status.Name), now));
             issue.UpdatedAt = now;
             issue.StatusId = status.Id;
+            issue.ClosedAt = Columns.ClosedAt(from, status, now, issue.ClosedAt);
 
             // The board has no deferred column to drop onto, so this endpoint
             // is not how a ticket is usually shelved - but it is an endpoint,
