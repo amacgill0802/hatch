@@ -338,13 +338,19 @@ public sealed class PromptTests
     [Fact]
     public void The_dry_run_names_the_playbook_and_whose_it_was()
     {
-        var owned = Fixtures.Work("AER-12") with { Playbook = Fixtures.Playbook(projectKey: "AER") };
-        var boardWide = Fixtures.Work("AER-12") with { Playbook = Fixtures.Playbook() };
+        var owned = Fixtures.Work("AER-12") with { Playbook = Fixtures.Playbook(projectKey: "AER") with { Source = "project" } };
+        var boardWide = Fixtures.Work("AER-12") with { Playbook = Fixtures.Playbook() with { Source = "board" } };
         var hop = Fixtures.Work("AER-12", hop: true);
+        var fileOwned = Fixtures.Work("AER-12", playbookFile: new PlaybookFileReferenceDto(".hatch/playbooks.yaml", "canonical", "main", "abcdef0123456789", "deadbeef"))
+            with { Playbook = Fixtures.Playbook(projectKey: "AER") with { Source = "file" } };
+        var boardWithFile = Fixtures.Work("AER-12", playbookFile: new PlaybookFileReferenceDto(".hatch/playbooks.yaml", "canonical", "main", "abcdef0123456789", "deadbeef"))
+            with { Playbook = Fixtures.Playbook() };
 
         Assert.Equal("playbook: AER's own", Prompt.PlaybookLine(owned));
         Assert.Equal("playbook: board-wide", Prompt.PlaybookLine(boardWide));
         Assert.Null(Prompt.PlaybookLine(hop));
+        Assert.Equal("playbook: AER's own file on main at abcdef0", Prompt.PlaybookLine(fileOwned));
+        Assert.Equal("playbook: board-wide on main at abcdef0", Prompt.PlaybookLine(boardWithFile));
     }
 
     [Fact]

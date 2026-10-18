@@ -479,7 +479,7 @@ public sealed class WorkCommandTests
         using var h = new Harness();
         h.Wire.Json(
             "GET", "/api/hatch/work/next",
-            Fixtures.Work("AER-1") with { Playbook = Fixtures.Playbook(projectKey: "AER") });
+            Fixtures.Work("AER-1") with { Playbook = Fixtures.Playbook(projectKey: "AER") with { Source = "project" } });
 
         Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["--dry-run"], default));
 
