@@ -358,4 +358,34 @@ public static class PlaybookFile
 
         return (null, $"a brief limit is a whole number of one or more, in characters - not \"{trimmed}\"");
     }
+
+    /// <summary>
+    /// A parsed <see cref="PlaybookCreateRequest"/> resolved into the stored
+    /// row - the same shape/model/effort defaulting and type/denied-tools
+    /// normalization <see cref="PlaybooksController.CreatePlaybook"/> applies
+    /// before building an <c>EfHatchPlaybook</c>, copied rather than
+    /// reinvented. <see cref="Parse"/> already validated every field, so
+    /// <see cref="ParseBudget"/>/<see cref="ParseBriefLimit"/> cannot fail
+    /// here - <c>.Value</c> is safe.
+    /// </summary>
+    internal static PlaybookFileRow Resolve(PlaybookCreateRequest row)
+    {
+        var shape = row.Shape?.Trim() is { Length: > 0 } s ? s : EfHatchPlaybook.DefaultShape;
+        var model = row.Model?.Trim() is { Length: > 0 } m ? m : EfHatchPlaybook.DefaultModel;
+        var effort = row.Effort?.Trim() is { Length: > 0 } e ? e : EfHatchPlaybook.DefaultEffort;
+        var budget = row.Budget is null ? (int?)null : ParseBudget(row.Budget).Value;
+        var briefLimit = row.BriefLimit is null ? (int?)null : ParseBriefLimit(row.BriefLimit).Value;
+        var types = EfHatchPlaybook.SplitTypes(EfHatchPlaybook.NormalizeTypes(row.Types));
+        var deniedTools = EfHatchPlaybook.NormalizeDeniedTools(row.DeniedTools);
+
+        return new PlaybookFileRow(
+            row.FromStatusId, row.ToStatusId, types, shape, row.Prompt.Trim(), model, effort,
+            budget, briefLimit, deniedTools, row.IsCheck ?? false);
+    }
+
+    /// <summary>A stored row read back for the wire, its status ids resolved to the board's current names.</summary>
+    internal static PlaybookFileRowDto ToDto(PlaybookFileRow row, IReadOnlyDictionary<int, string> names) => new(
+        row.FromStatusId, names.GetValueOrDefault(row.FromStatusId, ""),
+        row.ToStatusId, names.GetValueOrDefault(row.ToStatusId, ""),
+        row.Types, row.Shape, row.Prompt, row.Model, row.Effort, row.Budget, row.BriefLimit, row.DeniedTools, row.IsCheck);
 }
