@@ -65,6 +65,9 @@ const PROJECT: Project = {
   autoHealBugPriority: 'emergency',
   autoHealBugPreApproval: 'express',
   autoHealBugStatusId: null,
+  repoSourced: false,
+  repoSourcedBy: null,
+  repoSourcedAt: null,
 };
 
 const OTHER: Project = {
@@ -87,6 +90,9 @@ const OTHER: Project = {
   autoHealBugPriority: 'emergency',
   autoHealBugPreApproval: 'express',
   autoHealBugStatusId: null,
+  repoSourced: false,
+  repoSourcedBy: null,
+  repoSourcedAt: null,
 };
 
 const noop = () => undefined;

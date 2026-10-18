@@ -23,6 +23,9 @@ const projectOf = (key: string, name: string): Project => ({
   autoHealBugPriority: 'emergency',
   autoHealBugPreApproval: 'express',
   autoHealBugStatusId: null,
+  repoSourced: false,
+  repoSourcedBy: null,
+  repoSourcedAt: null,
 });
 
 const ONE = [projectOf('AER', 'Aero')];
