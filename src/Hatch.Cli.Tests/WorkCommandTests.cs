@@ -1035,6 +1035,27 @@ public sealed class WorkCommandTests
         var written = UnpublishedComments(h);
         Assert.Single(written);
         Assert.DoesNotContain(written, c => c.Kind == "question");
+        Assert.Contains("no landing recorded", written[0].Body, StringComparison.Ordinal);
+        Assert.Contains("hatch landed", written[0].Body, StringComparison.Ordinal);
+        Assert.DoesNotContain("pull request", written[0].Body, StringComparison.Ordinal);
+
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Contains("outcome=dropped", released.Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Hatch_work_escalates_to_a_question_the_second_time_in_a_row_on_a_trunk_landing_ticket()
+    {
+        using var h = new Harness();
+        UnpublishedBoard(h, branchOnOrigin: false, landing: Landings.Trunk, letGo: 1);
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["AER-1"], default));
+
+        var written = UnpublishedComments(h);
+        Assert.Equal(2, written.Count);
+        Assert.Equal("question", written[1].Kind);
+        Assert.Contains(written[1].Options!, o => o.Label == Unpublished.Landed);
+        Assert.Contains(written[1].Options!, o => o.Label == Unpublished.LandingNotNeeded);
 
         var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
         Assert.Contains("outcome=dropped", released.Query, StringComparison.Ordinal);
@@ -1045,6 +1066,19 @@ public sealed class WorkCommandTests
     {
         using var h = new Harness();
         UnpublishedBoard(h, branchOnOrigin: false, landing: Landings.Trunk, landings: [Fixtures.Landing()]);
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["AER-1"], default));
+
+        Assert.Empty(UnpublishedComments(h));
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Contains("outcome=worked", released.Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Hatch_work_never_flags_a_trunk_landing_ticket_with_a_landing_recorded_even_with_a_branch_on_origin()
+    {
+        using var h = new Harness();
+        UnpublishedBoard(h, branchOnOrigin: true, landing: Landings.Trunk, landings: [Fixtures.Landing()]);
 
         Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["AER-1"], default));
 
