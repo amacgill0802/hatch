@@ -1,0 +1,399 @@
+using Hatch.Api.Ef;
+using Hatch.Api.Modules.Hatch;
+using Hatch.Api.Services.Auth;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Time.Testing;
+
+namespace Hatch.Api.Tests.Hatch;
+
+/// <summary>
+/// <see cref="Dispatch"/> itself - the first tests against it directly rather
+/// than through <see cref="WorkController"/>, which
+/// <see cref="WorkControllerTests"/> already covers byte for byte for a
+/// project without the repo-sourced setting on (that suite's own assertions,
+/// unchanged, are the evidence for that case; nothing here repeats them).
+///
+/// These are about the one thing HA-807 adds: a repo-sourced project's
+/// candidate list - the resolved <c>.hatch/playbooks.yaml</c> copy's rows laid
+/// beside the board-wide table rows - and the five sentences
+/// <see cref="Dispatch.Blocked"/> folds every move of such a project with
+/// when that resolution is not a clean, matchable copy.
+/// </summary>
+public class DispatchTests
+{
+    private static readonly DateTimeOffset Now = new(2026, 10, 18, 12, 0, 0, TimeSpan.Zero);
+
+    // ---- Matching: the file's own layer beside the board-wide one ----
+
+    [Fact]
+    public async Task MatchAsync_ARepoSourcedProjectsTransitionTheFileCovers_GetsTheFilesRow()
+    {
+        var h = await NewAsync();
+        await h.SetRepoSourcedAsync();
+        var repo = await h.AddRepositoryAsync(baseBranch: "main");
+        await h.PlaybookFileAsync(repo, "main", EfHatchPlaybookFile.ParsedState, rows: [FileRow(h.Todo, h.InProgress, model: "fable")]);
+
+        var playbook = await h.Dispatch.MatchAsync(h.Todo, h.InProgress, "story", false, h.ProjectId, default);
+
+        Assert.NotNull(playbook);
+        Assert.Equal("fable", playbook.Model);
+    }
+
+    [Fact]
+    public async Task MatchAsync_AFileRowAndAMoreSpecificBoardWideRow_TheFileRowWinsRegardless()
+    {
+        var h = await NewAsync();
+        await h.SetRepoSourcedAsync();
+        var repo = await h.AddRepositoryAsync(baseBranch: "main");
+        await h.PlaybookFileAsync(repo, "main", EfHatchPlaybookFile.ParsedState, rows: [FileRow(h.Todo, h.InProgress, model: "fable")]);
+        await h.AddPlaybookAsync(h.Todo, h.InProgress, types: "story", shape: "leaf", model: "sonnet");
+
+        var playbook = await h.Dispatch.MatchAsync(h.Todo, h.InProgress, "story", false, h.ProjectId, default);
+
+        // The board-wide row names the type and the shape - strictly more
+        // specific than the file row, which names neither - and still loses:
+        // the file's own layer beats the board-wide one before specificity is
+        // ever weighed.
+        Assert.NotNull(playbook);
+        Assert.Equal("fable", playbook.Model);
+    }
+
+    [Fact]
+    public async Task MatchAsync_AMoveTheFileHasNoRowFor_FallsThroughToTheBoardWideRow()
+    {
+        var h = await NewAsync();
+        await h.SetRepoSourcedAsync();
+        var repo = await h.AddRepositoryAsync(baseBranch: "main");
+        await h.PlaybookFileAsync(repo, "main", EfHatchPlaybookFile.ParsedState, rows: [FileRow(h.Todo, h.InProgress, model: "fable")]);
+        await h.AddPlaybookAsync(h.InProgress, h.Review, model: "sonnet");
+
+        var playbook = await h.Dispatch.MatchAsync(h.InProgress, h.Review, "story", false, h.ProjectId, default);
+
+        Assert.NotNull(playbook);
+        Assert.Equal("sonnet", playbook.Model);
+    }
+
+    [Fact]
+    public async Task MatchAsync_TwoFileRowsTiedOnSpecificity_TheEarlierPositionWins()
+    {
+        var h = await NewAsync();
+        await h.SetRepoSourcedAsync();
+        var repo = await h.AddRepositoryAsync(baseBranch: "main");
+        await h.PlaybookFileAsync(repo, "main", EfHatchPlaybookFile.ParsedState, rows:
+        [
+            FileRow(h.Todo, h.InProgress, model: "fable"),
+            FileRow(h.Todo, h.InProgress, model: "opus"),
+        ]);
+
+        var playbook = await h.Dispatch.MatchAsync(h.Todo, h.InProgress, "story", false, h.ProjectId, default);
+
+        Assert.NotNull(playbook);
+        Assert.Equal("fable", playbook.Model);
+    }
+
+    [Fact]
+    public async Task MatchAsync_ATableRowNamingTheRepoSourcedProject_IsNeverLoadedAsACandidate()
+    {
+        var h = await NewAsync();
+        await h.SetRepoSourcedAsync();
+        await h.AddRepositoryAsync(baseBranch: "main");
+        // No PlaybookFiles row at all - this project's own resolution folds
+        // every move, but that is not what this test is about: it is about
+        // whether its own table row, bypassing the setting's own refusal to
+        // create one, is ever loaded as a candidate for Match at all.
+        await h.AddPlaybookAsync(h.Todo, h.InProgress, model: "sonnet", projectId: h.ProjectId);
+
+        var playbook = await h.Dispatch.MatchAsync(h.Todo, h.InProgress, "story", false, h.ProjectId, default);
+
+        Assert.Null(playbook);
+    }
+
+    // ---- Folding: a bad resolution folds every move ----
+
+    [Fact]
+    public async Task ScanAsync_ARepoSourcedProjectBoundToNoRepository_FoldsEveryMoveAndLeavesATableSourcedProjectAlone()
+    {
+        var h = await NewAsync();
+        await h.SetRepoSourcedAsync();
+        // No ProjectRepositories row at all - the setting was turned on, and
+        // the one repository it was bound to was removed afterward.
+        var inTodo = await h.FileAsync("story", "in todo", h.Todo);
+        var inProgress = await h.FileAsync("story", "in progress", h.InProgress);
+
+        var otherProjectId = await h.AddProjectAsync("OPS");
+        await h.AddPlaybookAsync(h.Todo, h.InProgress, model: "sonnet");
+        var otherIssue = await h.FileAsync("story", "a table-sourced project's own issue", h.Todo, projectId: otherProjectId);
+
+        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+
+        var expected = $"{h.ProjectKey} is repo-sourced but is bound to no repository - bind one on the Projects page";
+        Assert.Equal(expected, RowFor(scan, inTodo).Blocked);
+        Assert.Equal(expected, RowFor(scan, inProgress).Blocked);
+
+        // The other project names no setting at all, and reads its board-wide
+        // playbook exactly as it always has.
+        Assert.Null(RowFor(scan, otherIssue).Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_ABaseBranchNamingNoRowAndMoreThanOneTrunkOnTheRepository_FoldsEveryMove()
+    {
+        var h = await NewAsync();
+        await h.SetRepoSourcedAsync();
+        var repo = await h.AddRepositoryAsync(); // no base branch set
+        await h.PlaybookFileAsync(repo, "main", EfHatchPlaybookFile.ParsedState, rows: [FileRow(h.Todo, h.InProgress)]);
+        await h.PlaybookFileAsync(repo, "trunk2", EfHatchPlaybookFile.ParsedState, rows: [FileRow(h.Todo, h.InProgress)]);
+
+        var inTodo = await h.FileAsync("story", "in todo", h.Todo);
+        var inProgress = await h.FileAsync("story", "in progress", h.InProgress);
+
+        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+
+        var expected = $"{h.ProjectKey} names no base branch and more than one .hatch/playbooks.yaml trunk exists " +
+                       $"for {repo.Canonical} - set the base branch on the Projects page";
+        Assert.Equal(expected, RowFor(scan, inTodo).Blocked);
+        Assert.Equal(expected, RowFor(scan, inProgress).Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_NoRunnerHasEverReadTheFile_FoldsEveryMove()
+    {
+        var h = await NewAsync();
+        await h.SetRepoSourcedAsync();
+        var repo = await h.AddRepositoryAsync(baseBranch: "main");
+        // No PlaybookFiles row at all for this canonical and trunk.
+
+        var inTodo = await h.FileAsync("story", "in todo", h.Todo);
+        var inProgress = await h.FileAsync("story", "in progress", h.InProgress);
+
+        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+
+        var expected = $"no runner has read .hatch/playbooks.yaml on main of {repo.Remote} yet";
+        Assert.Equal(expected, RowFor(scan, inTodo).Blocked);
+        Assert.Equal(expected, RowFor(scan, inProgress).Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AnAbsentFile_FoldsEveryMove()
+    {
+        var h = await NewAsync();
+        await h.SetRepoSourcedAsync();
+        var repo = await h.AddRepositoryAsync(baseBranch: "main");
+        var file = await h.PlaybookFileAsync(repo, "main", EfHatchPlaybookFile.AbsentState, sha: new string('c', 40));
+
+        var inTodo = await h.FileAsync("story", "in todo", h.Todo);
+        var inProgress = await h.FileAsync("story", "in progress", h.InProgress);
+
+        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+
+        var expected = $".hatch/playbooks.yaml is missing on main at {file.Sha}";
+        Assert.Equal(expected, RowFor(scan, inTodo).Blocked);
+        Assert.Equal(expected, RowFor(scan, inProgress).Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AnInvalidFile_FoldsEveryMoveWithItsOwnProblem()
+    {
+        var h = await NewAsync();
+        await h.SetRepoSourcedAsync();
+        var repo = await h.AddRepositoryAsync(baseBranch: "main");
+        await h.PlaybookFileAsync(repo, "main", EfHatchPlaybookFile.InvalidState, problem: "entry 1: \"from\" is not a column");
+
+        var inTodo = await h.FileAsync("story", "in todo", h.Todo);
+        var inProgress = await h.FileAsync("story", "in progress", h.InProgress);
+
+        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+
+        var expected = "entry 1: \"from\" is not a column - fix it on the trunk";
+        Assert.Equal(expected, RowFor(scan, inTodo).Blocked);
+        Assert.Equal(expected, RowFor(scan, inProgress).Blocked);
+    }
+
+    // ---- A good copy is not itself a fold ----
+
+    [Fact]
+    public async Task ScanAsync_AnEmptyPlaybooksList_FallsThroughToTheBoardWideRowRatherThanFolding()
+    {
+        var h = await NewAsync();
+        await h.SetRepoSourcedAsync();
+        var repo = await h.AddRepositoryAsync(baseBranch: "main");
+        await h.PlaybookFileAsync(repo, "main", EfHatchPlaybookFile.ParsedState, rows: []);
+        await h.AddPlaybookAsync(h.Todo, h.InProgress, model: "sonnet");
+
+        var issue = await h.FileAsync("story", "in todo", h.Todo);
+
+        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+
+        Assert.Null(RowFor(scan, issue).Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AGoodCopyWithNoRowAndNoBoardWideRowEither_NamesTheFileInTheFallback()
+    {
+        var h = await NewAsync();
+        await h.SetRepoSourcedAsync();
+        var repo = await h.AddRepositoryAsync(baseBranch: "main");
+        // The file speaks for a different transition than the one the issue
+        // needs, and nothing board-wide speaks for this one either.
+        await h.PlaybookFileAsync(repo, "main", EfHatchPlaybookFile.ParsedState, rows: [FileRow(h.Todo, h.InProgress)]);
+
+        var issue = await h.FileAsync("story", "in progress", h.InProgress);
+
+        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+
+        Assert.Equal(
+            "no playbook covers \"in progress\" to \"review\" for a story - add one to .hatch/playbooks.yaml on main, or a board-wide one on the Playbooks page",
+            RowFor(scan, issue).Blocked);
+    }
+
+    // ---- Helpers ----
+
+    private static PlaybookFileRow FileRow(
+        int from, int to, IReadOnlyList<string>? types = null, string shape = "any", string model = "sonnet") =>
+        new(from, to, types ?? [], shape, "do the thing", model, "high", null, null, [], false);
+
+    private static ScanRow RowFor(Scan scan, EfHatchIssue issue) =>
+        scan.Rows.Single(r => r.Issue.Id == issue.Id);
+
+    private sealed class Harness
+    {
+        public required HatchContext Db { get; init; }
+        public required Dispatch Dispatch { get; init; }
+        public required int ProjectId { get; init; }
+        public required string ProjectKey { get; init; }
+        public required int Todo { get; init; }
+        public required int InProgress { get; init; }
+        public required int Review { get; init; }
+        public required int Done { get; init; }
+
+        private int next = 1;
+        private int nextRepoOrder;
+
+        public async Task<EfHatchIssue> FileAsync(string type, string title, int statusId, long rank = 1024, int? projectId = null)
+        {
+            var issue = new EfHatchIssue
+            {
+                ProjectId = projectId ?? ProjectId,
+                Number = next++,
+                Type = type,
+                Title = title,
+                Description = "",
+                StatusId = statusId,
+                Rank = rank,
+                CreatedBy = "operator",
+                CreatedAt = Now,
+                UpdatedAt = Now,
+            };
+
+            Db.Issues.Add(issue);
+            await Db.SaveChangesAsync();
+            return issue;
+        }
+
+        public async Task<int> AddProjectAsync(string key)
+        {
+            var project = new EfHatchProject { Key = key, Name = key, CreatedAt = Now };
+            Db.Add(project);
+            await Db.SaveChangesAsync();
+            return project.Id;
+        }
+
+        public async Task SetRepoSourcedAsync(bool on = true, int? projectId = null)
+        {
+            var project = await Db.Projects.SingleAsync(p => p.Id == (projectId ?? ProjectId));
+            project.RepoSourced = on;
+            await Db.SaveChangesAsync();
+        }
+
+        public async Task<EfHatchProjectRepository> AddRepositoryAsync(
+            string remote = "https://example.com/o/r", string? baseBranch = null, int? projectId = null)
+        {
+            var (canonical, _) = RemoteIdentity.Canonical(remote);
+            var repo = new EfHatchProjectRepository
+            {
+                ProjectId = projectId ?? ProjectId,
+                Remote = remote,
+                Canonical = canonical!,
+                BaseBranch = baseBranch,
+                SortOrder = nextRepoOrder++,
+                CreatedAt = Now,
+            };
+            Db.Add(repo);
+            await Db.SaveChangesAsync();
+            return repo;
+        }
+
+        public async Task<EfHatchPlaybookFile> PlaybookFileAsync(
+            EfHatchProjectRepository repo, string trunk, string state,
+            IReadOnlyList<PlaybookFileRow>? rows = null, string? problem = null, string? sha = null)
+        {
+            var file = new EfHatchPlaybookFile
+            {
+                Remote = repo.Remote,
+                Canonical = repo.Canonical,
+                Trunk = trunk,
+                Sha = sha ?? new string('a', 40),
+                State = state,
+                Rows = rows is null ? null : EfHatchPlaybookFile.WriteRows(rows),
+                Problem = problem,
+                CheckedAt = Now,
+                Runner = "host:/checkout",
+                CheckedBy = "runner",
+            };
+
+            Db.PlaybookFiles.Add(file);
+            await Db.SaveChangesAsync();
+            return file;
+        }
+
+        public async Task AddPlaybookAsync(
+            int from, int to, string types = "", string model = "sonnet", string shape = "any",
+            int? briefLimit = null, int? projectId = null)
+        {
+            Db.Playbooks.Add(new EfHatchPlaybook
+            {
+                FromStatusId = from,
+                ToStatusId = to,
+                Types = types,
+                Shape = shape,
+                Prompt = "do the thing",
+                Model = model,
+                Effort = "high",
+                BriefLimit = briefLimit,
+                ProjectId = projectId,
+                CreatedAt = Now,
+                UpdatedAt = Now,
+            });
+            await Db.SaveChangesAsync();
+        }
+    }
+
+    private static async Task<Harness> NewAsync()
+    {
+        var db = new HatchContext(
+            new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+
+        var project = new EfHatchProject { Key = "AER", Name = "Hatch", CreatedAt = Now };
+        var inbox = new EfHatchStatus { Name = "inbox", SortOrder = 10 };
+        var todo = new EfHatchStatus { Name = "todo", SortOrder = 20 };
+        var doing = new EfHatchStatus { Name = "in progress", SortOrder = 30 };
+        var review = new EfHatchStatus { Name = "review", SortOrder = 35 };
+        var done = new EfHatchStatus { Name = "done", SortOrder = 40, IsTerminal = true };
+        db.AddRange(project, inbox, todo, doing, review, done);
+        await db.SaveChangesAsync();
+
+        var time = new FakeTimeProvider(Now);
+
+        return new Harness
+        {
+            Db = db,
+            Dispatch = new Dispatch(db, new StubActorDirectory(), TestClaims.With(), time),
+            ProjectId = project.Id,
+            ProjectKey = project.Key,
+            Todo = todo.Id,
+            InProgress = doing.Id,
+            Review = review.Id,
+            Done = done.Id,
+        };
+    }
+}
