@@ -177,6 +177,16 @@ reading a file that is missing or fails to parse has every one of its moves
 held, with a sentence naming the file and the trunk, until the file is fixed
 - not only the moves the file would otherwise have answered.
 
+Three places say where a playbook came from, once a move has used one.
+`hatch work --dry-run`'s `# playbook: ...` line names it before the session
+starts. The issue page's work log names it on every row - *playbooks from
+.hatch/playbooks.yaml on main at 3c5c399*, *playbooks from this project's
+own table row*, or *playbooks from the board-wide table* - with a copyable
+`git show <sha>:.hatch/playbooks.yaml` beside the resume command on a
+file-sourced row. The Playbooks page itself labels every row *board-wide*,
+*<KEY>'s own*, or *.hatch/playbooks.yaml on <trunk> at <sha>*, and a
+board-wide row the file shadows carries a "shadowed by the file" badge.
+
 ## What the agent picks up
 
 Every pass the runner asks the board for the next actionable issue. The server
