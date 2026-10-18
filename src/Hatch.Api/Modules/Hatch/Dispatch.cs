@@ -104,6 +104,14 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             .Include(p => p.FromStatus)
             .Include(p => p.ToStatus)
             .ToListAsync(ct);
+        var boardWidePlaybooks = playbooks.Where(p => p.ProjectId == null).ToList();
+
+        // A repo-sourced project's own resolution - the primary repository, its
+        // trunk, and the .hatch/playbooks.yaml copy on it - never varies by issue
+        // or transition, so it is resolved once per project per pass rather than
+        // once per candidate, the first time a project is met below.
+        var repoSourced = new Dictionary<int, RepoSourcedPlaybooks?>();
+        var repoSourcedRows = new Dictionary<int, IReadOnlyList<EfHatchPlaybook>>();
 
         // The columns a pass looks in at all: the ones with a column to go to -
         // the next one to their right, or, for the review column, itself. No
@@ -238,7 +246,19 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                 {
                     if (effective[issue.Id].Level != level) continue;
 
-                    var playbook = Match(playbooks, status.Id, to.Id, issue.Type, family.Children(issue.Id).Count > 0, issue.ProjectId);
+                    if (!repoSourced.TryGetValue(issue.ProjectId, out var projectRepoSourced))
+                    {
+                        IReadOnlyList<EfHatchPlaybook> fileRows;
+                        (projectRepoSourced, fileRows) = await ResolveRepoSourcedAsync(issue.Project!, ct);
+                        repoSourced[issue.ProjectId] = projectRepoSourced;
+                        repoSourcedRows[issue.ProjectId] = fileRows;
+                    }
+
+                    var candidatePlaybooks = projectRepoSourced is null
+                        ? playbooks
+                        : repoSourcedRows[issue.ProjectId].Concat(boardWidePlaybooks).ToList();
+
+                    var playbook = Match(candidatePlaybooks, status.Id, to.Id, issue.Type, family.Children(issue.Id).Count > 0, issue.ProjectId);
                     var waiting = open.GetValueOrDefault(issue.Id, 0);
                     var merged = verdicts.TryGetValue(issue.Id, out var found) ? found : [];
                     var built = builds.TryGetValue(issue.Id, out var foundBuilds) ? foundBuilds : [];
@@ -256,7 +276,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                         issue, status, rowTo, playbook, waiting, letGo, sendBackStreak, loop, pace, gate, family, claimed,
                         implementation, assignees[issue.Id], repos, merged, built, hopKind, statuses, wip, epics,
                         trainSlots.GetValueOrDefault(issue.Id),
-                        landing);
+                        landing, projectRepoSourced);
 
                     var sentence = blocked;
 
@@ -787,6 +807,15 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// are, because this has no db. When set, and the move is the review
     /// column's own, its sentence is the fold.
     /// </param>
+    /// <param name="repoSourced">
+    /// Null for a project whose playbooks are written on the board - today's
+    /// path, byte for byte. Set for a repo-sourced one, see
+    /// <see cref="ResolveRepoSourcedAsync"/>: a <see cref="RepoSourcedPlaybooks.Fold"/>
+    /// folds every move of the project regardless of what <paramref name="playbook"/>
+    /// matched, and a <see cref="RepoSourcedPlaybooks.Trunk"/> with no match
+    /// names the file in the fallback sentence instead of only the Playbooks
+    /// page.
+    /// </param>
     public static string? Blocked(
         EfHatchIssue issue,
         EfHatchStatus from,
@@ -810,7 +839,8 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         WipSection? wip,
         IReadOnlyDictionary<long, EpicLimit> epics,
         TrainSlot? train = null,
-        MergeWork.Judgement? landing = null)
+        MergeWork.Judgement? landing = null,
+        RepoSourcedPlaybooks? repoSourced = null)
     {
         var hop = hopKind is not null;
 
@@ -1057,8 +1087,11 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             return $"its brief is {issue.Description.Length.ToString("N0", CultureInfo.InvariantCulture)} characters, " +
                    $"and this move is spawned on at most {limit.ToString("N0", CultureInfo.InvariantCulture)} - cut it into tasks first";
 
+        if (repoSourced is { Fold: { } fold }) return fold;
         return playbook is null
-            ? $"no playbook covers \"{from.Name}\" to \"{to.Name}\" for {An(issue.Type)} - add one on the Playbooks page"
+            ? repoSourced is { Trunk: { } trunk }
+                ? $"no playbook covers \"{from.Name}\" to \"{to.Name}\" for {An(issue.Type)} - add one to .hatch/playbooks.yaml on {trunk}, or a board-wide one on the Playbooks page"
+                : $"no playbook covers \"{from.Name}\" to \"{to.Name}\" for {An(issue.Type)} - add one on the Playbooks page"
             : null;
     }
 
@@ -1169,6 +1202,87 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         "aeiou".Contains(char.ToLowerInvariant(type[0])) ? $"an {type}" : $"a {type}";
 
     /// <summary>
+    /// A repo-sourced project's own resolution, independent of any issue or
+    /// transition: its primary repository, that repository's trunk, and the
+    /// <c>.hatch/playbooks.yaml</c> copy read off it. The first element is
+    /// null for a project without the setting on - today's path - and
+    /// otherwise doubles as the fold <see cref="Blocked"/> needs, whether or
+    /// not a good copy was found. The second element is the copy's own rows,
+    /// resolved into the same transient, never-persisted shape a candidate
+    /// list hands to <see cref="Match"/> - empty wherever the first element
+    /// folds every move, and empty too for a good copy that simply names
+    /// nothing of its own (<c>playbooks: []</c>).
+    /// </summary>
+    private async Task<(RepoSourcedPlaybooks? RepoSourced, IReadOnlyList<EfHatchPlaybook> Rows)> ResolveRepoSourcedAsync(
+        EfHatchProject project, CancellationToken ct)
+    {
+        if (!project.RepoSourced) return (null, []);
+
+        var primary = project.Repositories.OrderBy(r => r.SortOrder).FirstOrDefault();
+        if (primary is null)
+            return (new RepoSourcedPlaybooks(
+                $"{project.Key} is repo-sourced but is bound to no repository - bind one on the Projects page", null), []);
+
+        string trunk;
+        if (primary.BaseBranch is { Length: > 0 } baseBranch)
+        {
+            trunk = baseBranch;
+        }
+        else
+        {
+            var trunks = await db.PlaybookFiles.AsNoTracking()
+                .Where(f => f.Canonical == primary.Canonical)
+                .Select(f => f.Trunk)
+                .Distinct()
+                .ToListAsync(ct);
+
+            if (trunks.Count != 1)
+                return (new RepoSourcedPlaybooks(
+                    $"{project.Key} names no base branch and more than one .hatch/playbooks.yaml trunk exists " +
+                    $"for {primary.Canonical} - set the base branch on the Projects page", null), []);
+
+            trunk = trunks[0];
+        }
+
+        var file = await db.PlaybookFiles.AsNoTracking()
+            .FirstOrDefaultAsync(f => f.Canonical == primary.Canonical && f.Trunk == trunk, ct);
+
+        if (file is null)
+            return (new RepoSourcedPlaybooks(
+                $"no runner has read .hatch/playbooks.yaml on {trunk} of {primary.Remote} yet", null), []);
+
+        if (file.State == EfHatchPlaybookFile.AbsentState)
+            return (new RepoSourcedPlaybooks($".hatch/playbooks.yaml is missing on {trunk} at {file.Sha}", null), []);
+
+        if (file.State == EfHatchPlaybookFile.InvalidState)
+            return (new RepoSourcedPlaybooks($"{file.Problem} - fix it on the trunk", null), []);
+
+        var rows = EfHatchPlaybookFile.ReadRows(file.Rows)
+            .Select((row, i) => new EfHatchPlaybook
+            {
+                Id = i - 1_000_000_000,
+                ProjectId = project.Id,
+                Project = null,
+                FromStatusId = row.FromStatusId,
+                ToStatusId = row.ToStatusId,
+                Types = string.Join(",", row.Types),
+                Shape = row.Shape,
+                Prompt = row.Prompt,
+                Model = row.Model,
+                Effort = row.Effort,
+                Budget = row.Budget,
+                BriefLimit = row.BriefLimit,
+                DeniedTools = EfHatchPlaybook.WriteDeniedTools(row.DeniedTools),
+                IsCheck = row.IsCheck,
+                CreatedAt = file.CheckedAt,
+                UpdatedAt = file.CheckedAt,
+            })
+            .ToList();
+
+        return (new RepoSourcedPlaybooks(null, trunk), rows);
+    }
+
+    /// <summary>
     /// The playbook that speaks for this move. A row naming the issue's own
     /// project beats a row naming every project, whatever either names for
     /// type or shape; only once that is settled does a row naming the issue's
@@ -1176,15 +1290,36 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// neither, and ties go to the older row - so adding a specific rule never
     /// requires editing the general one.
     /// </summary>
-    public async Task<EfHatchPlaybook?> MatchAsync(int from, int to, string type, bool isParent, int projectId, CancellationToken ct) =>
-        Match(
-            await db.Playbooks.AsNoTracking()
-                .Include(p => p.FromStatus)
-                .Include(p => p.ToStatus)
-                .Include(p => p.Project)
-                .Where(p => p.FromStatusId == from && p.ToStatusId == to)
-                .ToListAsync(ct),
-            from, to, type, isParent, projectId);
+    /// <remarks>
+    /// One dispatch, not a loop over a pass's worth of candidates, so
+    /// <see cref="ResolveRepoSourcedAsync"/> is asked fresh rather than
+    /// through a cache - and for the same reason, a repo-sourced project's
+    /// own table rows are excluded from the query itself rather than
+    /// filtered afterward, so one can never be loaded as a candidate here
+    /// even if one somehow exists on the table.
+    /// </remarks>
+    public async Task<EfHatchPlaybook?> MatchAsync(int from, int to, string type, bool isParent, int projectId, CancellationToken ct)
+    {
+        var project = await db.Projects.AsNoTracking()
+            .Include(p => p.Repositories)
+            .FirstOrDefaultAsync(p => p.Id == projectId, ct);
+
+        var (repoSourced, fileRows) = project is null
+            ? ((RepoSourcedPlaybooks?)null, (IReadOnlyList<EfHatchPlaybook>)[])
+            : await ResolveRepoSourcedAsync(project, ct);
+
+        var query = db.Playbooks.AsNoTracking()
+            .Include(p => p.FromStatus)
+            .Include(p => p.ToStatus)
+            .Include(p => p.Project)
+            .Where(p => p.FromStatusId == from && p.ToStatusId == to);
+
+        if (repoSourced is not null) query = query.Where(p => p.ProjectId == null);
+
+        var tableRows = await query.ToListAsync(ct);
+
+        return Match(fileRows.Concat(tableRows).ToList(), from, to, type, isParent, projectId);
+    }
 
     /// <summary>
     /// The same rule against rows already in hand, which is how a scan matches
@@ -1240,6 +1375,19 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     public static bool HoldsCheckout(ICollection<EfHatchProjectRepository> bound, RepositoryDeclaration repos) =>
         bound.Count == 0 ? repos.Standing : bound.Any(r => repos.Match(r.Canonical) is not null);
 }
+
+/// <summary>
+/// A repo-sourced project's own resolution - see
+/// <see cref="Dispatch.ResolveRepoSourcedAsync"/>. Non-null means the
+/// project is repo-sourced, which doubles as the flag <see cref="Dispatch.Blocked"/>
+/// needs: a non-null <see cref="Fold"/> folds every move of the project
+/// regardless of what any playbook matched, and a non-null <see cref="Trunk"/>
+/// (independent of <see cref="Fold"/>) means the <c>.hatch/playbooks.yaml</c>
+/// copy resolved to a real trunk, which is all the fallback sentence needs
+/// to name the file. Null means the project does not have the setting on at
+/// all - today's path, byte for byte.
+/// </summary>
+public sealed record RepoSourcedPlaybooks(string? Fold, string? Trunk);
 
 /// <summary>One issue the pass looked at, and what it decided.</summary>
 public sealed record ScanRow(
