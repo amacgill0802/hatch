@@ -1961,6 +1961,65 @@ The runner's poll ([below](#checking-the-branches-in-review)) reads the build on
 every checkout's trunk whether or not anything of its is in review, so a quiet
 board is not a poll that never gets there.
 
+### Playbook file
+
+`EfHatchPlaybookFile` — `Remote`, `Canonical`, `Trunk`, `Sha`, `State`, `Hash`,
+`Rows` (`jsonb`), `Problem`, `LastGoodSha`, `LastGoodHash`, `Url`, `CheckedAt`,
+`Runner`, `CheckedBy`. What a repository's trunk holds at
+`.hatch/playbooks.yaml`, as of the last time a runner's poll checked — the
+rows the file parsed to, or the one sentence saying why it did not. Like a
+[trunk build](#trunk-build), a playbooks file is a fact about a repository's
+trunk and nobody's issue, so it is not keyed on one.
+
+**One row per repository per trunk**, unique on `(Canonical, Trunk)`, the same
+reason a trunk build's own key is: two projects may bind one repository with
+different base branches, and a single row would let one project's read
+overwrite the other's.
+
+`State` is one of `parsed`, `invalid` or `absent`. `parsed` means the bytes at
+the path were valid UTF-8, valid YAML, and every entry in them validated
+against the same field rules a playbook request is checked against — `Rows`
+holds what they resolved to, by status id rather than name, so a column
+rename afterwards cannot change what a stored copy means. `invalid` means the
+bytes exist but failed one of those checks — a bad field, an unknown column, a
+duplicate transition — and `Problem` carries the one sentence saying which,
+with a line number where the parser found one. `absent` means the trunk has
+no file at that path at all. `Hash`, the file's SHA-256 in lower hex, is set
+whenever the bytes were read at all — `parsed` or `invalid` — and only null
+for `absent`; `Rows` is set only for `parsed`, and `Problem` only for
+`invalid`.
+
+`LastGoodSha` and `LastGoodHash` remember the most recent sha and hash that
+parsed, so an `invalid` row's card can still say what to roll back to. A write
+that parses clears both — the row is its own good copy now. A write that
+fails to parse, immediately following one that parsed, copies that superseded
+sha and hash into them before the row is overwritten; a second `invalid`
+write in a row, with no parse between, leaves them exactly as they were. A
+write that finds the file `absent` leaves them untouched too — whatever was
+last remembered good stays remembered until a parse clears it or a fresh
+transition out of `parsed` updates it.
+
+`PUT /api/hatch/playbook-files` writes a row and a key may, for the reason it
+may write a trunk build — the caller is a runner, reporting what it read, not
+proposing it. `{ remote, trunk, sha, content?, url?, runner }`, `content` the
+blob's exact bytes, base64-encoded, and absent for a trunk with nothing at the
+path. The route hashes and parses the content itself rather than trusting a
+client-sent verdict, and refuses in the same shape the trunk build's write
+does — an uncanonicalisable remote, an empty or over-long trunk, sha or
+runner — plus content that is not valid base64 or over the parser's own size
+limit; an unsafe or over-long `url` is not refused, it is simply stored as
+null. **No event, and no question**: there is no issue to write either on,
+and a bad playbooks file is this row's own state, not a stall a session is
+asked about. `GET /api/hatch/playbook-files` answers every stored row,
+ordered by canonical then trunk, with the path itself (`.hatch/playbooks.yaml`)
+alongside them — what the Playbooks page reads once a load, and what a
+runner's poll reads once a poll to know whether it has already put this sha.
+
+The runner's poll ([below](#checking-the-branches-in-review)) reads the file
+off every checkout's trunk that has an origin, whether or not anything of its
+is in review and whether or not any project yet reads it, so a quiet board
+still has a current copy on the page.
+
 ### Comment, question and answer
 
 `EfHatchComment` — `IssueId`, `Author`, `Body` (markdown), `Kind`, `AnswersId`,
@@ -2607,6 +2666,8 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/trunk-builds` | PUT | Keeps a runner's [trunk build verdict](#trunk-build) for one repository's trunk. `{ remote, trunk, sha, verdict, failing?, runner }`; answers with what it now holds. The same refusals the build check's write takes, naming the trunk rather than the branch. No event and no question — there is no issue to write either on. `passed` lets an attached bug go |
 | `/trunk-builds` | GET | Every stored [trunk verdict](#trunk-build), ordered by canonical then trunk — what a runner's poll reads once a poll, since a trunk carries no issue for the verdict to ride in on |
 | `/trunk-builds/{id}/bug` | POST | No class-level scope, the way expedite is cut, but the method itself takes the `hatch` scope, gated at runtime rather than by the attribute, since the attribute cannot vary by project — see [the one edge that is deliberately cut](#the-one-edge-that-is-deliberately-cut). Files the bug a failing trunk's *File a bug* button asks for (HA-95), in the project that binds the repository (lowest project id first, else the lowest-id project that binds it at all) — see [what is waiting on you](#what-is-waiting-on-you). A person's own call is unchanged: expedited, no pre-approval, the board's first column, each overridable in the body. **A key's priority, pre-approval level and column come from the project instead, never from the body** — its own `AutoHealBugPriority`, `AutoHealBugPreApproval` and `AutoHealBugStatusId`, written only through the owner-only `PUT .../landing`. `409` once the row is no longer failing; `400` naming the Projects page when no project binds it, or when a key's project has auto-filing off; a second call answers the bug already filed rather than filing another |
+| `/playbook-files` | GET | Every stored [playbook file](#playbook-file), ordered by canonical then trunk, with the path itself alongside them — what the Playbooks page reads once a load, and what a runner's poll reads once a poll to know whether it has already put this sha |
+| `/playbook-files` | PUT | Keeps a runner's [playbook file](#playbook-file) for one repository's trunk. `{ remote, trunk, sha, content?, url?, runner }` — `content` the blob's exact bytes, base64-encoded, absent for a trunk with nothing at the path. Hashes and parses the content itself rather than trusting a client-sent verdict. The same refusals the trunk build's write takes, naming the trunk, plus content that is not valid base64 or over the parser's own size limit. No event and no question — there is no issue to write either on |
 | `/work/review` | GET | Every issue in the review column the caller holds a checkout of, with its bound repositories and the [merge checks](#merge-check) the board holds — what a runner's poll reads before it asks git anything. `?remote=` (repeatable) and `?standing=` as on the queue; no `clones`, because a poll clones nothing. Not narrowed by a claim, a question, a date or an assignee — see [checking the branches in review](#checking-the-branches-in-review) |
 | `/playbooks` | GET | **Reads only.** POST/PATCH/DELETE are plain `[RequireRole(User)]`. Each playbook carries `isCheck`; a person's `POST` and `PATCH` take `isCheck?` (absent is false on create and leaves it alone on patch) — see [Check](#check) |
 | `/import/preview`, `/import/preview-text`, `/import` | POST | See [the importer](#the-importer) |
@@ -5655,6 +5716,17 @@ where there were any, so a checkout with something in review costs no second
 one. It follows the same rules asking `gh` again: `passed` and `failed` are
 asked once, `pending` every interval, `none` until ten minutes after
 `ShaSince`, and a forge or a board that cannot answer is one line per checkout.
+
+**The playbook file, read the same way.** For the same reason and on the same
+schedule — once per checkout that has an origin, whether or not anything of
+its is in review, and whether or not any project yet reads the file — the
+poll reads [`.hatch/playbooks.yaml`](#playbook-file) off the trunk, reusing
+the `ls-remote` heads already taken and fetching only where the sha moved. It
+reads the blob itself through git (`origin/<trunk>:<path>`, never a file the
+worktree has checked out, whose line endings the tree may have rewritten),
+and puts it to the board with the trunk's sha, the bytes it found — or none,
+where the trunk has none — this runner's name, and the forge link `gh browse
+--no-browser` gives for the path on that trunk, where it has one.
 
 **A fresh `failed` read branches before it is ever put to the board.** Where
 the stored row's `ProjectKey` is one `runtime.Readout.Drives` says this runner

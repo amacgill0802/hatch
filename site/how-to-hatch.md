@@ -143,6 +143,30 @@ The first week with a new board is retuning playbooks from the Playbooks page
 after watching a run go badly. That is the only way anybody ever finds the
 right settings, and the page exists so it costs one edit rather than a deploy.
 
+The same rows can live in a file instead, at the root of a repository:
+`.hatch/playbooks.yaml`, one entry per row, in the same fields:
+
+```yaml
+playbooks:
+  - from: Breakdown
+    to: Backlog
+    types: [epic]        # omitted or empty means every type
+    shape: any           # any | leaf | parent; omitted means any
+    model: fable         # an alias, or a claude-... id
+    effort: max
+    budget: 5            # millions of tokens, optional
+    briefLimit: 6000     # characters, optional
+    prompt: |
+      You are turning a captured idea into an epic...
+```
+
+A runner's poll reads this file off every repository's trunk it holds a
+checkout of — whether or not anything of the repository's is in review — and
+puts what it found to the board. The Playbooks page's *Files on the trunk*
+section shows, for every repository, the commit the board read the file at
+and what it parsed there, or the one sentence saying what is wrong with it,
+before any project reads from the file itself.
+
 ## What the agent picks up
 
 Every pass the runner asks the board for the next actionable issue. The server
