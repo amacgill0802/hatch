@@ -21,6 +21,7 @@ public sealed class PollTests
     private static string Put(string key) => $"/api/hatch/issues/{key}/merge-check";
     private static string PutBuild(string key) => $"/api/hatch/issues/{key}/build-check";
     private const string TrunkBuilds = "/api/hatch/trunk-builds";
+    private const string PlaybookFiles = "/api/hatch/playbook-files";
 
     private static RemoteHeads Heads(string? trunk = null, params (string Name, string Sha)[] branches) =>
         new("main", new Dictionary<string, string>(
@@ -69,6 +70,20 @@ public sealed class PollTests
         public Rig KeepsTrunk(TrunkBuildDto held)
         {
             H.Wire.Replace("PUT", TrunkBuilds, HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(held, Fixtures.Json));
+            return this;
+        }
+
+        /// <summary>What the board says it holds for every playbook file, in place of the default current one the harness stubs.</summary>
+        public Rig StoresPlaybookFiles(params PlaybookFileDto[] rows)
+        {
+            H.Wire.Replace("GET", PlaybookFiles, HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(new PlaybookFilesDto(".hatch/playbooks.yaml", rows), Fixtures.Json));
+            return this;
+        }
+
+        /// <summary>What the board answers a playbook file put with: the row it now holds.</summary>
+        public Rig KeepsPlaybookFile(PlaybookFileDto held)
+        {
+            H.Wire.Replace("PUT", PlaybookFiles, HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(held, Fixtures.Json));
             return this;
         }
 
@@ -1119,6 +1134,113 @@ public sealed class PollTests
 
         Assert.Single(rig.H.Wire.To("PUT", Put("AER-1")));
         Assert.Contains("could not read the board's trunk builds", Assert.Single(rig.H.Say.Complained), StringComparison.Ordinal);
+    }
+
+    // ---- The playbook file (HA-459) ----
+
+    /// <summary>A checkout with an origin and nothing in review, whose playbook file the board does not hold at any sha.</summary>
+    private static Rig NoStoredPlaybookFile()
+    {
+        var rig = new Rig().Board();
+        rig.StoresPlaybookFiles();
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads();
+        return rig;
+    }
+
+    [Fact]
+    public async Task A_playbook_file_at_a_sha_the_board_does_not_hold_is_fetched_read_and_put()
+    {
+        using var rig = NoStoredPlaybookFile();
+        var bytes = "playbooks: []"u8.ToArray();
+        rig.H.Workspace.BlobsFor[(rig.H.Root, "main", ".hatch/playbooks.yaml")] = new BlobRead(BlobOutcome.Found, bytes, null);
+        rig.H.Forge.FileUrlFor[".hatch/playbooks.yaml"] = "https://example.test/repo/blob/main/.hatch/playbooks.yaml";
+        rig.KeepsPlaybookFile(Fixtures.PlaybookFile());
+
+        await rig.RunAsync();
+
+        Assert.Equal(1, rig.Count("fetch"));
+        Assert.Equal(1, rig.Count("read-blob"));
+        Assert.Contains($"read-blob {rig.H.Root} main .hatch/playbooks.yaml", rig.H.Workspace.Calls);
+
+        var put = Assert.Single(rig.H.Wire.To("PUT", PlaybookFiles)).Read<PlaybookFileRequest>();
+        Assert.Equal("https://example.test/repo.git", put.Remote);
+        Assert.Equal("main", put.Trunk);
+        Assert.Equal(Trunk, put.Sha);
+        Assert.Equal(Convert.ToBase64String(bytes), put.Content);
+        Assert.Equal("https://example.test/repo/blob/main/.hatch/playbooks.yaml", put.Url);
+        Assert.Equal("test:/checkout", put.Runner);
+    }
+
+    [Fact]
+    public async Task A_playbook_file_the_board_already_holds_at_the_trunks_sha_is_neither_fetched_nor_put()
+    {
+        using var rig = new Rig().Board();
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads();
+
+        await rig.RunAsync();
+
+        Assert.Equal(0, rig.Count("fetch"));
+        Assert.Equal(0, rig.Count("read-blob"));
+        Assert.Empty(rig.H.Wire.To("PUT", PlaybookFiles));
+    }
+
+    [Fact]
+    public async Task A_trunk_with_no_playbook_file_at_all_is_put_with_null_content()
+    {
+        using var rig = NoStoredPlaybookFile();
+        rig.H.Workspace.BlobsFor[(rig.H.Root, "main", ".hatch/playbooks.yaml")] = new BlobRead(BlobOutcome.Absent, null, null);
+        rig.H.Forge.FileUrlFor[".hatch/playbooks.yaml"] = "https://example.test/repo/blob/main/.hatch/playbooks.yaml";
+        rig.KeepsPlaybookFile(Fixtures.PlaybookFile());
+
+        await rig.RunAsync();
+
+        Assert.Null(Assert.Single(rig.H.Wire.To("PUT", PlaybookFiles)).Read<PlaybookFileRequest>().Content);
+    }
+
+    [Fact]
+    public async Task A_board_that_would_not_take_the_playbook_file_is_a_line_and_is_asked_again_next_interval()
+    {
+        using var rig = NoStoredPlaybookFile();
+        rig.H.Workspace.BlobsFor[(rig.H.Root, "main", ".hatch/playbooks.yaml")] = new BlobRead(BlobOutcome.Found, "playbooks: []"u8.ToArray(), null);
+        rig.H.Forge.FileUrlFor[".hatch/playbooks.yaml"] = "https://example.test/repo/blob/main/.hatch/playbooks.yaml";
+        rig.H.Wire.Replace("PUT", PlaybookFiles, HttpStatusCode.NotFound, "\"no route\"");
+
+        await rig.RunAsync();
+        await rig.Later().RunAsync();
+
+        Assert.Equal(2, rig.Count("fetch"));
+        Assert.Equal(2, rig.Count("read-blob"));
+        Assert.Equal(2, rig.H.Wire.To("PUT", PlaybookFiles).Count);
+        Assert.Contains("playbook file", Assert.Single(rig.H.Say.Complained), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_playbook_file_put_with_no_forge_link_has_a_null_url()
+    {
+        using var rig = NoStoredPlaybookFile();
+        rig.H.Workspace.BlobsFor[(rig.H.Root, "main", ".hatch/playbooks.yaml")] = new BlobRead(BlobOutcome.Found, "playbooks: []"u8.ToArray(), null);
+        rig.KeepsPlaybookFile(Fixtures.PlaybookFile());
+
+        await rig.RunAsync();
+
+        Assert.Null(Assert.Single(rig.H.Wire.To("PUT", PlaybookFiles)).Read<PlaybookFileRequest>().Url);
+    }
+
+    [Fact]
+    public async Task A_failed_blob_read_is_one_complaint_and_is_not_cached_as_an_answer()
+    {
+        using var rig = NoStoredPlaybookFile();
+        rig.H.Workspace.BlobsFor[(rig.H.Root, "main", ".hatch/playbooks.yaml")] = new BlobRead(BlobOutcome.Failed, null, "some git error");
+
+        await rig.RunAsync();
+
+        Assert.Empty(rig.H.Wire.To("PUT", PlaybookFiles));
+        Assert.Contains("some git error", Assert.Single(rig.H.Say.Complained), StringComparison.Ordinal);
+
+        await rig.Later().RunAsync();
+
+        Assert.Equal(2, rig.Count("fetch"));
+        Assert.Equal(2, rig.Count("read-blob"));
     }
 
     // ---- Re-running a transient trunk failure (HA-794) ----
