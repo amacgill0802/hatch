@@ -24,7 +24,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// </remarks>
 [ApiController]
 [Route("api/hatch/statuses")]
-public class StatusesController(HatchContext db, ICallerIdentity caller) : ControllerBase
+public class StatusesController(HatchContext db, ICallerIdentity caller, TimeProvider time) : ControllerBase
 {
     [HttpGet]
     [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
@@ -102,6 +102,14 @@ public class StatusesController(HatchContext db, ICallerIdentity caller) : Contr
                 return BadRequest($"\"{status.Name}\" merges the pull request - untick that before making it a done column");
             if (terminal && status.IsProtected)
                 return BadRequest($"\"{status.Name}\" is protected - untick that before making it a done column");
+
+            if (terminal != status.IsTerminal)
+            {
+                var now = time.GetUtcNow();
+                var affected = await db.Issues.Where(i => i.StatusId == id).ToListAsync(ct);
+                foreach (var i in affected) i.ClosedAt = terminal ? now : null;
+            }
+
             status.IsTerminal = terminal;
         }
 
