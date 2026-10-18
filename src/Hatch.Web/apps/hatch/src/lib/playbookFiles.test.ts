@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   absentSentence,
   boundCanonicals,
+  projectsReading,
   shortSha,
   sortedFiles,
   stateLabel,
@@ -130,5 +131,70 @@ describe('sortedFiles', () => {
     const aDevelop = file({ canonical: 'forge.example/owner/a', trunk: 'develop' });
 
     expect(sortedFiles([b, aMain, aDevelop])).toEqual([aDevelop, aMain, b]);
+  });
+});
+
+describe('projectsReading', () => {
+  const f = file({ canonical: 'forge.example/owner/repo', trunk: 'main' });
+
+  it('returns a repo-sourced project whose primary baseBranch names the file trunk', () => {
+    const p = project({
+      repoSourced: true,
+      repositories: [{ remote: 'r', canonical: f.canonical, baseBranch: 'main' }],
+    });
+
+    expect(projectsReading(f, [p], [f])).toEqual([p]);
+  });
+
+  it('excludes a project whose primary baseBranch names a different trunk', () => {
+    const p = project({
+      repoSourced: true,
+      repositories: [{ remote: 'r', canonical: f.canonical, baseBranch: 'develop' }],
+    });
+
+    expect(projectsReading(f, [p], [f])).toEqual([]);
+  });
+
+  it('returns a project with no baseBranch when it is the only loaded file for its canonical', () => {
+    const p = project({
+      repoSourced: true,
+      repositories: [{ remote: 'r', canonical: f.canonical, baseBranch: null }],
+    });
+
+    expect(projectsReading(f, [p], [f])).toEqual([p]);
+  });
+
+  it('excludes a project with no baseBranch when two loaded files share its canonical', () => {
+    const other = file({ canonical: f.canonical, trunk: 'develop' });
+    const p = project({
+      repoSourced: true,
+      repositories: [{ remote: 'r', canonical: f.canonical, baseBranch: null }],
+    });
+
+    expect(projectsReading(f, [p], [f, other])).toEqual([]);
+  });
+
+  it('excludes a project that is not repo-sourced, regardless of its repositories', () => {
+    const p = project({
+      repoSourced: false,
+      repositories: [{ remote: 'r', canonical: f.canonical, baseBranch: 'main' }],
+    });
+
+    expect(projectsReading(f, [p], [f])).toEqual([]);
+  });
+
+  it('excludes a repo-sourced project with no repositories', () => {
+    const p = project({ repoSourced: true, repositories: [] });
+
+    expect(projectsReading(f, [p], [f])).toEqual([]);
+  });
+
+  it('excludes a project whose primary canonical does not match the file at all', () => {
+    const p = project({
+      repoSourced: true,
+      repositories: [{ remote: 'r', canonical: 'forge.example/owner/other', baseBranch: 'main' }],
+    });
+
+    expect(projectsReading(f, [p], [f])).toEqual([]);
   });
 });

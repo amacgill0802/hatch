@@ -8,7 +8,15 @@ import { TypeBadge } from '../components/TypeBadge';
 import { agoPhrase } from '../lib/claim';
 import { message } from '../lib/errors';
 import { isReviewPlaybook, isUncheckedEdit, matchesProjectFilter, transitionLabel } from '../lib/playbooks';
-import { absentSentence, boundCanonicals, shortSha, sortedFiles, stateLabel, visibleFiles } from '../lib/playbookFiles';
+import {
+  absentSentence,
+  boundCanonicals,
+  projectsReading,
+  shortSha,
+  sortedFiles,
+  stateLabel,
+  visibleFiles,
+} from '../lib/playbookFiles';
 import { pullRequestWords } from '../lib/pullRequest';
 import { useLoaded } from '../lib/useLoaded';
 import { hasMultipleProjects, useProjects } from '../lib/useProjects';
@@ -119,54 +127,61 @@ export function PlaybooksPage() {
         <EmptyState message="No .hatch/playbooks.yaml read yet - a runner's poll puts one here, at the root of a trunk some project's repository points at." />
       )}
 
-      {visibleFileList?.map((f) => (
-        <Card key={`${f.canonical}:${f.trunk}`}>
-          <div className="hatch-playbook-file-head">
-            <strong>{f.canonical}</strong>
-            <Text tone="muted" as="span">{f.trunk}</Text>
-            <code>{shortSha(f.sha)}</code>
-            <Badge tone={f.state === 'invalid' ? 'danger' : 'muted'}>{stateLabel(f.state)}</Badge>
-            <Text tone="muted" as="span">
-              read {agoPhrase(f.checkedAt, now)} by {f.runner}
-            </Text>
-            {f.url !== null && (
-              <a className="hatch-chip hatch-chip-link" href={f.url} target="_blank" rel="noreferrer noopener">
-                <span className="hatch-chip-kind">File</span>
-                {pullRequestWords(f.url)}
-              </a>
+      {visibleFileList?.map((f) => {
+        const readers = projectsReading(f, projects, files?.files ?? []);
+        return (
+          <Card key={`${f.canonical}:${f.trunk}`}>
+            <div className="hatch-playbook-file-head">
+              <strong>{f.canonical}</strong>
+              <Text tone="muted" as="span">{f.trunk}</Text>
+              <code>{shortSha(f.sha)}</code>
+              <Badge tone={f.state === 'invalid' ? 'danger' : 'muted'}>{stateLabel(f.state)}</Badge>
+              <Text tone="muted" as="span">
+                read {agoPhrase(f.checkedAt, now)} by {f.runner}
+              </Text>
+              {f.url !== null && (
+                <a className="hatch-chip hatch-chip-link" href={f.url} target="_blank" rel="noreferrer noopener">
+                  <span className="hatch-chip-kind">File</span>
+                  {pullRequestWords(f.url)}
+                </a>
+              )}
+            </div>
+
+            {f.state === 'parsed' && (
+              <Table>
+                <thead>
+                  <tr>
+                    <th>Transition</th>
+                    <th>Types</th>
+                    <th>Model</th>
+                    <th>Effort</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {f.rows.map((row, i) => (
+                    <PlaybookFileRowLine key={`${transitionLabel(row)}-${i}`} row={row} statuses={statuses ?? []} />
+                  ))}
+                </tbody>
+              </Table>
             )}
-          </div>
 
-          {f.state === 'parsed' && (
-            <Table>
-              <thead>
-                <tr>
-                  <th>Transition</th>
-                  <th>Types</th>
-                  <th>Model</th>
-                  <th>Effort</th>
-                </tr>
-              </thead>
-              <tbody>
-                {f.rows.map((row, i) => (
-                  <PlaybookFileRowLine key={`${transitionLabel(row)}-${i}`} row={row} statuses={statuses ?? []} />
-                ))}
-              </tbody>
-            </Table>
-          )}
+            {f.state === 'invalid' && (
+              <p>
+                {f.problem}
+                {f.lastGoodSha !== null && <> — last good sha {shortSha(f.lastGoodSha)}</>}
+              </p>
+            )}
 
-          {f.state === 'invalid' && (
-            <p>
-              {f.problem}
-              {f.lastGoodSha !== null && <> — last good sha {shortSha(f.lastGoodSha)}</>}
-            </p>
-          )}
+            {f.state === 'absent' && <p>{absentSentence(f.trunk)}</p>}
 
-          {f.state === 'absent' && <p>{absentSentence(f.trunk)}</p>}
-
-          <Text tone="muted" as="p">no project reads this file yet</Text>
-        </Card>
-      ))}
+            {readers.length > 0 ? (
+              <Text tone="muted" as="p">{`read by ${readers.map((p) => p.key).join(', ')}`}</Text>
+            ) : (
+              <Text tone="muted" as="p">no project reads this file yet</Text>
+            )}
+          </Card>
+        );
+      })}
 
       <PlaybookEditDialog
         open={creating || editing !== null}
