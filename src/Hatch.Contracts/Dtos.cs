@@ -2146,7 +2146,11 @@ public record WorkLogEntryRequest(
     IReadOnlyList<WorkLogModelUseDto>? Models,
     int? Requests = null,
     long? PeakContextTokens = null,
-    int? PromptChars = null);
+    int? PromptChars = null,
+    string? PlaybookSource = null,
+    string? PlaybookFileTrunk = null,
+    string? PlaybookFileSha = null,
+    string? PlaybookFileHash = null);
 
 /// <summary>
 /// One row of the work log, as the issue page draws it.
@@ -2180,7 +2184,11 @@ public record WorkLogEntryDto(
     IReadOnlyList<WorkLogModelUseDto> Models,
     int? Requests,
     long? PeakContextTokens,
-    int? PromptChars);
+    int? PromptChars,
+    string? PlaybookSource,
+    string? PlaybookFileTrunk,
+    string? PlaybookFileSha,
+    string? PlaybookFileHash);
 
 /// <summary>
 /// What a set of sessions cost, added up. See <see cref="WorkLogRollup"/> for

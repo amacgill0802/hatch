@@ -119,6 +119,10 @@ public class IssueWorkLogController(HatchContext db, TimeProvider time, ICallerI
         entry.Requests = request.Requests;
         entry.PeakContextTokens = request.PeakContextTokens;
         entry.PromptChars = request.PromptChars;
+        entry.PlaybookSource = request.PlaybookSource;
+        entry.PlaybookFileTrunk = request.PlaybookFileTrunk;
+        entry.PlaybookFileSha = request.PlaybookFileSha;
+        entry.PlaybookFileHash = request.PlaybookFileHash;
 
         await db.SaveChangesAsync(ct);
 
@@ -210,7 +214,11 @@ public class IssueWorkLogController(HatchContext db, TimeProvider time, ICallerI
         ReadModels(w.ModelUsage),
         w.Requests,
         w.PeakContextTokens,
-        w.PromptChars);
+        w.PromptChars,
+        w.PlaybookSource,
+        w.PlaybookFileTrunk,
+        w.PlaybookFileSha,
+        w.PlaybookFileHash);
 
     /// <summary>What goes in the column, or null when the run reported no models at all.</summary>
     private static string? WriteModels(IReadOnlyList<WorkLogModelUseDto> models) =>
