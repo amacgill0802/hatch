@@ -307,5 +307,6 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
         p.UpdatedAt,
         p.ProjectId,
         p.Project?.Key,
-        p.Project?.Name);
+        p.Project?.Name,
+        p.ProjectId is not null ? "project" : "board");
 }
