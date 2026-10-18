@@ -7,10 +7,18 @@ import { StatusPill } from '../components/StatusPill';
 import { TypeBadge } from '../components/TypeBadge';
 import { agoPhrase } from '../lib/claim';
 import { message } from '../lib/errors';
-import { isReviewPlaybook, isUncheckedEdit, matchesProjectFilter, transitionLabel } from '../lib/playbooks';
+import {
+  fileRowLabel,
+  isReviewPlaybook,
+  isUncheckedEdit,
+  matchesProjectFilter,
+  shadowedByFile,
+  transitionLabel,
+} from '../lib/playbooks';
 import {
   absentSentence,
   boundCanonicals,
+  fileForProject,
   projectsReading,
   shortSha,
   sortedFiles,
@@ -59,6 +67,9 @@ export function PlaybooksPage() {
   }
 
   const visible = playbooks?.filter((p) => matchesProjectFilter(p, projectFilter));
+  const filteredProject = projectFilter ? projects.find((p) => p.key === projectFilter) ?? null : null;
+  const activeFile =
+    filteredProject?.repoSourced && files ? fileForProject(filteredProject, files.files) : null;
 
   return (
     <div className="hatch-page">
@@ -88,11 +99,11 @@ export function PlaybooksPage() {
 
       {error && <p className="text-danger">{error}</p>}
 
-      {playbooks?.length === 0 && (
+      {playbooks?.length === 0 && (activeFile?.rows.length ?? 0) === 0 && (
         <EmptyState message="No playbooks yet. Without one, a transition dispatches nothing at all - hatch.sh work says so rather than guessing." />
       )}
 
-      {playbooks && playbooks.length > 0 && (
+      {playbooks && (playbooks.length > 0 || (activeFile?.rows.length ?? 0) > 0) && (
         <Card flush>
           <Table>
             <thead>
@@ -106,12 +117,21 @@ export function PlaybooksPage() {
               </tr>
             </thead>
             <tbody>
+              {activeFile?.rows.map((row, i) => (
+                <PlaybookFileRowLine
+                  key={`${transitionLabel(row)}-${i}`}
+                  row={row}
+                  statuses={statuses ?? []}
+                  label={fileRowLabel(activeFile)}
+                />
+              ))}
               {visible?.map((playbook) => (
                 <PlaybookRow
                   key={playbook.id}
                   playbook={playbook}
                   projects={projects}
                   statuses={statuses ?? []}
+                  shadowed={activeFile ? shadowedByFile(playbook, activeFile.rows) : false}
                   onEdit={() => setEditing(playbook)}
                   onDelete={() => void act(() => deletePlaybook(playbook.id))}
                 />
