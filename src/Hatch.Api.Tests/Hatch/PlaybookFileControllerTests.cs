@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text;
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
@@ -39,10 +40,10 @@ public class PlaybookFileControllerTests
               You are turning a captured idea into an epic...
         """;
 
-    private const string GoodHash = "1cb99df7ba48385abe1d3d220131036b879628660316db015832a60ac4567379";
-
     private static readonly string Good = Content(GoodYaml);
     private static readonly string Bad = Content("foo: bar");
+
+    private static readonly string GoodHash = Convert.ToHexStringLower(SHA256.HashData(Convert.FromBase64String(Good)));
 
     // ---- The gate ----
 
