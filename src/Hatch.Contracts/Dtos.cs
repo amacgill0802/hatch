@@ -22,13 +22,17 @@ namespace Hatch.Contracts;
 /// <param name="AutoHealBugPriority">The priority a trunk-failure bug is filed at - see <see cref="PriorityLevels"/>.</param>
 /// <param name="AutoHealBugPreApproval">The pre-approval level a trunk-failure bug is born at - see <see cref="PreApprovalLevels"/>.</param>
 /// <param name="AutoHealBugStatusId">The column a trunk-failure bug is born in, or null to track the column that feeds implementation - see <see cref="EfHatchProject.AutoHealBugStatusId"/>.</param>
+/// <param name="RepoSourced">Whether this project's playbooks are sourced from its repository rather than written on the board - see <see cref="EfHatchProject.RepoSourced"/>. Off by default.</param>
+/// <param name="RepoSourcedBy">Who last set <paramref name="RepoSourced"/>, or null until the first write - see <see cref="EfHatchProject.RepoSourcedBy"/>.</param>
+/// <param name="RepoSourcedAt">When <paramref name="RepoSourced"/> was last set, or null until the first write - see <see cref="EfHatchProject.RepoSourcedAt"/>.</param>
 public record ProjectDto(
     int Id, string Key, string Name, int IssueCount, DateTimeOffset CreatedAt, string? Color, string? Icon,
     IReadOnlyList<ProjectRepositoryDto> Repositories, DateTimeOffset? LogoUpdatedAt,
     IReadOnlyList<ProjectMemberDto> Members, bool CanApprove, bool CanAdminister,
     string Landing = Landings.PullRequest, bool ChecksRequired = true, bool OnePullRequest = false,
     string AutoHealBugPriority = PriorityLevels.EmergencyName, string AutoHealBugPreApproval = PreApprovalLevels.ExpressName,
-    bool AutoHealBugEnabled = false, int? AutoHealBugStatusId = null);
+    bool AutoHealBugEnabled = false, int? AutoHealBugStatusId = null,
+    bool RepoSourced = false, string? RepoSourcedBy = null, DateTimeOffset? RepoSourcedAt = null);
 
 /// <summary>A stored image, as the markdown that shows it will name it: <c>/api/hatch/images/{id}</c>.</summary>
 public record ImageDto(Guid Id);
@@ -85,6 +89,9 @@ public record ProjectLandingWriteRequest(
     string? Landing, bool? ChecksRequired, bool? OnePullRequest = null,
     bool? AutoHealBugEnabled = null, string? AutoHealBugPriority = null,
     string? AutoHealBugPreApproval = null, string? AutoHealBugStatusId = null);
+
+/// <summary>A write to a project's playbook source - see <see cref="EfHatchProject.RepoSourced"/>.</summary>
+public record ProjectRepoSourcedWriteRequest(bool RepoSourced);
 
 // ---- Statuses ----
 
