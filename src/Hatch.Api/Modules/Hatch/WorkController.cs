@@ -456,7 +456,7 @@ public class WorkController(
         var family = await FamilyGate.ForAsync(db, statuses, ct);
         var playbook = to is null
             ? null
-            : await _dispatch.MatchAsync(from.Id, to.Id, issue.Type, family.Children(issue.Id).Count > 0, issue.ProjectId, ct);
+            : (await _dispatch.MatchAsync(from.Id, to.Id, issue.Type, family.Children(issue.Id).Count > 0, issue.ProjectId, ct))?.Playbook;
         var questions = await Questions.ForIssueAsync(db, issue.Id, ct);
         var waiting = questions.Count(q => q.Answers.Count == 0);
 
@@ -1111,7 +1111,7 @@ public class WorkController(
 
         var playbook = to is null
             ? null
-            : await _dispatch.MatchAsync(from.Id, to.Id, issue.Type, children.Count > 0, issue.ProjectId, ct);
+            : (await _dispatch.MatchAsync(from.Id, to.Id, issue.Type, children.Count > 0, issue.ProjectId, ct))?.Playbook;
 
         // Both halves in one read: the open ones decide whether an agent is
         // dispatched at all, and the answered ones are what it is dispatched

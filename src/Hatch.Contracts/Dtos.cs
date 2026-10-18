@@ -1338,6 +1338,11 @@ public static class ClaudeTools
 /// <param name="Types">Empty means every type.</param>
 /// <param name="Shape">One of "any", "leaf" or "parent" - whether the issue's children are consulted.</param>
 /// <param name="DeniedTools">Empty means every tool.</param>
+/// <param name="Source">
+/// Which layer the row that matched came from: <c>"board"</c>, <c>"project"</c>
+/// (today's own-project-row case) or <c>"file"</c>, a row read off a repo-sourced
+/// project's own <c>.hatch/playbooks.yaml</c> copy.
+/// </param>
 public record PlaybookDto(
     int Id,
     int FromStatusId,
@@ -1356,7 +1361,15 @@ public record PlaybookDto(
     DateTimeOffset UpdatedAt,
     int? ProjectId,
     string? ProjectKey,
-    string? ProjectName);
+    string? ProjectName,
+    string Source = "board");
+
+/// <summary>
+/// The repo copy a dispatch was judged against - <see cref="Path"/> is always
+/// <c>.hatch/playbooks.yaml</c>, carried for a client with no access to that
+/// constant - whenever the project is repo-sourced and a copy was found.
+/// </summary>
+public record PlaybookFileReferenceDto(string Path, string Canonical, string Trunk, string Sha, string Hash);
 
 /// <summary>
 /// How many millions of tokens this row budgets. Null means no budget (on
@@ -1670,6 +1683,13 @@ public record IssueDependencyRequest(string DependsOnKey);
 /// or not a check's verdict actually failed: it names a column that exists
 /// regardless of playbook or history. Null on a client too old to read it.
 /// </param>
+/// <param name="PlaybookFile">
+/// The repo copy the dispatch was judged against - set whenever the project
+/// is repo-sourced and a copy was found, including when <see cref="Playbook"/>'s
+/// own <c>Source</c> comes back <c>"board"</c> because the file had no row
+/// for this transition. Null for a project that is not repo-sourced, or for
+/// one where no good copy was found at all.
+/// </param>
 public record WorkDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -1695,7 +1715,8 @@ public record WorkDto(
     string? BranchKey = null,
     string? BranchTitle = null,
     string? LastCheckFindings = null,
-    string? FailStatusName = null);
+    string? FailStatusName = null,
+    PlaybookFileReferenceDto? PlaybookFile = null);
 
 /// <summary>
 /// The two numbers a send-back for an over-long brief carried, and whether
