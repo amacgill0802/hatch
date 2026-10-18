@@ -3499,16 +3499,24 @@ missing configuration:
     for it, or because no runner has checked yet. See [the review
     dispatch](#the-issue-in-review-whose-branch-conflicts-or-whose-build-failed-is-dispatched-to-review).
 
-…and then, if none of those, one last check before the ordinary refusal: is
+…and then, before the hop is even asked: a story, bug or task standing left
+of the implementation column, whose own direct parent has not itself
+reached it, stops where it stands — folded with "its parent has not reached
+the implementation column, so nothing pulls it forward yet", whatever column
+it stands in, not only one marked `ParentPulls`. Asked above the hop, so the
+hold beats one: an express issue in a column marked `ExpressSkips`, and a
+story under an epic that has not itself reached the implementation column,
+are both folded here rather than carried.
+
+Only past that hold is there one last check before the ordinary refusal: is
 this a [hop](#the-hop)? [The hop](#the-hop) names seven kinds, asked in that
-order, and this is where any of them is caught. Two fold instead of landing
+order, and this is where any of them is caught. One folds instead of landing
 exactly: an epic that clears every other test but has nothing filed under it
 is folded with "nothing is filed under it — an epic runs its stories, and it
-has none"; a parent-pull child whose column is marked but one of its own two
-conditions is not yet met is folded with a sentence naming which one — "its
-parent has not reached the implementation column, so nothing pulls it
-forward yet", or "a sibling is already in flight, so only one child is
-pulled through at a time". Every refusal above this one still applies to
+has none". A parent-pull child past the hold above can now only ever be
+folded by the other of `FamilyGate.Pulls`'s two conditions — a sibling
+already in flight — with "a sibling is already in flight, so only one child
+is pulled through at a time". Every refusal above this one still applies to
 every kind of hop
 exactly as it applies to any other issue: a hop answers only "does this
 column still need a session", and nothing about a live claim, a pause, a
@@ -3555,10 +3563,10 @@ order:
    it is never a hop either: it is folded instead, with *"nothing is filed
    under it — an epic runs its stories, and it has none"*.
 3. **under** — a story or bug standing in a column marked `ExpressSkips`,
-   whose parent is an epic standing inside the WIP section — in [To
-   Do](#status), in [In Progress](#status), in review, wherever the section
-   reaches. "Inside the section" is measured off the flagged columns, never
-   off a column's name, so an epic sitting in the review column still counts.
+   whose parent is an epic at or past the implementation column — in [In
+   Progress](#status), in review, wherever it stands once it has reached
+   that column. Measured off the implementation landmark, never off a
+   column's name, so an epic sitting in the review column still counts.
 4. **parent** — a child standing in a column marked [`ParentPulls`](#status),
    whose parent has reached the implementation column — stands in it, or in
    any column to its right, a terminal column included; a deferred column
@@ -4931,21 +4939,33 @@ which one it failed is what `work/queue` reports:
     refinement is its own fold rather than a
     fall-through to the seventeenth condition: "nothing is filed under it — an
     epic runs its stories, and it has none". A story or bug standing in a
-    column marked `ExpressSkips`, whose parent is an epic standing inside the
-    WIP section, is a third kind: the epic's own pull reaching the work filed
-    under it, one card a pass, rightmost first — see [the hop](#the-hop) and
-    [running an epic](#running-an-epic).
+    column marked `ExpressSkips`, whose parent is an epic at or past the
+    implementation column, is a third kind: the epic's own pull reaching the
+    work filed under it, one card a pass, rightmost first — see [the
+    hop](#the-hop) and [running an epic](#running-an-epic).
+
+    Before any of the seven kinds is even asked, a story, bug or task
+    standing left of the implementation column stops where it stands until
+    its own direct parent reaches it — whatever column it stands in, not only
+    one marked `ParentPulls`: "its parent has not reached the implementation
+    column, so nothing pulls it forward yet". Asked above the hop, so the
+    hold beats one: an express issue in a column marked `ExpressSkips`, and a
+    story under an epic that has not itself reached the implementation
+    column, are both folded here rather than carried. It never speaks for a
+    top-level issue, a child already standing at or past the implementation
+    column, or a review self-move.
 
     A child standing in a column marked [`ParentPulls`](#status) is a fourth
     kind of hop, for a different reason again: its parent has reached the
     implementation column (see [the hop](#the-hop)), and none of its siblings
     is standing further along, in board order, than the column this issue
-    would be pulled into. Where the column is so marked but one of those two
-    is not yet true, the refinement is its own two-sentence fold rather than a
+    would be pulled into. Where the column is so marked but a sibling is
+    already in flight, the refinement is its own fold rather than a
     fall-through to the seventeenth condition's "no playbook covers this":
-    "its parent has not reached the implementation column, so nothing pulls
-    it forward yet", or "a sibling is already in flight, so only one child is
-    pulled through at a time".
+    "a sibling is already in flight, so only one child is pulled through at a
+    time" — the only one of `FamilyGate.Pulls`'s two conditions this fold can
+    still be naming, since the hold above has already spoken for a parent
+    that has not started.
 
     A childless issue whose brief is longer than its matched playbook's own
     `BriefLimit` is a fifth kind of hop, where `Columns.SendBack` — the
