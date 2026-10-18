@@ -5734,10 +5734,13 @@ the pass, on an idle board and a busy one alike, the loop:
    check, and builds a **fingerprint** for each: the trunk's sha and every
    branch the key claims, name and sha, sorted;
 3. **fetches only where a fingerprint changed** — once per checkout however many
-   of its issues moved — and then asks `git merge-tree` for each moved issue and
-   puts the verdict to the board. The tree is never touched: `ls-remote` and
-   `fetch` move no branch a worktree stands on, and `merge-tree --write-tree`
-   writes objects only.
+   of its issues moved — and then asks `git merge-tree` for each moved issue,
+   also diffing the same two shas at the path the board named for the
+   repository (`git diff --name-only`), where it named one, and puts the
+   verdict — merge-tree's and the diff's together — to the board. The tree is
+   never touched: `ls-remote` and `fetch` move no branch a worktree stands on,
+   and `merge-tree --write-tree` and `diff --name-only` read and write objects
+   only.
 
 **Why it asks `ls-remote` first.** An idle loop that fetched every interval all
 night against a remote with nothing to say is the thing
