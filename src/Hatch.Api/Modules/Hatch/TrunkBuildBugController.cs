@@ -50,16 +50,8 @@ public class TrunkBuildBugController(
             || (row.Verdict == BuildVerdicts.Pending && row.Failing != null);
         if (!failing) return Conflict("this trunk is not failing any more");
 
-        // The project that binds the repository: the one that names it
-        // primary, lowest project id first: else the lowest-id project that
-        // binds it at all.
-        var projectId = await db.ProjectRepositories.AsNoTracking()
-            .Where(r => r.Canonical == row.Canonical)
-            .OrderBy(r => r.SortOrder == 0 ? 0 : 1)
-            .ThenBy(r => r.ProjectId)
-            .Select(r => (int?)r.ProjectId)
-            .FirstOrDefaultAsync(ct);
-        if (projectId is not { } project)
+        var winner = await ProjectRepositoryBinding.WinnerAsync(db, row.Canonical, ct);
+        if (winner is not { Id: var project })
             return BadRequest($"no project binds {row.Canonical} - bind it on the Projects page");
 
         var priority = PriorityLevels.Expedited;
