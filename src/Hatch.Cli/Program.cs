@@ -186,10 +186,12 @@ try
             return 1;
         }
 
+        var adapter = new ClaudeAdapter(settings.ClaudeBin, warn: say.Complain);
         var runtime = new Runtime(
             Settings: settings,
             Board: board,
             Sessions: sessions,
+            Adapter: adapter,
             Say: say,
             Root: primaryRoot,
             RunnerName: runnerName,

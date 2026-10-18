@@ -554,6 +554,7 @@ public sealed class Harness : IDisposable
             Settings: settings,
             Board: new Board(_client),
             Sessions: Sessions,
+            Adapter: new ClaudeAdapter(),
             Say: Say,
             Root: Root,
             RunnerName: "test:/checkout",
