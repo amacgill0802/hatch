@@ -183,6 +183,9 @@ public sealed class FakeWorkspace
     /// <summary>What <c>DiffStat</c> answers, per checkout - null unless a test says.</summary>
     public Dictionary<string, string?> DiffStatFor { get; } = [];
 
+    /// <summary>What <c>ReadBlob</c> answers, per checkout/trunk/path - absent unless a test says.</summary>
+    public Dictionary<(string Path, string Trunk, string BlobPath), BlobRead> BlobsFor { get; } = [];
+
     /// <summary>What <c>TreeUnchanged</c> answers, for every checkout - clean unless a test says otherwise.</summary>
     public bool TreeUnchangedAnswer { get; set; } = true;
 
@@ -287,6 +290,12 @@ public sealed class FakeWorkspace
         {
             owner.Calls.Add($"tree-unchanged {path}");
             return owner.TreeUnchangedAnswer;
+        }
+
+        public BlobRead ReadBlob(string trunk, string blobPath)
+        {
+            owner.Calls.Add($"read-blob {path} {trunk} {blobPath}");
+            return owner.BlobsFor.GetValueOrDefault((path, trunk, blobPath), new BlobRead(BlobOutcome.Absent, null, null));
         }
 
         private BranchEntry Answer(string key, string title, bool trunkLanding) =>
