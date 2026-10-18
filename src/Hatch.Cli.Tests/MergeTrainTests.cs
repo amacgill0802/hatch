@@ -97,6 +97,21 @@ public sealed class MergeTrainTests
         Assert.Contains("hatch: AER-1 pull request merged -> Done", rig.H.Say.Said);
     }
 
+    [Fact]
+    public async Task A_merged_pull_request_advances_the_issue_on_state_alone_with_no_verdict_held_and_no_branch_left()
+    {
+        using var rig = new Rig().Board(Fixtures.Review("AER-1", pullRequestUrl: PrUrl));
+        rig.H.Forge.PullRequestAnswer = new(PullRequestStates.Merged, null);
+        rig.H.Wire.Json("POST", Merged("AER-1"), Fixtures.Issue("AER-1") with { StatusId = 4 });
+        rig.H.Wire.Json("GET", Statuses, new[] { Fixtures.Status(4, "Done") });
+
+        await rig.RunAsync();
+
+        Assert.Equal(PrUrl, Assert.Single(rig.H.Wire.To("POST", Merged("AER-1"))).Read<PullRequestMergedRequest>().Url);
+        Assert.Contains("hatch: AER-1 pull request merged -> Done", rig.H.Say.Said);
+        Assert.Empty(rig.H.Workspace.Calls);
+    }
+
     [Theory]
     [InlineData(PullRequestStates.Open)]
     [InlineData(PullRequestStates.Closed)]
