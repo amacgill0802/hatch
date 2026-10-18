@@ -369,6 +369,15 @@ public sealed class FakeForge
     /// <summary>What a re-run of one job id answers.</summary>
     public Dictionary<long, RerunAnswer> RerunFor { get; } = [];
 
+    /// <summary>Every file link asked for, as the path, the file and the trunk, in order.</summary>
+    public List<(string Path, string FilePath, string Trunk)> FileUrlCalls { get; } = [];
+
+    /// <summary>What every file link answers, unless <see cref="FileUrlFor"/> says otherwise. Null is no link.</summary>
+    public string? FileUrl { get; set; }
+
+    /// <summary>What the link for one file path answers.</summary>
+    public Dictionary<string, string?> FileUrlFor { get; } = [];
+
     public IForge For(string path, string? canonical)
     {
         Canonicals.Add(canonical);
@@ -414,6 +423,12 @@ public sealed class FakeForge
             return Task.FromResult(check.JobId is { } job
                 ? owner.RerunFor.GetValueOrDefault(job, owner.RerunAnswer)
                 : owner.RerunAnswer);
+        }
+
+        public Task<string?> FileUrlAsync(string filePath, string trunk, CancellationToken ct)
+        {
+            owner.FileUrlCalls.Add((path, filePath, trunk));
+            return Task.FromResult(owner.FileUrlFor.GetValueOrDefault(filePath, owner.FileUrl));
         }
     }
 }

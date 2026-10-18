@@ -722,4 +722,65 @@ public sealed class ForgeTests
         Assert.Null(answer.MergeState);
         Assert.Null(answer.ReviewDecision);
     }
+
+    // ---- FileUrlAsync ----
+
+    [Fact]
+    public async Task The_browse_link_is_asked_for_with_the_repository_and_no_host()
+    {
+        var runs = new Runs
+        {
+            Answer = _ => new GhForge.Ran(0, "https://forge.example/owner/repo/blob/main/playbooks/x.md\n", ""),
+        };
+
+        var url = await runs.Forge().FileUrlAsync("playbooks/x.md", "main", default);
+
+        Assert.Equal("https://forge.example/owner/repo/blob/main/playbooks/x.md", url);
+        var call = Assert.Single(runs.Calls);
+        Assert.Equal(["browse", "--no-browser", "playbooks/x.md", "-b", "main"], call.Args);
+        Assert.Equal("/checkout", call.Dir);
+        Assert.Equal("forge.example/owner/repo", call.Env["GH_REPO"]);
+        Assert.Equal("1", call.Env["GH_PROMPT_DISABLED"]);
+        Assert.Equal("1", call.Env["NO_COLOR"]);
+        Assert.DoesNotContain("--hostname", call.Args);
+    }
+
+    [Fact]
+    public async Task A_project_that_binds_nothing_asks_for_the_browse_link_with_no_repository()
+    {
+        var runs = new Runs { Answer = _ => new GhForge.Ran(0, "https://forge.example/o/r/blob/main/x.md\n", "") };
+
+        await runs.Forge(canonical: null).FileUrlAsync("x.md", "main", default);
+
+        var call = Assert.Single(runs.Calls);
+        Assert.Equal(["browse", "--no-browser", "x.md", "-b", "main"], call.Args);
+        Assert.DoesNotContain("GH_REPO", call.Env.Keys);
+    }
+
+    [Theory]
+    [InlineData(1, "boom")]
+    [InlineData(-1, "")]
+    public async Task A_browse_link_that_gh_refuses_is_null(int code, string err)
+    {
+        var runs = new Runs { Answer = _ => new GhForge.Ran(code, "", err) };
+
+        Assert.Null(await runs.Forge().FileUrlAsync("playbooks/x.md", "main", default));
+    }
+
+    [Fact]
+    public async Task A_browse_link_for_a_local_path_makes_no_call()
+    {
+        var runs = new Runs();
+
+        Assert.Null(await runs.Forge(canonical: "/srv/git/repo.git").FileUrlAsync("playbooks/x.md", "main", default));
+        Assert.Empty(runs.Calls);
+    }
+
+    [Fact]
+    public async Task A_browse_link_with_no_output_is_null()
+    {
+        var runs = new Runs { Answer = _ => new GhForge.Ran(0, "\n", "") };
+
+        Assert.Null(await runs.Forge().FileUrlAsync("playbooks/x.md", "main", default));
+    }
 }

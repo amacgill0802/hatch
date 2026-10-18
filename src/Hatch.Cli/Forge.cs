@@ -101,6 +101,13 @@ public interface IForge
 
     /// <summary>Re-runs the job behind <paramref name="check"/>, provided it has one - see <see cref="FailingCheck.JobId"/>.</summary>
     Task<RerunAnswer> RerunAsync(FailingCheck check, CancellationToken ct);
+
+    /// <summary>
+    /// The forge's own page for <paramref name="filePath"/> on <paramref name="trunk"/>, or null where there is
+    /// none to give - no <c>gh</c>, not signed in, a local-path repository, or a refusal. A missing link is
+    /// never a failure and is never complained about.
+    /// </summary>
+    Task<string?> FileUrlAsync(string filePath, string trunk, CancellationToken ct);
 }
 
 /// <summary>
@@ -123,7 +130,8 @@ public interface IForge
 /// read from a same-named repository on the default host, and the verdict would
 /// be wrong without saying so. This hands <c>gh</c> an argument taken from the
 /// board's own canonical; it names and inspects no host. <c>gh run view</c> does
-/// honour the host, and is given none.</para>
+/// honour the host, and is given none - and so does <c>gh browse</c>, which has no
+/// <c>--hostname</c> flag at all.</para>
 ///
 /// <para>The binary is trimmed, so what <c>gh</c> prints is read with
 /// <see cref="JsonDocument"/> and not by reflection.</para>
@@ -254,6 +262,15 @@ public sealed class GhForge(
 
         var ran = await _run(path, Env(), ["run", "rerun", "--job", job.ToString()], ct);
         return ran.Code == 0 ? new RerunAnswer(RerunOutcomes.Reran, null) : new RerunAnswer(null, Why(ran));
+    }
+
+    public async Task<string?> FileUrlAsync(string filePath, string trunk, CancellationToken ct)
+    {
+        // A local path has no host, and nothing to ask a forge about.
+        if (canonical is { } c && (c.StartsWith('/') || c.StartsWith('.'))) return null;
+
+        var ran = await _run(path, Env(), ["browse", "--no-browser", filePath, "-b", trunk], ct);
+        return ran.Code == 0 && ran.Out.Trim() is { Length: > 0 } url ? url : null;
     }
 
     /// <summary>One of <see cref="PullRequestStates"/>, matched case-insensitively against what <c>gh</c> prints (<c>OPEN</c>, <c>CLOSED</c>, <c>MERGED</c>).</summary>
