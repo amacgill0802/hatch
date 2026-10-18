@@ -56,6 +56,18 @@ public static class UpdateOutcomes
 /// <param name="Why">One line, for a sentence. Null where <paramref name="Outcome"/> is <see cref="UpdateOutcomes.Updated"/>.</param>
 public sealed record UpdateAnswer(string? Outcome, string? Why);
 
+/// <summary>One of <see cref="RerunOutcomes"/>, or the reason no outcome was reached - see <see cref="RerunAnswer"/>.</summary>
+public static class RerunOutcomes
+{
+    /// <summary>The job was queued to run again.</summary>
+    public const string Reran = "reran";
+}
+
+/// <summary>What a forge answered about a re-run attempt: that it started, or why not - see <see cref="RerunOutcomes"/>.</summary>
+/// <param name="Outcome">One of <see cref="RerunOutcomes"/>, or null where it was not reached.</param>
+/// <param name="Why">One line, for a sentence. Null where <paramref name="Outcome"/> is <see cref="RerunOutcomes.Reran"/>.</param>
+public sealed record RerunAnswer(string? Outcome, string? Why);
+
 /// <summary>
 /// Where a runner reads the build on a branch's tip from. A seam so a test can
 /// say what the build came to without a forge to ask.
@@ -86,6 +98,9 @@ public interface IForge
     /// <paramref name="sha"/>.
     /// </summary>
     Task<UpdateAnswer> UpdateAsync(long number, string sha, CancellationToken ct);
+
+    /// <summary>Re-runs the job behind <paramref name="check"/>, provided it has one - see <see cref="FailingCheck.JobId"/>.</summary>
+    Task<RerunAnswer> RerunAsync(FailingCheck check, CancellationToken ct);
 }
 
 /// <summary>
@@ -229,6 +244,16 @@ public sealed class GhForge(
         return why.Contains("merge conflict between base and head", StringComparison.Ordinal)
             ? new UpdateAnswer(UpdateOutcomes.Conflicted, why)
             : new UpdateAnswer(null, why);
+    }
+
+    public async Task<RerunAnswer> RerunAsync(FailingCheck check, CancellationToken ct)
+    {
+        // A status has no job to re-run, and nothing is guessed in its place.
+        if (check.JobId is not { } job)
+            return new RerunAnswer(null, "it is a commit status, which has no job to re-run");
+
+        var ran = await _run(path, Env(), ["run", "rerun", "--job", job.ToString()], ct);
+        return ran.Code == 0 ? new RerunAnswer(RerunOutcomes.Reran, null) : new RerunAnswer(null, Why(ran));
     }
 
     /// <summary>One of <see cref="PullRequestStates"/>, matched case-insensitively against what <c>gh</c> prints (<c>OPEN</c>, <c>CLOSED</c>, <c>MERGED</c>).</summary>
