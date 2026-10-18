@@ -69,6 +69,14 @@ public sealed class Poll
     /// <summary>How long a sha that reads <c>none</c> is asked about again, counted from when the board first heard about it.</summary>
     public static readonly TimeSpan NoneWindow = TimeSpan.FromMinutes(10);
 
+    /// <summary>
+    /// The most times one sha's failing checks are re-run before the row is left
+    /// failing for a person - enough for a double transient blip (a flaky registry,
+    /// a lost runner) to clear on its own, not enough to spend a broken build's CI
+    /// minutes forever behind retries that were never going to help.
+    /// </summary>
+    public const int RerunCap = 3;
+
     private readonly Dictionary<(string Path, string Key), string> _seen = [];
     private readonly Dictionary<(string Path, string Key), string> _seenBuild = [];
     private readonly Dictionary<(string Path, string Key), string> _seenLanding = [];
@@ -504,14 +512,42 @@ public sealed class Poll
                     continue;
                 }
 
+                var reran = false;
+                if (read.Verdict == BuildVerdicts.Failed && matched is not null
+                    && matched.ProjectKey is { } projectKey && runtime.Readout.Drives(projectKey)
+                    && (matched.Sha == sha ? matched.RerunCount : 0) < RerunCap)
+                {
+                    var forge = runtime.Forge(checkout.Path, matched.Canonical);
+                    var allTransient = true;
+                    foreach (var check in read.Failing)
+                    {
+                        if (!BuildFailures.IsTransient(await forge.LogAsync(check, ct))) { allTransient = false; break; }
+                    }
+
+                    if (allTransient)
+                    {
+                        reran = true;
+                        foreach (var check in read.Failing)
+                        {
+                            var rerunAnswer = await forge.RerunAsync(check, ct);
+                            if (rerunAnswer.Outcome is null)
+                            {
+                                reran = false;
+                                if (rerunAnswer.Why is { } why) complain($"hatch: could not re-run the failing checks in {name} - {why}");
+                                break;
+                            }
+                        }
+                    }
+                }
+
                 TrunkBuildDto? kept;
                 try
                 {
                     kept = await runtime.QuietBoard.TrunkBuildAsync(
                         new TrunkBuildRequest(
-                            checkout.Remote!, heads.Trunk, sha, read.Verdict,
+                            checkout.Remote!, heads.Trunk, sha, reran ? BuildVerdicts.Pending : read.Verdict,
                             read.Failing.Select(f => new FailingCheckDto(f.Name, f.Url)).ToList(),
-                            runtime.RunnerName),
+                            runtime.RunnerName, Reran: reran),
                         ct);
                 }
                 catch (HatchException e)
@@ -527,7 +563,9 @@ public sealed class Poll
                     : read.Verdict is BuildVerdicts.Passed or BuildVerdicts.Failed;
                 if (concluded) _seenTrunk[checkout.Path] = sha;
 
-                if (matched is null || matched.Sha != sha || matched.Verdict != read.Verdict)
+                if (reran)
+                    runtime.Say.Line($"hatch: {TrunkWords(heads.Trunk, sha, read)} - re-running");
+                else if (matched is null || matched.Sha != sha || matched.Verdict != read.Verdict)
                     runtime.Say.Line($"hatch: {TrunkWords(heads.Trunk, sha, read)}");
             }
             catch (Exception e) when (e is not OperationCanceledException)

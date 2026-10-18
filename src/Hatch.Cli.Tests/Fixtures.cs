@@ -182,13 +182,14 @@ public static class Fixtures
     public static TrunkBuildDto TrunkBuild(
         string verdict = BuildVerdicts.Passed, string remote = "https://example.test/repo.git",
         string canonical = "example.test/repo", string trunk = "main", string? sha = null,
-        DateTimeOffset? shaSince = null, string? bugIssueKey = null, params string[] failing) =>
+        DateTimeOffset? shaSince = null, string? bugIssueKey = null, string? projectKey = null,
+        int rerunCount = 0, params string[] failing) =>
         new(
             1, remote, canonical, trunk, sha ?? new string('a', 40), shaSince ?? DateTimeOffset.UnixEpoch, verdict,
             verdict == BuildVerdicts.Failed
                 ? (failing.Length == 0 ? ["api"] : failing).Select(n => new FailingCheckDto(n, $"https://{canonical}/checks/{n}")).ToList()
                 : [],
-            DateTimeOffset.UnixEpoch, "runner", "hatch", bugIssueKey);
+            DateTimeOffset.UnixEpoch, "runner", "hatch", bugIssueKey, projectKey, rerunCount);
 
     /// <summary>One row of the review read: an issue in review, and what the board holds about its branch.</summary>
     public static ReviewCheckDto Review(
