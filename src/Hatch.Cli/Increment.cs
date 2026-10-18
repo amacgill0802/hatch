@@ -267,7 +267,8 @@ public sealed record ConflictRun(Rechecked Found, Func<CancellationToken, Task<R
 /// directory unless a test says otherwise.
 /// </param>
 public sealed class Increment(
-    Board board, ISessionRunner sessions, Settings settings, Terminal say, IReadOnlyList<CheckoutEntry> checkouts,
+    Board board, ISessionRunner sessions, IAgentAdapter adapter, Settings settings, Terminal say,
+    IReadOnlyList<CheckoutEntry> checkouts,
     ReadoutState? readout = null, string? tempDirectory = null, Controls? controls = null,
     Func<string, string?, IWorkspace>? workspace = null, Board? quietBoard = null)
 {
@@ -472,7 +473,7 @@ public sealed class Increment(
                 : facts.Result is null && result.ExitCode != 0 ? facts.ResultText ?? facts.LastAssistantText
                 : null;
 
-            if (claim.Lost is null && claim.Preempted is null && UsageLimit.Recognise(said, DateTimeOffset.UtcNow) is { } hit)
+            if (claim.Lost is null && claim.Preempted is null && adapter.RecogniseLimit(said, DateTimeOffset.UtcNow) is { } hit)
             {
                 report.UsageLimitResetAt = hit.ResetAt;
                 report.UsageLimitResetKnown = hit.ResetKnown;
@@ -614,7 +615,7 @@ public sealed class Increment(
                             ? $"the session ended with an error - \"{said}\""
                             : "the session ended without moving it";
 
-                        await LetGo.LeftAsync(board, say, report.Key, why, report.SessionId, ct);
+                        await LetGo.LeftAsync(board, say, adapter, report.Key, why, report.SessionId, ct);
                         report.LetGo = true;
                         report.Flag = "let go";
                         report.ReleaseOutcome = ClaimOutcomes.Dropped;
@@ -878,7 +879,7 @@ public sealed class Increment(
 
         var prompt = Prompt.Compose(work, repositories, branches, conflict, build);
         var request = new SessionRequest(root, model, effort, prompt, quiet, addDirs, hooks?.Settings, work.Playbook?.DeniedTools ?? []);
-        var render = new StreamRender(root, facts);
+        var render = adapter.CreateReader(root, facts);
 
         // Whichever side wrote hooks.Clamp - the streamed callback below, or a
         // --quiet session's own transcript-reading hook - this is the one place
@@ -922,7 +923,7 @@ public sealed class Increment(
                 // Handed over whole rather than flattened onto a line: the shell
                 // needed a line because its renderer read a pipe, and the text a
                 // session ends with is made of newlines that matter.
-                if (StreamRender.Closing(output) is { Length: > 0 } closing) say.Line(closing);
+                if (adapter.ReadClosing(output) is { Length: > 0 } closing) say.Line(closing);
                 foreach (var line in render.Read(output)) say.Line(line);
             }
             else if (output.Length > 0)
@@ -1166,7 +1167,7 @@ public sealed class Increment(
         body += $"\n\nThis is the {Ordinal(letGo + 1)} increment in a row to leave this ticket here.";
 
         body += report.SessionId is { Length: > 0 } session
-            ? $"\n\nThe session it ran in is still there, with everything it did in context:\n\n    claude --resume {session}"
+            ? $"\n\nThe session it ran in is still there, with everything it did in context:\n\n    {adapter.ResumeCommand(session)}"
             : "\n\nThere is no session to resume: the run ended before it said what its id was.";
 
         if (report.ExitCode != 0) body += $"\n\nIt exited {report.ExitCode}.";

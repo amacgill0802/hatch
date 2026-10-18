@@ -1659,7 +1659,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
             if (entered) await lifecycle!.LeaveAsync(work!, chosen!, ownsTicket: false, CancellationToken.None);
 
             if (key is { Length: > 0 })
-                await LetGo.CommentAsync(runtime.Board, runtime.Say, key, why, increment?.SessionId, CancellationToken.None);
+                await LetGo.CommentAsync(runtime.Board, runtime.Say, runtime.Adapter, key, why, increment?.SessionId, CancellationToken.None);
 
             // The runner fell over rather than the increment running to a
             // verdict, so the claim (where one was ever held) goes back the
