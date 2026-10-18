@@ -2671,13 +2671,19 @@ public record BuildCheckDto(
 /// <param name="Verdict">One of <see cref="BuildVerdicts"/>.</param>
 /// <param name="Failing">The checks that failed. Required for <c>failed</c> and ignored otherwise.</param>
 /// <param name="Runner">The checkout that took it - <c>host:/path/to/checkout</c>, as <see cref="ClaimRequest.Runner"/> is.</param>
+/// <param name="Reran">
+/// True when the runner is saying it just took a re-run of <paramref name="Sha"/>'s
+/// failing checks. A poll that only reads the build leaves it false; the board
+/// raises the stored count by one for each request where this is true.
+/// </param>
 public record TrunkBuildRequest(
     string Remote,
     string Trunk,
     string Sha,
     string Verdict,
     IReadOnlyList<FailingCheckDto>? Failing,
-    string Runner);
+    string Runner,
+    bool Reran = false);
 
 /// <summary>One stored trunk verdict: the build on the tip of one repository's trunk.</summary>
 /// <param name="Remote">The remote as the runner spelled it.</param>
@@ -2690,6 +2696,11 @@ public record TrunkBuildRequest(
 /// The project that binds this repository - the one that names it primary,
 /// lowest project id first, else the lowest-id project that binds it at all.
 /// Null when nothing binds it.
+/// </param>
+/// <param name="RerunCount">
+/// How many times a runner has taken a re-run of <paramref name="Sha"/>'s
+/// failing checks. Reset whenever the sha changes or the verdict passes - see
+/// <see cref="EfHatchTrunkBuild.RerunCount"/>.
 /// </param>
 public record TrunkBuildDto(
     long Id,
@@ -2704,7 +2715,8 @@ public record TrunkBuildDto(
     string Runner,
     string CheckedBy,
     string? BugIssueKey,
-    string? ProjectKey = null);
+    string? ProjectKey = null,
+    int RerunCount = 0);
 
 /// <summary>
 /// The optional body of <c>POST .../trunk-builds/{id}/bug</c>. All three

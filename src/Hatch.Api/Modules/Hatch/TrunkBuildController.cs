@@ -125,7 +125,11 @@ public class TrunkBuildController(HatchContext db, ICallerIdentity caller, TimeP
             db.TrunkBuilds.Add(row);
         }
 
-        if (!sameSha) row.ShaSince = now;
+        if (!sameSha)
+        {
+            row.ShaSince = now;
+            row.RerunCount = 0;
+        }
 
         row.Remote = remote;
         row.Sha = sha;
@@ -140,7 +144,10 @@ public class TrunkBuildController(HatchContext db, ICallerIdentity caller, TimeP
         {
             row.BugIssueId = null;
             row.BugIssue = null;
+            row.RerunCount = 0;
         }
+
+        if (request.Reran) row.RerunCount++;
 
         await db.SaveChangesAsync(ct);
 
@@ -182,5 +189,5 @@ public static class TrunkBuildProjection
         t.Id, t.Remote, t.Canonical, t.Trunk, t.Sha, t.ShaSince, t.Verdict,
         EfHatchBuildCheck.ReadFailing(t.Failing), t.CheckedAt, t.Runner, t.CheckedBy,
         t.BugIssue is null ? null : IssueKey.Format(t.BugIssue.Project!.Key, t.BugIssue.Number),
-        projectKey);
+        projectKey, t.RerunCount);
 }

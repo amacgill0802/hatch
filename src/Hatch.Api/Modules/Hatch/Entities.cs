@@ -1457,6 +1457,14 @@ public class EfHatchTrunkBuild
     /// <summary>The bug filed while this trunk was failing, or null when none is attached - see this type's own summary.</summary>
     public long? BugIssueId { get; set; }
     public EfHatchIssue? BugIssue { get; set; }
+
+    /// <summary>
+    /// How many times a runner has taken a re-run of <see cref="Sha"/>'s failing
+    /// checks. Reset whenever <see cref="Sha"/> changes or <see cref="Verdict"/>
+    /// becomes <c>passed</c> - a new build, or an outage that is over, gets its
+    /// own budget. What the poll's own cap (HA-794) is spent against.
+    /// </summary>
+    public int RerunCount { get; set; }
 }
 
 /// <summary>
