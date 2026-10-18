@@ -1104,6 +1104,153 @@ public sealed class PollTests
         Assert.Contains("could not read the board's trunk builds", Assert.Single(rig.H.Say.Complained), StringComparison.Ordinal);
     }
 
+    // ---- Re-running a transient trunk failure (HA-794) ----
+
+    // A stored row at the trunk's *current* sha vouches for itself once it is
+    // `passed` or `failed` (see VouchesTrunk/ConcludedTrunk above) and the poll
+    // never asks the forge again - so every case below that wants to reach the
+    // new rerun logic on a fresh `failed` read stores its row at the trunk's
+    // *previous* tip (`Moved`), the way a trunk that just advanced actually
+    // looks: a project binding and (where relevant) a rerun count carried over
+    // from a row about a sha other than the one just read, exactly the "starts
+    // fresh" case `ReadTrunksAsync`'s own comment describes. The one case about
+    // the cap itself instead stores the row at the *current* sha with verdict
+    // `pending` - which still does not vouch - so its `RerunCount` is read as
+    // the real in-progress count for this sha.
+
+    [Fact]
+    public async Task A_transient_failure_under_the_cap_is_re_run_and_told_to_the_board_as_pending()
+    {
+        using var rig = new Rig().Board();
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads();
+        rig.StoresTrunks(Fixtures.TrunkBuild(BuildVerdicts.Passed, projectKey: "AER", sha: Moved));
+        rig.Runtime.Readout.SetDrives(["AER"]);
+        rig.H.Forge.Answer = Failed("CI");
+        rig.H.Forge.Excerpts["CI"] = "ECONNRESET";
+        rig.H.Forge.RerunAnswer = new RerunAnswer(RerunOutcomes.Reran, null);
+        rig.KeepsTrunk(Fixtures.TrunkBuild(BuildVerdicts.Pending, projectKey: "AER", rerunCount: 1));
+
+        await rig.RunAsync();
+
+        Assert.Equal(["CI"], rig.H.Forge.Logs);
+        Assert.Single(rig.H.Forge.RerunCalls);
+
+        var put = Assert.Single(rig.H.Wire.To("PUT", TrunkBuilds)).Read<TrunkBuildRequest>();
+        Assert.Equal(BuildVerdicts.Pending, put.Verdict);
+        Assert.True(put.Reran);
+
+        Assert.Contains(rig.H.Say.Said, l => l.EndsWith("- re-running", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_re_run_is_refused_once_the_sha_has_already_been_re_run_to_the_cap()
+    {
+        using var rig = new Rig().Board();
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads();
+        rig.StoresTrunks(Fixtures.TrunkBuild(BuildVerdicts.Pending, projectKey: "AER", rerunCount: Poll.RerunCap));
+        rig.Runtime.Readout.SetDrives(["AER"]);
+        rig.H.Forge.Answer = Failed("CI");
+        rig.H.Forge.Excerpts["CI"] = "ECONNRESET";
+        rig.KeepsTrunk(Fixtures.TrunkBuild(BuildVerdicts.Failed, projectKey: "AER", rerunCount: Poll.RerunCap, failing: ["CI"]));
+
+        await rig.RunAsync();
+
+        Assert.Empty(rig.H.Forge.Logs);
+        Assert.Empty(rig.H.Forge.RerunCalls);
+
+        var put = Assert.Single(rig.H.Wire.To("PUT", TrunkBuilds)).Read<TrunkBuildRequest>();
+        Assert.Equal(BuildVerdicts.Failed, put.Verdict);
+        Assert.False(put.Reran);
+    }
+
+    [Fact]
+    public async Task A_non_transient_failure_is_left_alone()
+    {
+        using var rig = new Rig().Board();
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads();
+        rig.StoresTrunks(Fixtures.TrunkBuild(BuildVerdicts.Passed, projectKey: "AER", sha: Moved));
+        rig.Runtime.Readout.SetDrives(["AER"]);
+        rig.H.Forge.Answer = Failed("CI");
+        // No excerpt stubbed for "CI" - LogAsync answers null, which IsTransient reads as false.
+        rig.KeepsTrunk(Fixtures.TrunkBuild(BuildVerdicts.Failed, projectKey: "AER", failing: ["CI"]));
+
+        await rig.RunAsync();
+
+        Assert.Equal(["CI"], rig.H.Forge.Logs);
+        Assert.Empty(rig.H.Forge.RerunCalls);
+
+        var put = Assert.Single(rig.H.Wire.To("PUT", TrunkBuilds)).Read<TrunkBuildRequest>();
+        Assert.Equal(BuildVerdicts.Failed, put.Verdict);
+        Assert.False(put.Reran);
+    }
+
+    [Fact]
+    public async Task A_mixed_set_of_failing_checks_is_left_alone_and_stops_reading_logs_at_the_first_non_transient_one()
+    {
+        using var rig = new Rig().Board();
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads();
+        rig.StoresTrunks(Fixtures.TrunkBuild(BuildVerdicts.Passed, projectKey: "AER", sha: Moved));
+        rig.Runtime.Readout.SetDrives(["AER"]);
+        rig.H.Forge.Answer = Failed("Lint", "CI");
+        rig.H.Forge.Excerpts["CI"] = "ECONNRESET";
+        rig.KeepsTrunk(Fixtures.TrunkBuild(BuildVerdicts.Failed, projectKey: "AER", failing: ["Lint", "CI"]));
+
+        await rig.RunAsync();
+
+        Assert.Equal(["Lint"], rig.H.Forge.Logs);
+        Assert.Empty(rig.H.Forge.RerunCalls);
+
+        var put = Assert.Single(rig.H.Wire.To("PUT", TrunkBuilds)).Read<TrunkBuildRequest>();
+        Assert.Equal(BuildVerdicts.Failed, put.Verdict);
+        Assert.False(put.Reran);
+    }
+
+    [Fact]
+    public async Task A_runner_that_does_not_drive_the_project_does_not_re_run_a_transient_failure()
+    {
+        using var rig = new Rig().Board();
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads();
+        rig.StoresTrunks(Fixtures.TrunkBuild(BuildVerdicts.Passed, projectKey: "AER", sha: Moved));
+        rig.H.Forge.Answer = Failed("CI");
+        rig.H.Forge.Excerpts["CI"] = "ECONNRESET";
+        rig.KeepsTrunk(Fixtures.TrunkBuild(BuildVerdicts.Failed, projectKey: "AER", failing: ["CI"]));
+
+        await rig.RunAsync();
+
+        Assert.Empty(rig.H.Forge.Logs);
+        Assert.Empty(rig.H.Forge.RerunCalls);
+
+        var put = Assert.Single(rig.H.Wire.To("PUT", TrunkBuilds)).Read<TrunkBuildRequest>();
+        Assert.Equal(BuildVerdicts.Failed, put.Verdict);
+        Assert.False(put.Reran);
+    }
+
+    [Fact]
+    public async Task A_forge_that_cannot_answer_a_re_run_costs_one_line_and_not_the_night()
+    {
+        using var rig = new Rig().Board();
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads();
+        rig.StoresTrunks(Fixtures.TrunkBuild(BuildVerdicts.Passed, projectKey: "AER", sha: Moved));
+        rig.Runtime.Readout.SetDrives(["AER"]);
+        rig.H.Forge.Answer = Failed("CI");
+        rig.H.Forge.Excerpts["CI"] = "ECONNRESET";
+        rig.H.Forge.RerunAnswer = new RerunAnswer(null, "gh is not installed");
+        rig.KeepsTrunk(Fixtures.TrunkBuild(BuildVerdicts.Failed, projectKey: "AER", failing: ["CI"]));
+
+        await rig.RunAsync();
+
+        Assert.Contains("could not re-run the failing checks", Assert.Single(rig.H.Say.Complained), StringComparison.Ordinal);
+
+        var put = Assert.Single(rig.H.Wire.To("PUT", TrunkBuilds)).Read<TrunkBuildRequest>();
+        Assert.Equal(BuildVerdicts.Failed, put.Verdict);
+        Assert.False(put.Reran);
+
+        // The night is not ended: the row is now concluded (really failed), so a
+        // later interval does not ask again and says nothing new.
+        await rig.Later().RunAsync();
+        Assert.Single(rig.H.Say.Complained);
+    }
+
     // ---- Landings ----
 
     private const string Remote = "https://example.test/repo.git";
