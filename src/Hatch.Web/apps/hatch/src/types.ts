@@ -344,6 +344,78 @@ export interface TrunkBuildBugRequest {
   statusId?: number | null;
 }
 
+/** Mirrors PlaybookFileRequest. */
+export interface PlaybookFileRequest {
+  remote: string;
+  trunk: string;
+  sha: string;
+  /** The blob's bytes, base64-encoded; null means the trunk has no file at this path. */
+  content: string | null;
+  /** The forge link the runner reported for the path on this trunk, or null where it has none. */
+  url: string | null;
+  runner: string;
+}
+
+/** One playbook row as the server resolved it when it parsed the file - status
+    ids only, normalized/defaulted the same way CreatePlaybook resolves a row
+    before storing a playbook. Mirrors PlaybookFileRow. */
+export interface PlaybookFileRow {
+  fromStatusId: number;
+  toStatusId: number;
+  types: IssueType[];
+  shape: PlaybookShape;
+  prompt: string;
+  model: string;
+  effort: string;
+  budget: number | null;
+  briefLimit: number | null;
+  deniedTools: string[];
+  isCheck: boolean;
+}
+
+/** PlaybookFileRow with its status ids resolved to the board's current names
+    - the shape a client reads. Mirrors PlaybookFileRowDto. */
+export interface PlaybookFileRowDto {
+  fromStatusId: number;
+  fromStatusName: string;
+  toStatusId: number;
+  toStatusName: string;
+  types: IssueType[];
+  shape: PlaybookShape;
+  prompt: string;
+  model: string;
+  effort: string;
+  budget: number | null;
+  briefLimit: number | null;
+  deniedTools: string[];
+  isCheck: boolean;
+}
+
+/** Mirrors PlaybookFileDto. */
+export interface PlaybookFileDto {
+  id: number;
+  remote: string;
+  canonical: string;
+  trunk: string;
+  sha: string;
+  state: string;
+  hash: string | null;
+  rows: PlaybookFileRowDto[];
+  problem: string | null;
+  lastGoodSha: string | null;
+  lastGoodHash: string | null;
+  url: string | null;
+  checkedAt: string;
+  runner: string;
+  checkedBy: string;
+}
+
+/** Mirrors PlaybookFilesDto. */
+export interface PlaybookFilesDto {
+  path: string;
+  files: PlaybookFileDto[];
+}
+
 /** One runner's verdict on one repository. Mirrors MergeCheckDto. */
 export interface MergeCheck {
   /** The remote as the runner spelled it. */

@@ -2707,6 +2707,11 @@ public record TrunkBuildDto(
 /// </summary>
 public record TrunkBuildBugRequest(bool? Express, string? Priority, int? StatusId);
 
+/// <param name="Content">The blob's bytes, base64-encoded; null means the trunk has no file at this path.</param>
+/// <param name="Url">The forge link the runner reported for the path on this trunk, or null where it has none.</param>
+public record PlaybookFileRequest(
+    string Remote, string Trunk, string Sha, string? Content, string? Url, string Runner);
+
 /// <summary>
 /// One playbook row as the server resolved it when it parsed the file - status
 /// ids only, normalized/defaulted the same way <c>PlaybooksController.CreatePlaybook</c>
@@ -2717,6 +2722,19 @@ public record TrunkBuildBugRequest(bool? Express, string? Priority, int? StatusI
 public record PlaybookFileRow(
     int FromStatusId, int ToStatusId, IReadOnlyList<string> Types, string Shape, string Prompt,
     string Model, string Effort, int? Budget, int? BriefLimit, IReadOnlyList<string> DeniedTools, bool IsCheck);
+
+/// <summary>PlaybookFileRow with its status ids resolved to the board's current names - the shape a client reads. Mirrors PlaybookDto minus Id/UpdatedAt/ProjectId.</summary>
+public record PlaybookFileRowDto(
+    int FromStatusId, string FromStatusName, int ToStatusId, string ToStatusName,
+    IReadOnlyList<string> Types, string Shape, string Prompt, string Model, string Effort,
+    int? Budget, int? BriefLimit, IReadOnlyList<string> DeniedTools, bool IsCheck);
+
+public record PlaybookFileDto(
+    long Id, string Remote, string Canonical, string Trunk, string Sha, string State, string? Hash,
+    IReadOnlyList<PlaybookFileRowDto> Rows, string? Problem, string? LastGoodSha, string? LastGoodHash,
+    string? Url, DateTimeOffset CheckedAt, string Runner, string CheckedBy);
+
+public record PlaybookFilesDto(string Path, IReadOnlyList<PlaybookFileDto> Files);
 
 /// <summary>
 /// What the board would like a runner to do: carry on, hold, or finish and
