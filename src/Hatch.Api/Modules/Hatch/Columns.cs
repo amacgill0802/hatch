@@ -207,4 +207,22 @@ public static class Columns
         var at = board.FindIndex(s => s.Id == from.Id);
         return at >= 0 ? board.Skip(at + 1).FirstOrDefault(s => s.IsTerminal) : null;
     }
+
+    /// <summary>
+    /// What <see cref="EfHatchIssue.ClosedAt"/> becomes on a move from
+    /// <paramref name="from"/> to <paramref name="to"/>: <paramref name="now"/>
+    /// the first time a non-terminal column empties into a terminal one,
+    /// <paramref name="current"/> unchanged on a move between two terminal
+    /// columns - closed once, not re-closed - and null on a move into any
+    /// non-terminal column, terminal or not where it started.
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="from"/> is nullable because one caller
+    /// (<see cref="IssuesController"/>'s patch path) reads it with
+    /// <c>AsNoTracking</c> and a default against a status id that should
+    /// always resolve but is typed as a maybe; treated the same as "was not
+    /// terminal".
+    /// </remarks>
+    public static DateTimeOffset? ClosedAt(EfHatchStatus? from, EfHatchStatus to, DateTimeOffset now, DateTimeOffset? current) =>
+        !to.IsTerminal ? null : from?.IsTerminal == true ? current : now;
 }

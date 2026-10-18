@@ -603,7 +603,7 @@ through the gate that was supposed to stop it.
 `StatusId`, `ParentId`, `Rank`, `ReadyAt`/`ReadyAtHasTime`,
 `DueAt`/`DueAtHasTime`, `PullRequestUrl`, `PullRequestMergeState`,
 `PullRequestReviewDecision`, `PullRequestHeadSha`, `PullRequestReadAt`,
-`ModelOverride`, `EffortOverride`, `AssigneePersonId`/`AssigneeApiKeyId`,
+`ClosedAt`, `ModelOverride`, `EffortOverride`, `AssigneePersonId`/`AssigneeApiKeyId`,
 `CreatedBy`, `CreatedAt`, `UpdatedAt`.
 
 The display key `AER-12` is **computed** (`Project.Key + "-" + Number`) and
@@ -674,6 +674,22 @@ decision, the read-at time and the url are still read by nothing. The issue page
 request's link saying what the forge calls it, and the review decision beside
 that where there is one; nothing is drawn while the state is unread or
 `unknown`.
+
+**`ClosedAt` is when the issue last entered a terminal column**, null while it
+stands in any other — and it is a column, not a computed read. Every write that
+changes `StatusId` keeps it, through the one helper `Columns.ClosedAt`, and so
+does the status table's own flip of a column's `IsTerminal`, which closes or
+reopens every issue standing in it without any of them moving. A move between
+two terminal columns keeps the earlier instant: an issue is closed once, not
+re-closed by being filed under a different ending. A move out of a terminal
+column clears it. The event log stays the record of history, as it does for the
+pull request above; this is the fast answer to “when did it close”, indexed with
+`StatusId` so a board and a search can ask it without walking the trail. It is
+not `PullRequestClosedAt`, which is when the forge closed a pull request. The
+migration that added it backfilled every issue already in a terminal column from
+its newest `status_changed` event, or from `UpdatedAt` where it had none.
+Nothing reads it yet; the board's closed-recently view and the search's closed
+filter will (HA-832, HA-833).
 
 #### Assignee
 
