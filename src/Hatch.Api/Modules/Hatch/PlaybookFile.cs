@@ -26,6 +26,9 @@ namespace Hatch.Api.Modules.Hatch;
 /// </remarks>
 public static class PlaybookFile
 {
+    /// <summary>Where this file lives in a repository's checkout - the route owns this path, and no runner spells it itself.</summary>
+    public const string Path = ".hatch/playbooks.yaml";
+
     /// <summary>A playbooks file is a short list of rows; half a megabyte of it is a mistake, not a file.</summary>
     internal const int MaxFileBytes = 512 * 1024;
 
