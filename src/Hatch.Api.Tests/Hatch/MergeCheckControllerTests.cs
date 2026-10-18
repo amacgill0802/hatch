@@ -57,6 +57,17 @@ public class MergeCheckControllerTests
     }
 
     [Fact]
+    public async Task PlaybookFilePath_RoundTripsOnAKeptVerdict()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        var kept = Value(await h.PutAsync(issue, Clean() with { PlaybookFilePath = ".hatch/playbooks.yaml" }));
+
+        Assert.Equal(".hatch/playbooks.yaml", kept.PlaybookFilePath);
+    }
+
+    [Fact]
     public async Task AConflictedVerdict_NamesItsFiles()
     {
         var h = await NewAsync();
@@ -345,6 +356,19 @@ public class MergeCheckControllerTests
 
         Assert.Single(await h.EventsAsync(issue.Key));
         Assert.True((await h.Db.MergeChecks.SingleAsync()).HoldsTrunk);
+    }
+
+    [Fact]
+    public async Task PlaybookFilePathAlone_WritesNoEvent()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await h.PutAsync(issue, Clean());
+
+        await h.PutAsync(issue, Clean() with { PlaybookFilePath = ".hatch/playbooks.yaml" });
+
+        Assert.Single(await h.EventsAsync(issue.Key));
+        Assert.Equal(".hatch/playbooks.yaml", (await h.Db.MergeChecks.SingleAsync()).PlaybookFilePath);
     }
 
     // ---- What every issue carries ----
