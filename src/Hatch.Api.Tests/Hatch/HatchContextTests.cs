@@ -229,6 +229,22 @@ public class HatchContextTests
             ForeignKeyOn(db, typeof(EfHatchProjectRepository), nameof(EfHatchProjectRepository.ProjectId)).DeleteBehavior);
     }
 
+    /// <summary>
+    /// A column a project points at for auto-heal refuses to delete out from
+    /// under it, the same reason <see cref="EfHatchPlaybook.FromStatusId"/> and
+    /// <see cref="EfHatchPlaybook.ToStatusId"/> do. Pinned as model metadata
+    /// rather than exercised, for the reason <see cref="DependencyEdges_CascadeWithEitherIssue"/> is.
+    /// </summary>
+    [Fact]
+    public void AProjectsAutoHealBugStatusId_Restricts()
+    {
+        using var db = NewContext();
+
+        Assert.Equal(
+            DeleteBehavior.Restrict,
+            ForeignKeyOn(db, typeof(EfHatchProject), nameof(EfHatchProject.AutoHealBugStatusId)).DeleteBehavior);
+    }
+
     [Fact]
     public void AnEventsPayload_IsJsonb()
     {

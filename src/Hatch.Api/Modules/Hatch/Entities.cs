@@ -128,6 +128,27 @@ public class EfHatchProject
     /// tasks already begun.
     /// </summary>
     public bool OnePullRequest { get; set; }
+
+    /// <summary>
+    /// Whether a trunk failure files a bug at all - off, which is today's
+    /// behaviour, so a project nobody has touched this setting on keeps
+    /// filing exactly as it always has. Written only by
+    /// <see cref="ProjectsController.PutLanding"/>.
+    /// </summary>
+    public bool AutoHealBugEnabled { get; set; }
+
+    /// <summary>The priority a trunk-failure bug is filed at - see <see cref="PriorityLevels"/>. Default emergency.</summary>
+    public int AutoHealBugPriority { get; set; } = PriorityLevels.Emergency;
+
+    /// <summary>The pre-approval level a trunk-failure bug is born at - see <see cref="PreApprovalLevels"/>. Default express, settled on HA-784.</summary>
+    public int AutoHealBugPreApproval { get; set; } = PreApprovalLevels.Express;
+
+    /// <summary>
+    /// The column a trunk-failure bug is born in, or null to track
+    /// <see cref="Columns.SendBack"/> - the column that feeds implementation,
+    /// which is what the manual dialog's own default already picks.
+    /// </summary>
+    public int? AutoHealBugStatusId { get; set; }
 }
 
 /// <summary>

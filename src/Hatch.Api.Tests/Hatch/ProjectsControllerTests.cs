@@ -841,6 +841,151 @@ public class ProjectsControllerTests
         Assert.False((await h.Db.Projects.FindAsync(h.ProjectId))!.OnePullRequest);
     }
 
+    // ---- Auto-heal ----
+
+    [Fact]
+    public async Task AProject_StartsWithAutoHealOffAtEmergencyAndExpressAndNoColumn()
+    {
+        var h = await NewAsync();
+
+        var read = Value(await h.Projects.GetProjects(default)).Single(p => p.Id == h.ProjectId);
+
+        Assert.False(read.AutoHealBugEnabled);
+        Assert.Equal(PriorityLevels.EmergencyName, read.AutoHealBugPriority);
+        Assert.Equal(PreApprovalLevels.ExpressName, read.AutoHealBugPreApproval);
+        Assert.Null(read.AutoHealBugStatusId);
+    }
+
+    [Fact]
+    public async Task AnOwnerSettingEachAutoHealField_RoundTripsThroughGetProjects()
+    {
+        var h = await NewAsync();
+        var (todo, _) = await BoardAsync(h);
+
+        var written = Value(await h.Projects.PutLanding(h.ProjectId,
+            new ProjectLandingWriteRequest(null, null, AutoHealBugEnabled: true, AutoHealBugPriority: PriorityLevels.LowName,
+                AutoHealBugPreApproval: PreApprovalLevels.PreApprovedName, AutoHealBugStatusId: todo.Id.ToString()), default));
+
+        Assert.True(written.AutoHealBugEnabled);
+        Assert.Equal(PriorityLevels.LowName, written.AutoHealBugPriority);
+        Assert.Equal(PreApprovalLevels.PreApprovedName, written.AutoHealBugPreApproval);
+        Assert.Equal(todo.Id, written.AutoHealBugStatusId);
+
+        var read = Value(await h.Projects.GetProjects(default)).Single(p => p.Id == h.ProjectId);
+        Assert.True(read.AutoHealBugEnabled);
+        Assert.Equal(PriorityLevels.LowName, read.AutoHealBugPriority);
+        Assert.Equal(PreApprovalLevels.PreApprovedName, read.AutoHealBugPreApproval);
+        Assert.Equal(todo.Id, read.AutoHealBugStatusId);
+    }
+
+    [Fact]
+    public async Task AnOwnerClearingAutoHealStatusId_ReturnsItToNull()
+    {
+        var h = await NewAsync();
+        var (todo, _) = await BoardAsync(h);
+        await h.Projects.PutLanding(h.ProjectId, new ProjectLandingWriteRequest(null, null, AutoHealBugStatusId: todo.Id.ToString()), default);
+
+        var written = Value(await h.Projects.PutLanding(h.ProjectId, new ProjectLandingWriteRequest(null, null, AutoHealBugStatusId: ""), default));
+
+        Assert.Null(written.AutoHealBugStatusId);
+    }
+
+    [Fact]
+    public async Task ANonOwnerApprover_CannotSetAutoHeal()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        var approver = h.Actors.AddPerson("Alice");
+        await h.Projects.PutMember(created.Id, approver.Id, new ProjectMemberWriteRequest(ProjectMemberRole.Approver), default);
+        h.Actors.Me = approver;
+
+        var result = await h.Projects.PutLanding(created.Id, new ProjectLandingWriteRequest(null, null, AutoHealBugEnabled: true), default);
+
+        Assert.Equal(403, ((ObjectResult)result.Result!).StatusCode);
+        Assert.False((await h.Db.Projects.FindAsync(created.Id))!.AutoHealBugEnabled);
+    }
+
+    [Fact]
+    public async Task AnUnknownAutoHealPriorityValue_IsRefusedAndWritesNothing()
+    {
+        var h = await NewAsync();
+        await BoardAsync(h);
+
+        var result = await h.Projects.PutLanding(h.ProjectId, new ProjectLandingWriteRequest(null, null, AutoHealBugPriority: "carrier-pigeon"), default);
+
+        Assert.Contains("priority", Reason(result.Result));
+        var project = await h.Db.Projects.FindAsync(h.ProjectId);
+        Assert.Equal(PriorityLevels.Emergency, project!.AutoHealBugPriority);
+    }
+
+    [Fact]
+    public async Task AnUnknownAutoHealPreApprovalValue_IsRefusedAndWritesNothing()
+    {
+        var h = await NewAsync();
+        await BoardAsync(h);
+
+        var result = await h.Projects.PutLanding(h.ProjectId, new ProjectLandingWriteRequest(null, null, AutoHealBugPreApproval: "carrier-pigeon"), default);
+
+        Assert.Contains("pre-approval", Reason(result.Result));
+        var project = await h.Db.Projects.FindAsync(h.ProjectId);
+        Assert.Equal(PreApprovalLevels.Express, project!.AutoHealBugPreApproval);
+    }
+
+    [Fact]
+    public async Task AnAutoHealStatusIdNamingNoColumn_IsRefusedAndWritesNothing()
+    {
+        var h = await NewAsync();
+        await BoardAsync(h);
+
+        var result = await h.Projects.PutLanding(h.ProjectId, new ProjectLandingWriteRequest(null, null, AutoHealBugStatusId: "404"), default);
+
+        Assert.Contains("no column", Reason(result.Result));
+        var project = await h.Db.Projects.FindAsync(h.ProjectId);
+        Assert.Null(project!.AutoHealBugStatusId);
+    }
+
+    [Fact]
+    public async Task AnAutoHealStatusIdThatIsNotANumber_IsRefused()
+    {
+        var h = await NewAsync();
+        await BoardAsync(h);
+
+        var result = await h.Projects.PutLanding(h.ProjectId, new ProjectLandingWriteRequest(null, null, AutoHealBugStatusId: "carrier-pigeon"), default);
+
+        Assert.Contains("no column", Reason(result.Result));
+    }
+
+    [Fact]
+    public async Task OmittingAutoHealFields_LeavesThemWhereTheyWere()
+    {
+        var h = await NewAsync();
+        var (todo, _) = await BoardAsync(h);
+        await h.Projects.PutLanding(h.ProjectId,
+            new ProjectLandingWriteRequest(null, null, AutoHealBugEnabled: true, AutoHealBugPriority: PriorityLevels.LowName,
+                AutoHealBugPreApproval: PreApprovalLevels.PreApprovedName, AutoHealBugStatusId: todo.Id.ToString()), default);
+
+        var written = Value(await h.Projects.PutLanding(h.ProjectId, new ProjectLandingWriteRequest(Landings.Trunk, false), default));
+
+        Assert.True(written.AutoHealBugEnabled);
+        Assert.Equal(PriorityLevels.LowName, written.AutoHealBugPriority);
+        Assert.Equal(PreApprovalLevels.PreApprovedName, written.AutoHealBugPreApproval);
+        Assert.Equal(todo.Id, written.AutoHealBugStatusId);
+    }
+
+    [Fact]
+    public async Task PatchProject_LeavesAutoHealAlone()
+    {
+        var h = await NewAsync();
+        var (todo, _) = await BoardAsync(h);
+        await h.Projects.PutLanding(h.ProjectId,
+            new ProjectLandingWriteRequest(null, null, AutoHealBugEnabled: true, AutoHealBugStatusId: todo.Id.ToString()), default);
+
+        var patched = Value(await h.Projects.PatchProject(h.ProjectId, new ProjectPatchRequest("Renamed"), default));
+
+        Assert.True(patched.AutoHealBugEnabled);
+        Assert.Equal(todo.Id, patched.AutoHealBugStatusId);
+    }
+
     // ---- The project's one-PR default, and stories that have started ----
     //
     // A story with no setting of its own reads the project's default, so

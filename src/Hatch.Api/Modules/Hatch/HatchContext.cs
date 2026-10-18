@@ -218,6 +218,18 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
             e.Property(p => p.Landing).HasDefaultValue(global::Hatch.Contracts.Landings.PullRequest);
             e.Property(p => p.ChecksRequired).HasDefaultValue(true);
             e.Property(p => p.OnePullRequest).HasDefaultValue(false);
+
+            e.Property(p => p.AutoHealBugEnabled).HasDefaultValue(false);
+            e.Property(p => p.AutoHealBugPriority).HasDefaultValue(global::Hatch.Contracts.PriorityLevels.Emergency);
+            e.Property(p => p.AutoHealBugPreApproval).HasDefaultValue(global::Hatch.Contracts.PreApprovalLevels.Express);
+
+            // Restrict for the same reason EfHatchPlaybook.FromStatus/ToStatus
+            // are: a column is deleted through an endpoint that refuses while
+            // anything still points at it, and cascade here would let
+            // deleting a column quietly take this setting with it instead.
+            // No navigation property either direction - the same one-sided
+            // shape EfHatchProjectLogo's FK below uses.
+            e.HasOne<EfHatchStatus>().WithMany().HasForeignKey(p => p.AutoHealBugStatusId).OnDelete(DeleteBehavior.Restrict);
         });
 
         // Cascade with the project: a project can only be deleted empty of
