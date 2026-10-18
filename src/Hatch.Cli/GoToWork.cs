@@ -1612,7 +1612,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                     && (trunkLanding ? !left.HasLanding : left.BranchOnOrigin && !left.HasPullRequest))
                 {
                     releaseOutcome = await Unpublished.RefuseAsync(
-                        runtime.Board, runtime.Say, report, entering.Entries, work.LetGo, trunkLanding, ct);
+                        runtime.Board, runtime.Say, report, entering.Entries, work.LetGo, trunkLanding, runtime.Adapter, ct);
                 }
             }
             finally
