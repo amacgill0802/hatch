@@ -841,6 +841,163 @@ public class ProjectsControllerTests
         Assert.False((await h.Db.Projects.FindAsync(h.ProjectId))!.OnePullRequest);
     }
 
+    // ---- Playbooks source ----
+
+    [Fact]
+    public async Task AKey_Is403OnPutPlaybooksSource()
+    {
+        var h = await NewAsync(program: true);
+
+        var result = await h.Projects.PutPlaybooksSource(h.ProjectId, new ProjectRepoSourcedWriteRequest(true), default);
+
+        Assert.Equal(403, ((ObjectResult)result.Result!).StatusCode);
+    }
+
+    [Fact]
+    public async Task ANonOwnerApprover_Is403OnPutPlaybooksSourceNamingTheProjectKey()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        var approver = h.Actors.AddPerson("Alice");
+        await h.Projects.PutMember(created.Id, approver.Id, new ProjectMemberWriteRequest(ProjectMemberRole.Approver), default);
+        h.Actors.Me = approver;
+
+        var result = await h.Projects.PutPlaybooksSource(created.Id, new ProjectRepoSourcedWriteRequest(true), default);
+
+        Assert.Contains("TST", Reason(result.Result));
+        Assert.False((await h.Db.Projects.FindAsync(created.Id))!.RepoSourced);
+    }
+
+    [Fact]
+    public async Task TurningOnWithNoRepositoryBound_IsRefusedNamingTheProjectsPage()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+
+        var result = await h.Projects.PutPlaybooksSource(created.Id, new ProjectRepoSourcedWriteRequest(true), default);
+
+        Assert.Contains("Projects page", Reason(result.Result));
+        Assert.False((await h.Db.Projects.FindAsync(created.Id))!.RepoSourced);
+    }
+
+    [Fact]
+    public async Task TurningOnWithOnePlaybookRowNamingIt_IsRefusedInTheSingular()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        await h.Projects.PutRepositories(
+            created.Id, [new ProjectRepositoryWriteRequest("https://example.com/owner/repo.git", null)], default);
+        await AddPlaybookRowsAsync(h, created.Id, 1);
+
+        var result = await h.Projects.PutPlaybooksSource(created.Id, new ProjectRepoSourcedWriteRequest(true), default);
+
+        var reason = Reason(result.Result);
+        Assert.Contains("1 playbook row", reason);
+        Assert.Contains("still names this project", reason);
+        Assert.Contains("delete it or hand it", reason);
+        Assert.False((await h.Db.Projects.FindAsync(created.Id))!.RepoSourced);
+    }
+
+    [Fact]
+    public async Task TurningOnWithTwoPlaybookRowsNamingIt_IsRefusedInThePlural()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        await h.Projects.PutRepositories(
+            created.Id, [new ProjectRepositoryWriteRequest("https://example.com/owner/repo.git", null)], default);
+        await AddPlaybookRowsAsync(h, created.Id, 2);
+
+        var result = await h.Projects.PutPlaybooksSource(created.Id, new ProjectRepoSourcedWriteRequest(true), default);
+
+        var reason = Reason(result.Result);
+        Assert.Contains("2 playbook rows", reason);
+        Assert.Contains("still name this project", reason);
+        Assert.Contains("delete them or hand them", reason);
+        Assert.False((await h.Db.Projects.FindAsync(created.Id))!.RepoSourced);
+    }
+
+    [Fact]
+    public async Task TurningOnWithARepositoryBoundAndNoPlaybookRows_Succeeds()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        await h.Projects.PutRepositories(
+            created.Id, [new ProjectRepositoryWriteRequest("https://example.com/owner/repo.git", null)], default);
+
+        var written = Value(await h.Projects.PutPlaybooksSource(created.Id, new ProjectRepoSourcedWriteRequest(true), default));
+
+        Assert.True(written.RepoSourced);
+        Assert.Equal(h.Nathan.Name, written.RepoSourcedBy);
+        Assert.Equal(Now, written.RepoSourcedAt);
+    }
+
+    [Fact]
+    public async Task TurningOff_SucceedsAndLeavesEveryTableRowExactlyAsItWas()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        await h.Projects.PutRepositories(
+            created.Id, [new ProjectRepositoryWriteRequest("https://example.com/owner/repo.git", null)], default);
+        await h.Projects.PutPlaybooksSource(created.Id, new ProjectRepoSourcedWriteRequest(true), default);
+        var repositoryId = (await h.Db.ProjectRepositories.SingleAsync(r => r.ProjectId == created.Id)).Id;
+        var rowCountBefore = await h.Db.Projects.CountAsync();
+
+        var written = Value(await h.Projects.PutPlaybooksSource(created.Id, new ProjectRepoSourcedWriteRequest(false), default));
+
+        Assert.False(written.RepoSourced);
+        Assert.Equal(h.Nathan.Name, written.RepoSourcedBy);
+        Assert.Equal(Now, written.RepoSourcedAt);
+        Assert.Equal(rowCountBefore, await h.Db.Projects.CountAsync());
+        Assert.Equal(repositoryId, (await h.Db.ProjectRepositories.SingleAsync(r => r.ProjectId == created.Id)).Id);
+    }
+
+    [Fact]
+    public async Task ProjectDto_RoundTripsRepoSourcedFieldsThroughGetProjects()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+
+        Assert.False(created.RepoSourced);
+        Assert.Null(created.RepoSourcedBy);
+        Assert.Null(created.RepoSourcedAt);
+
+        await h.Projects.PutRepositories(
+            created.Id, [new ProjectRepositoryWriteRequest("https://example.com/owner/repo.git", null)], default);
+        await h.Projects.PutPlaybooksSource(created.Id, new ProjectRepoSourcedWriteRequest(true), default);
+
+        var read = Value(await h.Projects.GetProjects(default)).Single(p => p.Id == created.Id);
+        Assert.True(read.RepoSourced);
+        Assert.Equal(h.Nathan.Name, read.RepoSourcedBy);
+        Assert.Equal(Now, read.RepoSourcedAt);
+    }
+
+    private static async Task AddPlaybookRowsAsync(Harness h, int projectId, int count)
+    {
+        var todo = new EfHatchStatus { Name = "todo", SortOrder = 20 };
+        var doing = new EfHatchStatus { Name = "in progress", SortOrder = 30 };
+        h.Db.AddRange(todo, doing);
+        await h.Db.SaveChangesAsync();
+
+        for (var i = 0; i < count; i++)
+        {
+            h.Db.Add(new EfHatchPlaybook
+            {
+                FromStatusId = todo.Id,
+                ToStatusId = doing.Id,
+                Types = "",
+                Shape = EfHatchPlaybook.AnyShape,
+                Prompt = "do it",
+                Model = "sonnet",
+                Effort = "high",
+                ProjectId = projectId,
+                CreatedAt = Now,
+                UpdatedAt = Now,
+            });
+        }
+
+        await h.Db.SaveChangesAsync();
+    }
+
     // ---- Auto-heal ----
 
     [Fact]
