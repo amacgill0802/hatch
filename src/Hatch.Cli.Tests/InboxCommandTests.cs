@@ -399,6 +399,46 @@ public sealed class InboxCommandTests : IDisposable
         Assert.Contains("use the other table", said, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The same door driven with Codex's writer (HA-919): its documented
+    /// stdout, not the fake adapter's shape.
+    /// </summary>
+    [Theory]
+    [InlineData("post-tool-use")]
+    [InlineData("stop")]
+    public async Task Codexs_hook_output_is_the_shape_its_hooks_page_documents(string hook)
+    {
+        Waiting(Fixtures.Message(7, body: "use the other table"));
+
+        var command = new InboxCommand(
+            _h.Board, _h.Say, new StringReader("{\"tool_name\":\"Bash\"}"), new FrozenClock(Now), new CodexHookOutputWriter())
+        {
+            Limit = TimeSpan.FromSeconds(InboxCommand.CallSeconds),
+        };
+
+        var args = hook == "stop"
+            ? new[] { "AER-1", "--hook", "stop" }
+            : new[] { "AER-1", "--hook", "post-tool-use", "--stamp", Stamp };
+
+        Assert.Equal(0, await command.RunAsync(args, default));
+
+        var root = JsonDocument.Parse(Assert.Single(_h.Say.Said)).RootElement;
+        if (hook == "stop")
+        {
+            Assert.Equal(["decision", "reason"], root.EnumerateObject().Select(p => p.Name));
+            Assert.Equal("block", root.GetProperty("decision").GetString());
+            Assert.Contains("use the other table", root.GetProperty("reason").GetString(), StringComparison.Ordinal);
+        }
+        else
+        {
+            Assert.Equal(["hookSpecificOutput"], root.EnumerateObject().Select(p => p.Name));
+            var inner = root.GetProperty("hookSpecificOutput");
+            Assert.Equal(["hookEventName", "additionalContext"], inner.EnumerateObject().Select(p => p.Name));
+            Assert.Equal("PostToolUse", inner.GetProperty("hookEventName").GetString());
+            Assert.Contains("use the other table", inner.GetProperty("additionalContext").GetString(), StringComparison.Ordinal);
+        }
+    }
+
     [Fact]
     public async Task Several_messages_are_all_said_in_the_order_they_came_back()
     {
