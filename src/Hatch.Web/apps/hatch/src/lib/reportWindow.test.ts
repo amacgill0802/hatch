@@ -84,6 +84,7 @@ describe('resolveWindow', () => {
     expect(resolveWindow(params(query), NOW, 0)).toEqual(fallback);
   });
   it.each([
+    ['all', 36_525],
     ['1y', 365],
     ['2w', 14],
     ['1w', 7],
@@ -122,7 +123,7 @@ describe('WINDOW_PRESETS', () => {
     expect(WINDOW_PRESETS.find((preset) => preset.key === '3m')?.days).toBe(DEFAULT_DAYS);
   });
 
-  it('is ticked by hour, day, day, day, week, week, month', () => {
+  it('is ticked by hour, day, day, day, week, week, month, month', () => {
     expect(WINDOW_PRESETS.map((preset) => tickUnit(days(preset.days)))).toEqual([
       'hour',
       'day',
@@ -131,12 +132,13 @@ describe('WINDOW_PRESETS', () => {
       'week',
       'week',
       'month',
+      'month',
     ]);
   });
 });
 
 describe('parsePreset', () => {
-  it.each(['1d', '1w', '2w', '1m', '3m', '6m', '1y'])('reads %s', (key) => {
+  it.each(['1d', '1w', '2w', '1m', '3m', '6m', '1y', 'all'])('reads %s', (key) => {
     expect(parsePreset(key)).toBe(key);
   });
 

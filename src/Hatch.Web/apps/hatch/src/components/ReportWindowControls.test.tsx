@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import type { ReportWindow, WindowPreset } from '../lib/reportWindow';
+import { WINDOW_PRESETS, type ReportWindow, type WindowPreset } from '../lib/reportWindow';
 import { ReportWindowControls } from './ReportWindowControls';
 
 const TO = '2026-10-18T00:00:00.000Z';
@@ -37,10 +37,10 @@ describe('ReportWindowControls', () => {
     expect(labels).toEqual(['Earlier', 'Today', 'Later']);
   });
 
-  it('offers the seven presets for a preset length, showing the one it is', () => {
+  it('offers the eight presets for a preset length, showing the one it is', () => {
     const html = render(90);
 
-    expect([...html.matchAll(/<option /g)]).toHaveLength(7);
+    expect([...html.matchAll(/<option /g)]).toHaveLength(8);
     expect(html).not.toContain('Custom');
     expect(shown(html)).toEqual(['3 months']);
   });
@@ -48,14 +48,23 @@ describe('ReportWindowControls', () => {
   it('adds a shown Custom option for a length that is no preset', () => {
     const html = render(45);
 
-    expect([...html.matchAll(/<option /g)]).toHaveLength(8);
+    expect([...html.matchAll(/<option /g)]).toHaveLength(9);
     expect(shown(html)).toEqual(['Custom']);
   });
 
-  it('offers the seven lengths narrowest first', () => {
+  it('offers the eight lengths narrowest first', () => {
     const labels = [...render(90).matchAll(/<option[^>]*>([^<]*)</g)].map((m) => m[1]);
 
-    expect(labels).toEqual(['1 day', '1 week', '2 weeks', '1 month', '3 months', '6 months', '1 year']);
+    expect(labels).toEqual([
+      '1 day',
+      '1 week',
+      '2 weeks',
+      '1 month',
+      '3 months',
+      '6 months',
+      '1 year',
+      'All time',
+    ]);
   });
 
   it('lights the length only when it is not the default', () => {
@@ -66,5 +75,17 @@ describe('ReportWindowControls', () => {
   it('lights the length against the default it is given, not a fixed one', () => {
     expect(render(30, '1m')).not.toContain('hatch-facet--lit');
     expect(render(90, '1m')).toContain('hatch-facet--lit');
+  });
+
+  it('disables Earlier and Later on All time, and no other length', () => {
+    const steppers = (html: string) =>
+      [...html.matchAll(/<button[^>]*>([^<]*)<\/button>/g)].filter((m) => m[1] !== 'Today').map((m) => m[0]);
+
+    for (const { days: count } of WINDOW_PRESETS) {
+      const disabled = count === 36_525;
+      for (const button of steppers(render(count))) {
+        expect(button.includes(' disabled')).toBe(disabled);
+      }
+    }
   });
 });

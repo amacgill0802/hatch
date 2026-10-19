@@ -33,6 +33,9 @@ export function ReportWindowControls({
 }) {
   const preset = presetOf(window);
   const key = preset ?? CUSTOM;
+  // Nothing is earlier than all of it, and Later would only push the end
+  // into the future.
+  const atAll = preset === 'all';
   // A window of some other length (a pasted link) is shown as Custom rather
   // than as the nearest preset.
   const options: FacetOption[] = [
@@ -42,7 +45,12 @@ export function ReportWindowControls({
 
   return (
     <div className="hatch-timeline-controls" role="group" aria-label="Window">
-      <button type="button" className={facetClass(false)} onClick={() => onMove(shiftWindow(window, -1))}>
+      <button
+        type="button"
+        className={facetClass(false)}
+        disabled={atAll}
+        onClick={() => onMove(shiftWindow(window, -1))}
+      >
         Earlier
       </button>
       <button
@@ -52,7 +60,12 @@ export function ReportWindowControls({
       >
         Today
       </button>
-      <button type="button" className={facetClass(false)} onClick={() => onMove(shiftWindow(window, 1))}>
+      <button
+        type="button"
+        className={facetClass(false)}
+        disabled={atAll}
+        onClick={() => onMove(shiftWindow(window, 1))}
+      >
         Later
       </button>
       <Facet
