@@ -796,6 +796,7 @@
    from a hatch-flow-{kind} class below, the same handoff hatch-wip-{tightness}
    makes above for --wip-tint/--wip-wash/--wip-ink. */
 .hatch-flow-band {
+  --callout-edge: var(--flow-fill);
   position: absolute;
   left: 0;
   right: 0;
