@@ -25,7 +25,7 @@ const REFERENCE: { title: string; blurb?: string; rows: { command: string; note:
   {
     title: 'One increment — hatch work',
     blurb:
-      'Claims a ticket, spawns one headless claude session with the prompt, model and effort its column and type call for, streams what that session does, and exits when it ends. Run it inside the checkout the board is about.',
+      'Claims a ticket, spawns one headless agent session with the prompt, model and effort its column and type call for, streams what that session does, and exits when it ends. Run it inside the checkout the board is about.',
     rows: [
       { command: 'hatch work', note: 'the next actionable issue anywhere on the board' },
       { command: 'hatch work AER-12', note: '…or this one, whatever else is above it' },

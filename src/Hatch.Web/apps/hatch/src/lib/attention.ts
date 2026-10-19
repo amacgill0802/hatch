@@ -83,7 +83,7 @@ export function attentionLabel(attention: Attention | null): string {
   if (attention.questions.length > 0) parts.push(`${count(attention.questions.length, 'question')} to answer`);
 
   const exhausted = attention.exhaustedRunners?.length ?? 0;
-  if (exhausted > 0) parts.push(`${count(exhausted, 'runner')} ${exhausted === 1 ? 'is' : 'are'} out of Claude usage`);
+  if (exhausted > 0) parts.push(`${count(exhausted, 'runner')} ${exhausted === 1 ? 'is' : 'are'} out of usage`);
 
   return parts.length > 0 ? parts.join(', ') : 'Nothing is waiting on you';
 }

@@ -26,7 +26,7 @@ export type RunnerActivity = 'gone' | 'exhausted' | 'paused' | 'stopping' | 'wor
  * itself, because silence is a fact and everything else is a stale claim.
  * Below that, a fact the runner reports about its own account -
  * `exhaustedUntil` - beats a request a person made of it: an operator who
- * paused a runner still sees that it is out of Claude usage, because pausing
+ * paused a runner still sees that it is out of usage, because pausing
  * it changes nothing about whether it has any usage to spend. That fact is
  * read the same way `gone`'s heartbeat is, though: a reset time only counts
  * while it is still ahead of `now` - once it has passed, it is no longer a
