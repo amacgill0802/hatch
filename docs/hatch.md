@@ -3456,10 +3456,12 @@ GET /api/hatch/reports/timeline?from=&to=&projectId=&createdBy=
 
 `from` and `to` are **instants** (`2026-09-12T17:00:00Z`), not dates. With
 neither given the range is the 90 days ending now; with only `from` absent it is
-the 90 days before `to`. Equal bounds are accepted. The `400`s are an
-unparseable bound, an inverted one (`from` after `to`), and a `projectId` that
-names no project. The route is open to a person or to a key with the `hatch`
-scope.
+the 90 days before `to`. Equal bounds are accepted. `from` is clamped forward
+to the first issue's creation when the range reaches back before anything
+existed, so a range wider than the board's history does not draw an empty
+stretch. The `400`s are an unparseable bound, an inverted one (`from` after
+`to`), and a `projectId` that names no project. The route is open to a person
+or to a key with the `hatch` scope.
 
 It answers `{ from, to, epics, other, creators, unresolved }`. `from` and `to`
 are the range as the server resolved it. Each entry in `epics` is `{ issue,
@@ -3502,7 +3504,7 @@ still offers the people the filter hides, but is limited to roots that made the
 answer; `unresolved` sums only the roots left after narrowing. On the page they
 are in the URL as `project` (a key) and `creator` (a name), beside the window's
 `from` and `to` and a `range` shorthand (`1d`, `1w`, `2w`, `1m`, `3m`, `6m`,
-`1y`). With
+`1y`, `all`). With
 none of them the page opens on the 90 days ending at the reader's **next
 midnight** — the server's own default ends *now*, and the page's alignment to
 the reader's day is the browser's.

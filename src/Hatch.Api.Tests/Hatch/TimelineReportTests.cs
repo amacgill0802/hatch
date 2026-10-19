@@ -902,6 +902,33 @@ public class TimelineReportControllerTests
     }
 
     [Fact]
+    public async Task AFromBeforeTheFirstIssue_IsClampedForwardToIt()
+    {
+        var h = await NewAsync();
+        var issue = await AddIssueAsync(h, "epic", 1);
+        issue.CreatedAt = Now.AddDays(-5);
+        await h.Db.SaveChangesAsync();
+
+        var timeline = Value(await h.Reports.GetTimeline(Now.AddDays(-20).ToString("O"), null, null, null, default));
+
+        Assert.Equal(Now.AddDays(-5), timeline.From);
+    }
+
+    [Fact]
+    public async Task AFromAfterTheFirstIssue_IsLeftAlone()
+    {
+        var h = await NewAsync();
+        var issue = await AddIssueAsync(h, "epic", 1);
+        issue.CreatedAt = Now.AddDays(-20);
+        await h.Db.SaveChangesAsync();
+        var from = Now.AddDays(-5);
+
+        var timeline = Value(await h.Reports.GetTimeline(from.ToString("O"), null, null, null, default));
+
+        Assert.Equal(from, timeline.From);
+    }
+
+    [Fact]
     public async Task AnInvertedRange_IsRefused()
     {
         var h = await NewAsync();

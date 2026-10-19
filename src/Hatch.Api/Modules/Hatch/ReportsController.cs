@@ -51,6 +51,9 @@ public class ReportsController(
 
         var (statuses, rows, changes) = await LoadHistoryAsync(ct);
 
+        DateTimeOffset? first = rows.Count > 0 ? rows.Min(r => r.CreatedAt) : null;
+        start = RangeBounds.ClampStart(start, end, first);
+
         var result = TimelineReport.Fold(rows, changes, statuses, start, end, projectId, createdBy);
 
         // Cards for exactly the issues in the answer, and none of the rest of
