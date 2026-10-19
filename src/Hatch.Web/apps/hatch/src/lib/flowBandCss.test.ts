@@ -67,4 +67,8 @@ describe('the flow-viz bands', () => {
     expect(rule.bottom).toBe('0');
     expect(rule['border-radius']).toBe('0 0 var(--r-ctl) var(--r-ctl)');
   });
+
+  it("hands the band's own fill to the callout hung off it as its edge", () => {
+    expect(declarationsOf('.hatch-flow-band')['--callout-edge']).toBe('var(--flow-fill)');
+  });
 });

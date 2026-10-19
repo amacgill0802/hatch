@@ -69,6 +69,15 @@ export function flowBand(row: QueueEntry | undefined, card: IssueCard): { kind: 
   }
 }
 
+/** The sentence the flow-viz callout carries for a card, or null where the
+    card wears no band - `flowBand` is the one place that decides a row is
+    stale or absent, so a callout can never open over a card with no band.
+    Never composes words of its own: it is `queueWords`, the same line the
+    work-queue modal prints on that row. */
+export function flowSentence(row: QueueEntry | undefined, card: IssueCard): string | null {
+  return row && flowBand(row, card) ? queueWords(row) : null;
+}
+
 /** The word a hop row prints, naming which of the six reasons carried it -
     mirrors the CLI's `Picker.HopWord` exactly. */
 export function hopWord(hopKind: QueueEntry['hopKind'], hopUnder: string | null): string {

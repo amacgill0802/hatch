@@ -12,7 +12,7 @@ import {
 } from '@dnd-kit/core';
 import type { DragEndEvent, DragOverEvent, DragStartEvent } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { Button, EmptyState } from '@hatch/ui';
+import { Button, Callout, EmptyState } from '@hatch/ui';
 import { deleteIssue, getAssignees, getBoard, moveIssue } from '../api/client';
 import { BoardCard, CardPreview } from '../components/BoardCard';
 import { BoardFilters } from '../components/BoardFilters';
@@ -50,7 +50,7 @@ import type { BoardView } from '../lib/phoneBoard';
 import { columnDroppableId, place, sendTo, targetStatusId } from '../lib/place';
 import type { Placement } from '../lib/place';
 import { columnBlocked } from '../lib/protectedColumns';
-import { flowBand } from '../lib/queue';
+import { flowBand, flowSentence } from '../lib/queue';
 import type { QueueEntry } from '../types';
 import { askingCount } from '../lib/questions';
 import { isWaiting } from '../lib/schedule';
@@ -696,28 +696,30 @@ export function BoardPage() {
           onDragCancel={cancel}
           onDragEnd={(e) => void onDragEnd(e)}
         >
-          <div className={`hatch-board${zone.length ? ' hatch-board--wip' : ''}`}>
-            <WipBands runs={zone} section={section} loads={loads} />
-            {columns.map((status) => (
-              <Column
-                key={status.id}
-                status={status}
-                cards={visible.filter((i) => i.statusId === status.id)}
-                hidden={board.issues.filter((i) => i.statusId === status.id).length - visible.filter((i) => i.statusId === status.id).length}
-                filtering={isFiltering(filter)}
-                dropping={dragging !== null && over === status.id}
-                lit={previewing && over !== null && zoneIds.has(over) && zoneIds.has(status.id)}
-                blocked={columnBlocked(status, dragging, projectsByKey)}
-                tint={zoneIds.has(status.id) ? tint : null}
-                found={found}
-                onPeek={peek}
-                projectsByKey={projectsByKey}
-                showProjectMark={showProjectMark}
-                doneHorizonHours={board.doneHorizonHours ?? null}
-                rows={rows}
-              />
-            ))}
-          </div>
+          <Callout.Group suspended={dragUnderway}>
+            <div className={`hatch-board${zone.length ? ' hatch-board--wip' : ''}`}>
+              <WipBands runs={zone} section={section} loads={loads} />
+              {columns.map((status) => (
+                <Column
+                  key={status.id}
+                  status={status}
+                  cards={visible.filter((i) => i.statusId === status.id)}
+                  hidden={board.issues.filter((i) => i.statusId === status.id).length - visible.filter((i) => i.statusId === status.id).length}
+                  filtering={isFiltering(filter)}
+                  dropping={dragging !== null && over === status.id}
+                  lit={previewing && over !== null && zoneIds.has(over) && zoneIds.has(status.id)}
+                  blocked={columnBlocked(status, dragging, projectsByKey)}
+                  tint={zoneIds.has(status.id) ? tint : null}
+                  found={found}
+                  onPeek={peek}
+                  projectsByKey={projectsByKey}
+                  showProjectMark={showProjectMark}
+                  doneHorizonHours={board.doneHorizonHours ?? null}
+                  rows={rows}
+                />
+              ))}
+            </div>
+          </Callout.Group>
 
           {/* The card that follows the cursor. dnd-kit's sortable leaves the
               original in place and dims it, which by itself reads as a board
@@ -912,6 +914,7 @@ function Column({
                 onPeek={onPeek}
                 project={project}
                 band={rows ? flowBand(rows.get(card.key), card) : undefined}
+                sentence={rows ? flowSentence(rows.get(card.key), card) : undefined}
               />
             );
           })}

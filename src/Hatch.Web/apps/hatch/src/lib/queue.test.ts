@@ -3,6 +3,7 @@ import {
   anyAboveNormal,
   anyClaimed,
   flowBand,
+  flowSentence,
   isRefusedRunner,
   mergeTrains,
   queueCard,
@@ -507,6 +508,35 @@ describe('flowBand', () => {
     const row = entry({ fromStatus: status({ id: 1 }), blocked: 'something else', blockedKind: null });
 
     expect(flowBand(row, card({ statusId: 1 }))).toEqual({ kind: 'other', words: 'Blocked' });
+  });
+});
+
+describe('flowSentence', () => {
+  it('opens nothing with no row at all', () => {
+    expect(flowSentence(undefined, card())).toBeNull();
+  });
+
+  it('opens nothing when the row describes a column the card has already left', () => {
+    const row = entry({ fromStatus: status({ id: 1 }), blocked: 'waiting on HA-2', blockedKind: 'dependency' });
+
+    expect(flowSentence(row, card({ statusId: 2 }))).toBeNull();
+  });
+
+  it('says exactly what the queue row says for a dependency row', () => {
+    const row = entry({ fromStatus: status({ id: 1 }), blocked: 'waiting on HA-2', blockedKind: 'dependency' });
+
+    expect(flowSentence(row, card({ statusId: 1 }))).toBe(queueWords(row));
+  });
+
+  it('says the clear note for a clear row that carries one', () => {
+    const row = entry({
+      fromStatus: status({ id: 1, name: 'To Do' }),
+      toStatus: status({ id: 2, name: 'In Progress' }),
+      blocked: null,
+      clearNote: 'nothing in its way',
+    });
+
+    expect(flowSentence(row, card({ statusId: 1 }))).toBe('clear for To Do -> In Progress - nothing in its way');
   });
 });
 
