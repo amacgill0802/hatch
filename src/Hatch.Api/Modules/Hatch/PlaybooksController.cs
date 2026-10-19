@@ -165,8 +165,16 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ModelFamili
         if (request.Prompt is not null)
         {
             var prompt = request.Prompt.Trim();
-            if (PlaybookFile.InvalidPrompt(prompt) is { } promptError) return BadRequest(promptError);
-            playbook.Prompt = prompt;
+            if (prompt.Length == 0)
+            {
+                if (playbook.DefaultPrompt is null) return BadRequest(PlaybookFile.InvalidPrompt(prompt));
+                playbook.Prompt = null;
+            }
+            else
+            {
+                if (PlaybookFile.InvalidPrompt(prompt) is { } promptError) return BadRequest(promptError);
+                playbook.Prompt = prompt == playbook.DefaultPrompt ? null : prompt;
+            }
         }
 
         var model = request.Model?.Trim() ?? playbook.Model;

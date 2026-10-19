@@ -1458,6 +1458,14 @@ public record PlaybookCreateRequest(
     bool? IsCheck = null);
 
 /// <summary>Null leaves a field alone, as everywhere else in Hatch.</summary>
+/// <param name="Prompt">
+/// Null leaves it alone; <c>""</c> or whitespace hands the row back to its
+/// prescribed text, and is refused where the row has none, in the same sentence
+/// a missing prompt is refused in on create; a value sets it, unless it is
+/// byte-identical to the prescribed text, in which case the override clears -
+/// the three states <paramref name="Budget"/> carries, except that "unchanged"
+/// here means the prescribed text rather than nothing.
+/// </param>
 /// <param name="BriefLimit">
 /// The brief's limit, in characters. Null leaves it alone; <c>""</c> or
 /// whitespace clears it; a parsed positive integer sets it - the same three
