@@ -125,3 +125,12 @@ export function matchedWords(matched: SearchMatch[]): string {
 export function statusPath(statusId: number): string {
   return `/search?statusId=${statusId}`;
 }
+
+/** The OmniBar's trailing row's link to the Search page, for a typed prompt -
+    `null` for a blank prompt, which is what leaves the row off. */
+export function searchPath(query: string): string | null {
+  const trimmed = query.trim();
+  if (!trimmed) return null;
+
+  return `/search?${new URLSearchParams({ q: trimmed })}`;
+}

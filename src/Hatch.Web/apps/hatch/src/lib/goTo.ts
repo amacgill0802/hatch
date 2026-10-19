@@ -9,6 +9,7 @@
    that number, and a title that happens to contain it must not take its place. */
 
 import { compareIssueKeys, matchesText, splitKey } from './issuePicker';
+import { searchPath } from './search';
 import type { IssueCard, Status } from '../types';
 
 /**
@@ -173,4 +174,15 @@ export function whereOnBoard(
   if (!columns.some((s) => s.id === card.statusId)) return 'undrawn';
   if (!visibleKeys.has(card.key)) return 'filtered';
   return 'drawn';
+}
+
+/** The trailing row's highlight key. `#` cannot occur in an issue key. */
+export const SEARCH_ROW = '#search';
+
+/** The console's full highlight order: every row's key, then `SEARCH_ROW` when
+    the query is non-blank. */
+export function entryKeys(rows: GoToRow[], query: string): string[] {
+  const keys = rows.map((row) => row.card.key);
+  if (searchPath(query) !== null) keys.push(SEARCH_ROW);
+  return keys;
 }
