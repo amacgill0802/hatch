@@ -21,14 +21,16 @@ export function PlaybookRow({
   playbook,
   projects,
   statuses,
-  shadowed,
+  note,
+  dimmed,
   onEdit,
   onDelete,
 }: {
   playbook: Playbook;
   projects: Project[];
   statuses: Status[];
-  shadowed?: boolean;
+  note?: string | null;
+  dimmed?: boolean;
   onEdit: () => void;
   onDelete: () => void;
 }) {
@@ -37,7 +39,7 @@ export function PlaybookRow({
   const multipleProjects = hasMultipleProjects(projects);
 
   return (
-    <tr onClick={onEdit}>
+    <tr onClick={onEdit} className={dimmed ? 'hatch-playbook-row--dimmed' : undefined}>
       <td>
         <button
           type="button"
@@ -60,7 +62,7 @@ export function PlaybookRow({
         </button>
         {isUncheckedEdit(playbook) && <Badge tone="danger">a check with no denied tools can edit</Badge>}
         {isOverridden(playbook) && <Badge tone="muted">the operator&apos;s own wording</Badge>}
-        {shadowed && <Badge tone="muted">shadowed by the file</Badge>}
+        {note && <Badge tone="muted">{note}</Badge>}
       </td>
       {multipleProjects && (
         <td>
