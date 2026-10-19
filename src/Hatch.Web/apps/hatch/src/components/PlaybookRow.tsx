@@ -1,7 +1,7 @@
 import { Badge, Button, Text } from '@hatch/ui';
 import { StatusPill } from './StatusPill';
 import { TypeBadge } from './TypeBadge';
-import { isReviewPlaybook, isUncheckedEdit, playbookLabel, transitionLabel } from '../lib/playbooks';
+import { isOverridden, isReviewPlaybook, isUncheckedEdit, playbookLabel, transitionLabel } from '../lib/playbooks';
 import { hasMultipleProjects } from '../lib/useProjects';
 import type { Playbook, Project, Status } from '../types';
 
@@ -69,6 +69,7 @@ export function PlaybookRow({
           </span>
 
           {isUncheckedEdit(playbook) && <Badge tone="danger">a check with no denied tools can edit</Badge>}
+          {isOverridden(playbook) && <Badge tone="muted">the operator&apos;s own wording</Badge>}
           {shadowed && <Badge tone="muted">shadowed by the file</Badge>}
         </button>
       </td>

@@ -111,3 +111,10 @@ export function matchesProjectFilter(p: Pick<Playbook, 'projectKey'>, projectKey
 export function isUncheckedEdit(p: Pick<Playbook, 'isCheck' | 'deniedTools'>): boolean {
   return p.isCheck && p.deniedTools.length === 0;
 }
+
+/** Whether this row's prompt is the operator's own wording rather than its prescribed
+    text - what the badge marks, and the words HA-904's diff panel must reuse. A row with
+    no prescribed text is never marked. */
+export function isOverridden(p: Pick<Playbook, 'prompt' | 'defaultPrompt'>): boolean {
+  return p.defaultPrompt !== null && p.prompt !== p.defaultPrompt;
+}
