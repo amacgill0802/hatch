@@ -29,8 +29,17 @@ public sealed class AgentSessionRunner(IAgentAdapter adapter) : ISessionRunner, 
             {
                 writing = Task.Run(async () =>
                 {
-                    await process.StandardInput.WriteAsync(request.Prompt);
-                    process.StandardInput.Close();
+                    try
+                    {
+                        await process.StandardInput.WriteAsync(request.Prompt);
+                        process.StandardInput.Close();
+                    }
+                    catch (IOException)
+                    {
+                        // The child ended - or was stopped - before it read the
+                        // prompt. That is its exit code's to report, not a reason
+                        // for the spawn to throw and lose it.
+                    }
                 }, CancellationToken.None);
             }
             else
