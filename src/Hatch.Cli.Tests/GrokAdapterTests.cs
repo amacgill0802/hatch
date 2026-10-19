@@ -3,8 +3,7 @@ namespace Hatch.Cli.Tests;
 /// <summary>
 /// <see cref="GrokAdapter"/>'s own argv, reached directly through the
 /// <c>InternalsVisibleTo</c> grant the same way <see cref="ClaudeAdapterTests"/>
-/// reaches <see cref="ClaudeAdapter"/>'s. Everything but <c>CanDeny</c> and
-/// the deny-flag translation (HA-949) is pinned here.
+/// reaches <see cref="ClaudeAdapter"/>'s.
 /// </summary>
 public sealed class GrokAdapterTests : IDisposable
 {
@@ -95,6 +94,98 @@ public sealed class GrokAdapterTests : IDisposable
         var args = Adapter().BuildAttached(request).ArgumentList;
 
         Assert.Equal(["--effort", "high", "--cwd", "/root", "say hello"], args);
+    }
+
+    [Theory]
+    [InlineData("Bash")]
+    [InlineData("Bash(git push:*)")]
+    [InlineData("Read")]
+    [InlineData("Read(secrets/**)")]
+    [InlineData("Edit")]
+    [InlineData("Edit(src/**)")]
+    [InlineData("Write")]
+    [InlineData("Write(out/**)")]
+    [InlineData("Grep")]
+    [InlineData("Grep(TODO)")]
+    [InlineData("Glob")]
+    [InlineData("Glob(**/*.cs)")]
+    [InlineData("WebFetch")]
+    [InlineData("WebFetch(example.com)")]
+    [InlineData("WebSearch")]
+    [InlineData("WebSearch(example)")]
+    public void A_vendor_recognised_tool_rule_is_allowed_and_translates_to_deny(string rule)
+    {
+        var adapter = Adapter();
+        var request = new SessionRequest("/root", "sonnet", "high", "say hello", Quiet: false, DeniedTools: [rule]);
+
+        Assert.True(adapter.CanDeny([rule], out _));
+
+        var args = adapter.BuildAttached(request).ArgumentList;
+
+        Assert.Equal(["--effort", "high", "--cwd", "/root", "--deny", rule, "say hello"], args);
+    }
+
+    [Fact]
+    public void Bare_agent_is_allowed_and_translates_to_disallowed_tools_not_deny()
+    {
+        var adapter = Adapter();
+        var request = new SessionRequest("/root", "sonnet", "high", "say hello", Quiet: false, DeniedTools: ["Agent"]);
+
+        Assert.True(adapter.CanDeny(["Agent"], out _));
+
+        var args = adapter.BuildAttached(request).ArgumentList;
+
+        Assert.Equal(["--effort", "high", "--cwd", "/root", "--disallowed-tools", "Agent", "say hello"], args);
+        Assert.DoesNotContain("--deny", args);
+    }
+
+    [Fact]
+    public void Agent_and_a_deny_rule_together_emit_disallowed_tools_before_deny()
+    {
+        var request = new SessionRequest("/root", "sonnet", "high", "say hello", Quiet: false, DeniedTools: ["Agent", "Bash"]);
+
+        var args = Adapter().BuildAttached(request).ArgumentList;
+
+        Assert.Equal(["--effort", "high", "--cwd", "/root", "--disallowed-tools", "Agent", "--deny", "Bash", "say hello"], args);
+    }
+
+    [Theory]
+    [InlineData("NotebookEdit")]
+    [InlineData("Agent(explore)")]
+    [InlineData("mcp__x__y")]
+    [InlineData("PowerShell")]
+    public void An_unrecognised_rule_is_refused_with_the_exact_sentence(string rule)
+    {
+        Assert.False(Adapter().CanDeny([rule], out var refusal));
+        Assert.Equal(
+            $"hatch: grok cannot honour the playbook's denied-tools rule \"{rule}\" - it has no equivalent, so this increment is not spawned under grok",
+            refusal);
+    }
+
+    [Theory]
+    [InlineData("NotebookEdit")]
+    [InlineData("Agent(explore)")]
+    [InlineData("mcp__x__y")]
+    [InlineData("PowerShell")]
+    public void A_refused_rule_throws_from_both_builds_with_the_exact_sentence(string rule)
+    {
+        var request = new SessionRequest("/root", "sonnet", "high", "say hello", Quiet: true, DeniedTools: [rule]);
+        var expected = $"hatch: grok cannot honour the playbook's denied-tools rule \"{rule}\" - it has no equivalent, so this increment is not spawned under grok";
+
+        var headless = Assert.Throws<InvalidOperationException>(() => Adapter().BuildHeadless(request));
+        var attached = Assert.Throws<InvalidOperationException>(() => Adapter().BuildAttached(request));
+
+        Assert.Equal(expected, headless.Message);
+        Assert.Equal(expected, attached.Message);
+    }
+
+    [Fact]
+    public void A_translatable_rule_does_not_excuse_a_refused_one()
+    {
+        var adapter = Adapter();
+
+        Assert.Throws<InvalidOperationException>(() => adapter.BuildHeadless(new SessionRequest("/root", "sonnet", "high", "p", Quiet: true, DeniedTools: ["Bash", "NotebookEdit"])));
+        Assert.Throws<InvalidOperationException>(() => adapter.BuildHeadless(new SessionRequest("/root", "sonnet", "high", "p", Quiet: true, DeniedTools: ["NotebookEdit", "Bash"])));
     }
 
     [Fact]
