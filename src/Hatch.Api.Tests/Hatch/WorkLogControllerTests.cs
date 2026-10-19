@@ -311,6 +311,24 @@ public class WorkLogControllerTests
     }
 
     [Fact]
+    public async Task CostPutsAnUnpricedSessionLast_AfterEvenAPricedZero_AndTheTotalsCountIt()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        await h.SpendAsync(issue, 1_000, Now.AddHours(-3), usd: null);
+        await h.SpendAsync(issue, 2_000, Now.AddHours(-2), usd: 0m);
+        await h.SpendAsync(issue, 3_000, Now.AddHours(-1), usd: 2.00m);
+
+        var byCost = await h.SessionsAsync(sort: "cost");
+
+        Assert.Equal([2.00m, 0m, null], byCost.Sessions.Select(s => s.CostUsd));
+        Assert.Equal(1, byCost.Totals.UnpricedSessions);
+        Assert.Equal(2.00m, byCost.Totals.CostUsd);
+        Assert.Equal(6_000, byCost.Totals.TotalTokens);
+    }
+
+    [Fact]
     public async Task RequestsRanksOnItsOwnCount_AndNullsSortLast()
     {
         var h = await NewAsync();
@@ -581,7 +599,7 @@ public class WorkLogControllerTests
             IssueDto issue,
             long tokens,
             DateTimeOffset endedAt,
-            decimal usd = 0m,
+            decimal? usd = 0m,
             bool isError = false,
             string? title = null,
             bool described = false,

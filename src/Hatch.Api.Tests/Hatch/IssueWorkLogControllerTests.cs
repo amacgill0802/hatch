@@ -373,6 +373,26 @@ public class IssueWorkLogControllerTests
     }
 
     [Fact]
+    public async Task AnUnpricedSessionBeneathAnEpic_IsCountedInTheSubtreeAndAddsNoDollars()
+    {
+        var h = await NewAsync();
+        var epic = await h.FileAsync("epic", "the effort");
+        var story = await h.FileAsync("story", "under it", parentKey: epic.Key);
+        var other = await h.FileAsync("story", "beside it", parentKey: epic.Key);
+
+        await h.PostAsync(epic.Key, Reported("planning") with { CostUsd = 1m });
+        await h.PostAsync(story.Key, Reported("building") with { CostUsd = 4m });
+        await h.PostAsync(other.Key, Reported("unpriced") with { CostUsd = null });
+
+        var log = await h.ReadAsync(epic.Key);
+
+        Assert.Equal(3, log.Totals.Sessions);
+        Assert.Equal(1, log.Totals.UnpricedSessions);
+        Assert.Equal(5m, log.Totals.CostUsd);
+        Assert.Equal(0, log.Own.UnpricedSessions);
+    }
+
+    [Fact]
     public async Task AnIssueWithNoSessionsAnywhere_ReadsAsEmptyRatherThanFailing()
     {
         var h = await NewAsync();

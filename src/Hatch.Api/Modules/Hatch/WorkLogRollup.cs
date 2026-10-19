@@ -383,8 +383,10 @@ public static class WorkLogRollup
             // the client.
             input + output + cacheCreation + cacheRead,
             // An errored session's spend counts. It ran, and it was billed for
-            // running.
-            rows.Sum(r => r.CostUsd ?? 0m));
+            // running. An unpriced one is counted, not zero: it adds nothing to
+            // the sum and is reported beside it, so the total reads as a floor.
+            rows.Sum(r => r.CostUsd ?? 0m),
+            rows.Count(r => r.CostUsd is null));
     }
 
     /// <summary>
