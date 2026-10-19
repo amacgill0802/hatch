@@ -17,6 +17,7 @@ import { PlanPage } from './pages/PlanPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SearchPage } from './pages/SearchPage';
 import { TimelinePage } from './pages/TimelinePage';
+import { CumulativeFlowPage } from './pages/CumulativeFlowPage';
 import { LeaderboardPage } from './pages/LeaderboardPage';
 import { IssuePage } from './pages/IssuePage';
 import { ProjectsPage } from './pages/ProjectsPage';
@@ -139,6 +140,7 @@ function AppShell() {
             <Route path="/plan" element={<PlanPage />} />
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/reports/timeline" element={<TimelinePage />} />
+            <Route path="/reports/cumulative-flow" element={<CumulativeFlowPage />} />
             <Route path="/search" element={<SearchPage />} />
             <Route path="/leaderboard" element={<LeaderboardPage />} />
             <Route path="/bulk" element={<BulkPage />} />

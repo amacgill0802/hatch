@@ -1292,6 +1292,30 @@ export interface Timeline {
   unresolved: number;
 }
 
+/** One grid step of a cumulative flow: the instant, and how many issues sat in
+    each column then, parallel to CumulativeFlow.columns. Mirrors
+    CumulativeFlowPointDto. */
+export interface CumulativeFlowPoint {
+  at: string;
+  counts: number[];
+}
+
+/** How many issues sat in each board column over time, one point per grid
+    step. Mirrors CumulativeFlowDto. */
+export interface CumulativeFlow {
+  from: string;
+  to: string;
+  step: 'hour' | 'day' | 'week';
+  /** The board's own columns, in board order, deferred columns excluded -
+      parallel to each point's `counts`. */
+  columns: number[];
+  /** One per grid step, oldest first. */
+  points: CumulativeFlowPoint[];
+  /** Stretches in the range that named a column no longer on the board and
+      were left out. */
+  unresolved: number;
+}
+
 // ---- The battery ----
 
 /** One limit window as the server describes it. Mirrors UtilizationLimit. */

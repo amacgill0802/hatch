@@ -3394,9 +3394,10 @@ holds only the present column of every issue.
 
 Reports is a top-level area of the Hatch app: a **Reports** link in the primary
 nav between **Plan** and **Agents**, and an index at `/reports` with one card
-per report, each stating the question it answers. There is one report so far,
-the Timeline. A new report is one more entry in that index and a route; a menu
-under the nav link waits until there is a second report to put in it.
+per report, each stating the question it answers. There are two reports: the
+Timeline and the Cumulative flow. A new report is one more entry in that index
+and a route; neither report gets a nav entry of its own, and the index card
+stays the only way in.
 
 ### The timeline
 
@@ -3555,8 +3556,13 @@ counts stretches the same way the timeline's does: a stretch naming a column
 no longer on the board, because it was renamed since and the event predates
 the ids — see [the rebuild, and its one hole](#the-rebuild-and-its-one-hole).
 
-There is no page for it yet and **no CLI subcommand**; a script reaches it
-with `hatch api GET /api/hatch/reports/cumulative-flow?...`, which is the
+The page is at `/reports/cumulative-flow`: one band per column, stacked
+bottom-up with the board's last column at the baseline, each in its column's
+own colour and named in a legend above the chart. **Nothing on this page
+writes**, and the absence is the guarantee rather than a convention, as it is
+for [the timeline](#the-timeline). There is **no CLI subcommand** for it
+either; a script reaches the same answer with
+`hatch api GET /api/hatch/reports/cumulative-flow?...`, which is the
 [API surface](#api-surface)'s row for it.
 
 ## The overnight

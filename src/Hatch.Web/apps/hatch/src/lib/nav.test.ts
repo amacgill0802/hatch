@@ -4,10 +4,17 @@ import { NAV, activeGroup, navFor, navRows } from './nav';
 import type { NavEntry } from './nav';
 
 // Excluded on purpose: /issues/:key is reached from a card, and
-// /reports/timeline from the Reports index, never the nav; /docs/* is the
-// same page as /docs, for any path under it; /settings and *
-// (the unknown-route fallback) are not pages a menu lists.
-const EXCLUDED_ROUTES = new Set(['/issues/:key', '/reports/timeline', '/docs/*', '/settings', '*']);
+// /reports/timeline and /reports/cumulative-flow from the Reports index,
+// never the nav; /docs/* is the same page as /docs, for any path under it;
+// /settings and * (the unknown-route fallback) are not pages a menu lists.
+const EXCLUDED_ROUTES = new Set([
+  '/issues/:key',
+  '/reports/timeline',
+  '/reports/cumulative-flow',
+  '/docs/*',
+  '/settings',
+  '*',
+]);
 
 function routesInApp(): string[] {
   const matches = appSource.matchAll(/<Route path="([^"]+)"/g);
