@@ -5,6 +5,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  boardRowNote,
   briefLimitDraft,
   briefLimitRequest,
   budgetDraft,
@@ -20,6 +21,7 @@ import {
   isUncheckedEdit,
   leftNote,
   matchesProjectFilter,
+  notReadNote,
   playbookLabel,
   projectLabel,
   transitionLabel,
@@ -331,6 +333,48 @@ describe('coverage', () => {
       expect(coverageOf(playbook(board), [fileRow(row(U, U, ['task']))])).toBe('overridden');
       expect(coverageOf(playbook(board), [fileRow(row(T, U, ['task']))])).toBe('live');
     });
+  });
+});
+
+describe('boardRowNote', () => {
+  const T = 1;
+  const U = 2;
+  const row = (
+    fromStatusId: number,
+    toStatusId: number,
+    types: IssueType[],
+    shape: PlaybookShape = 'any',
+  ): CoverageRow => ({ fromStatusId, toStatusId, types, shape });
+
+  it('reads overridden by the project label once nothing is left', () => {
+    const board = row(T, U, ['task']);
+    const own = [row(T, U, [])];
+
+    expect(boardRowNote(board, own, "AER's own")).toBe("overridden by AER's own");
+  });
+
+  it('reads overridden by the file for a repo-sourced project', () => {
+    const board = row(T, U, ['task']);
+    const own = [row(T, U, [])];
+
+    expect(boardRowNote(board, own, 'the file')).toBe('overridden by the file');
+  });
+
+  it("reads leftNote's own words when partly overridden", () => {
+    const board = row(T, U, ['story']);
+    const own = [row(T, U, ['story'], 'leaf')];
+
+    expect(boardRowNote(board, own, "AER's own")).toBe('for parents only');
+  });
+
+  it('is null for a row still fully live', () => {
+    expect(boardRowNote(row(T, U, ['task']), [], "AER's own")).toBeNull();
+  });
+});
+
+describe('notReadNote', () => {
+  it('names the project reading its own file', () => {
+    expect(notReadNote('AER')).toBe('not read while AER reads its file');
   });
 });
 

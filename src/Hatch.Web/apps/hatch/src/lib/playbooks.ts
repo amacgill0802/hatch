@@ -172,6 +172,25 @@ export function leftNote(boardRow: CoverageRow, left: CoverageCell[]): string | 
   return `for ${leftShapes[0] === 'leaf' ? 'leaves' : 'parents'} only`;
 }
 
+/** What a board-wide row's note reads under the page's project filter: `overridden
+    by ${ownLabel}` once nothing of it is left, leftNote's own words for the part
+    that is, null for a row still fully live. `ownLabel` is the filtered project's
+    playbookLabel (`<KEY>'s own`) for a table project, or the literal `the file`
+    for a repo-sourced one - "overridden" is the one word used either way. */
+export function boardRowNote(boardRow: CoverageRow, ownRows: CoverageRow[], ownLabel: string): string | null {
+  const left = cellsLeft(boardRow, ownRows);
+  if (left.length === 0) return `overridden by ${ownLabel}`;
+  return leftNote(boardRow, left);
+}
+
+/** What a repo-sourced project's own leftover table row's note reads -
+    unconditional, since Dispatch.MatchAsync (src/Hatch.Api/Modules/Hatch/Dispatch.cs:1361)
+    excludes every row naming a project from the query itself once that project
+    is repo-sourced, whatever the row would otherwise cover. */
+export function notReadNote(projectKey: string): string {
+  return `not read while ${projectKey} reads its file`;
+}
+
 /** Whether the page's project filter keeps this row: every row when cleared, every
     board-wide row regardless, otherwise only a row naming that project. */
 export function matchesProjectFilter(p: Pick<Playbook, 'projectKey'>, projectKey: string): boolean {
