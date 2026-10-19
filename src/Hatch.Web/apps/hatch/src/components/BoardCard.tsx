@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ProjectMark, markVars } from '@hatch/ui';
+import { ProjectMark, markVars, useCallout } from '@hatch/ui';
 import { ClaimBadge } from './ClaimBadge';
 import { FlowBand } from './FlowBand';
 import { MomentChip } from './MomentChip';
@@ -40,6 +40,8 @@ interface BoardCardProps {
       lib/queue.ts's `flowBand`. Absent from CardProps on purpose: the preview
       follows the cursor across columns its row does not describe. */
   band?: { kind: FlowBandKind; words: string } | null;
+  /** What the callout over the band says - `flowSentence`, null/absent for none. */
+  sentence?: string | null;
 }
 
 /** Owed an answer, and drawn as such wherever the card is drawn. */
@@ -86,8 +88,13 @@ export function BoardCard({
   onPeek,
   depth = 0,
   band = null,
+  sentence = null,
 }: CardProps & BoardCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: card.key });
+  // Called whether or not there is a band - a hook cannot sit behind one. Only
+  // the listeners and the description are conditional, so with flow-viz off
+  // nothing is attached.
+  const tip = useCallout();
   const nested = depth > 0;
 
   return (
@@ -107,11 +114,15 @@ export function BoardCard({
         e.preventDefault();
         onPeek(card);
       }}
+      {...(band ? tip.focus : null)}
       {...attributes}
       {...listeners}
+      // After the spreads: dnd-kit's attributes carry an aria-describedby of
+      // their own, which a plain prop set earlier would lose to.
+      aria-describedby={[attributes['aria-describedby'], band ? tip.describedBy : null].filter(Boolean).join(' ') || undefined}
     >
       <CardFace card={card} waiting={waiting} terminal={terminal} project={project} />
-      <FlowBand band={band} />
+      <FlowBand band={band} sentence={sentence ?? undefined} tip={band ? tip : undefined} />
     </Link>
   );
 }
