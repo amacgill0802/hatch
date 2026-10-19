@@ -186,8 +186,10 @@ public sealed class ClaudeAdapter(string? configured = null, Action<string>? war
         };
 
         // The prompt this session is about to be handed names `hatch` commands,
-        // so the word has to resolve inside it. See Reach.
+        // so the word has to resolve inside it. See Reach. Its calls name the
+        // runner that dispatched it, not the person the checkout belongs to.
         Reach.OnPath(start.Environment, Reach.OwnDirectory(Environment.ProcessPath));
+        Reach.AsRunner(start.Environment, request.RunnerName);
 
         start.ArgumentList.Add("--model");
         start.ArgumentList.Add(request.Model);

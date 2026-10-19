@@ -626,6 +626,8 @@ public sealed class BuildIncrementTests
 
         await new WorkCommand(h.Runtime).RunAsync([Key, "--interactive"], default);
 
-        Assert.Contains("fresh failure", Assert.Single(h.Sessions.Attached).Prompt, StringComparison.Ordinal);
+        var attached = Assert.Single(h.Sessions.Attached);
+        Assert.Contains("fresh failure", attached.Prompt, StringComparison.Ordinal);
+        Assert.Equal(h.Runtime.RunnerName, attached.RunnerName);
     }
 }

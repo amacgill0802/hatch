@@ -295,4 +295,12 @@ public sealed class CodexAdapterTests : IDisposable
     {
         Assert.Null(Adapter().ReadClosing(blob));
     }
-}
+
+    [Fact]
+    public void The_spawned_session_names_the_runner_that_dispatched_it()
+    {
+        var request = Request() with { RunnerName = "test:/checkout" };
+
+        Assert.Equal("test:/checkout", Adapter().BuildHeadless(request).Environment["HATCH_RUNNER"]);
+        Assert.Equal("test:/checkout", Adapter().BuildAttached(request).Environment["HATCH_RUNNER"]);
+    }}

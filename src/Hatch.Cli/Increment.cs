@@ -466,7 +466,7 @@ public sealed class Increment(
                 }
             }
 
-            var result = await SpawnAsync(work, root, model, effort, quiet, facts, claim, stopping, addDirs, repositories, branches, conflict?.Found, build?.Found);
+            var result = await SpawnAsync(work, root, model, effort, quiet, facts, claim, stopping, addDirs, repositories, branches, conflict?.Found, build?.Found, runnerName);
             report.ExitCode = result.ExitCode;
             report.SessionId = facts.SessionId;
             report.Cost = facts.CostUsd;
@@ -929,7 +929,7 @@ public sealed class Increment(
         WorkDto work, string root, string model, string effort, bool quiet,
         RunFacts facts, Claim claim, CancellationTokenSource stopping,
         IReadOnlyList<string>? addDirs, IReadOnlyList<Checkouts.RepositoryLine>? repositories,
-        IReadOnlyList<BranchEntry>? branches, Rechecked? conflict, BuildFound? build)
+        IReadOnlyList<BranchEntry>? branches, Rechecked? conflict, BuildFound? build, string runnerName)
     {
         var ct = stopping.Token;
 
@@ -957,7 +957,7 @@ public sealed class Increment(
         var prompt = Prompt.Compose(work, repositories, branches, conflict, build);
         var render = adapter.CreateReader(root, facts, model);
         var request = new SessionRequest(root, model, effort, prompt, quiet, addDirs, hooks?.Opaque, work.Playbook?.DeniedTools ?? [],
-            SessionId: facts.SessionId);
+            SessionId: facts.SessionId, RunnerName: runnerName);
 
         // Whichever side wrote hooks.Clamp - the streamed callback below, or a
         // --quiet session's own transcript-reading hook - this is the one place
