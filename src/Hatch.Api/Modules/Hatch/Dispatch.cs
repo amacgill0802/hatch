@@ -309,7 +309,8 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                             : sentence is null && effective[issue.Id].Level == PriorityLevels.Low ? pace?.Low.ClearNote
                             : null,
                         effective[issue.Id].Level,
-                        effective[issue.Id].FromKey));
+                        effective[issue.Id].FromKey,
+                        Model: issue.ModelOverride ?? playbook?.Model));
                 }
             }
 
@@ -1424,7 +1425,8 @@ public sealed record PlaybookMatch(EfHatchPlaybook? Playbook, string? Source, Pl
 public sealed record ScanRow(
     EfHatchIssue Issue, EfHatchStatus From, EfHatchStatus? To, string? Blocked, string Kind, bool Hop,
     string? HopKind = null, string? HopUnder = null, string? ClearNote = null,
-    int EffectivePriority = PriorityLevels.Normal, string? EffectiveFrom = null);
+    int EffectivePriority = PriorityLevels.Normal, string? EffectiveFrom = null,
+    string? Model = null);
 
 /// <summary>
 /// A finished pass, or the argument it would not accept. A refusal carries

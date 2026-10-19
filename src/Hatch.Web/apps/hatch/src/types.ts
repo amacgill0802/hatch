@@ -1142,6 +1142,9 @@ export interface QueueEntry {
       every row that is clear for the ordinary reason, which is most of
       them. */
   clearNote: string | null;
+  /** What a session dispatched for this row would run on - the issue's
+      override, else the playbook's. As on `QueueEntryDto`. */
+  model: string | null;
 }
 
 /** One column's share of a subtree: how many of its leaves sit there. A status
