@@ -1,0 +1,48 @@
+/* Every value here comes from tokens.css. The one colour a caller may change
+   is --callout-edge, set on the callout or on anything above it; with none set
+   the edge is --primary.
+
+   z-index 95: above the confirmations (90), which a callout may be raised over,
+   and below Modal (100), which must stay the topmost thing on the page. It is
+   position: fixed and placed in JavaScript, so no ancestor's overflow clips it,
+   and pointer-events: none keeps it from stealing the hover that opened it.
+
+   It starts visibility: hidden at top and left 0 so the frame it is measured in
+   is never seen; the component writes the placement and then shows it.
+
+   The type properties are all set outright because the board mounts it inside
+   a nowrap, centred, bold band, and all of that inherits through a fixed child. */
+
+.hatch-callout {
+  position: fixed;
+  top: 0;
+  left: 0;
+  visibility: hidden;
+  z-index: 95;
+  pointer-events: none;
+  box-sizing: border-box;
+  max-width: min(24rem, calc(100vw - var(--sp-4)));
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--card);
+  color: var(--ink);
+  border: 2px solid var(--callout-edge, var(--primary));
+  border-radius: var(--r-ctl);
+  box-shadow: var(--shadow);
+  font-size: var(--t-body);
+  font-weight: 400;
+  line-height: var(--lh-body);
+  white-space: normal;
+  text-align: start;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.hatch-callout__heading {
+  font-size: var(--t-body);
+  font-weight: 700;
+}
+
+.hatch-callout__body {
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
+}

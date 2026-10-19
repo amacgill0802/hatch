@@ -37,6 +37,8 @@ export { Table } from './components/Table';
 export type { TableProps } from './components/Table';
 export { Modal } from './components/Modal';
 export type { ModalProps, ModalWidth } from './components/Modal';
+export { Callout, useCallout } from './components/Callout';
+export type { CalloutProps, CalloutGroupProps, UseCallout } from './components/Callout';
 export { Field } from './components/Field';
 export type { FieldProps } from './components/Field';
 export { Button } from './components/Button';
