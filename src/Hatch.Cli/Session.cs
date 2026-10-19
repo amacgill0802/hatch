@@ -20,10 +20,14 @@ namespace Hatch.Cli;
 /// spawned process as one <c>--disallowedTools</c> rule per entry. Empty where
 /// the playbook denies nothing.
 /// </param>
+/// <param name="SessionId">
+/// A session id the agent is to use, minted by its stream reader before the
+/// spawn. Null for an agent that chooses its own (Claude).
+/// </param>
 public sealed record SessionRequest(
     string Root, string Model, string Effort, string Prompt, bool Quiet,
     IReadOnlyList<string>? AddDirs = null, string? HookSettings = null,
-    IReadOnlyList<string>? DeniedTools = null)
+    IReadOnlyList<string>? DeniedTools = null, string? SessionId = null)
 {
     public IReadOnlyList<string> AddDirs { get; init; } = AddDirs ?? [];
     public IReadOnlyList<string> DeniedTools { get; init; } = DeniedTools ?? [];

@@ -119,11 +119,33 @@ public sealed class FakeAdapter : IAgentAdapter
         return true;
     }
 
-    public ProcessStartInfo BuildHeadless(SessionRequest request) => new() { FileName = "fake-agent" };
+    public bool PromptOnStdin { get; set; } = true;
 
-    public ProcessStartInfo BuildAttached(SessionRequest request) => new() { FileName = "fake-agent" };
+    public bool CanHook { get; set; } = true;
 
-    public IAgentStreamReader CreateReader(string root, RunFacts facts) => new FakeStreamReader(facts, ResumeCommand);
+    /// <summary>Every request <see cref="Release"/> was called with, in order.</summary>
+    public List<SessionRequest> Released { get; } = [];
+
+    /// <summary>Makes <see cref="WriteHooks"/> return null, as a write that failed would.</summary>
+    public bool HooksFail { get; set; }
+
+    /// <summary>The child a spawn runs, where a test wants a real one; otherwise a name nothing answers to.</summary>
+    public Func<SessionRequest, ProcessStartInfo>? Spawn { get; set; }
+
+    /// <summary>Run inside <see cref="CreateReader"/>, where a reader that mints a session id would write it.</summary>
+    public Action<RunFacts>? OnReader { get; set; }
+
+    public ProcessStartInfo BuildHeadless(SessionRequest request) => Spawn?.Invoke(request) ?? new() { FileName = "fake-agent" };
+
+    public ProcessStartInfo BuildAttached(SessionRequest request) => Spawn?.Invoke(request) ?? new() { FileName = "fake-agent" };
+
+    public void Release(SessionRequest request) => Released.Add(request);
+
+    public IAgentStreamReader CreateReader(string root, RunFacts facts)
+    {
+        OnReader?.Invoke(facts);
+        return new FakeStreamReader(facts, ResumeCommand);
+    }
 
     public string? ReadClosing(string json) => null;
 
@@ -132,7 +154,7 @@ public sealed class FakeAdapter : IAgentAdapter
     public IAgentHooks? WrittenHooks { get; private set; }
 
     public IAgentHooks? WriteHooks(string temp, string key, string hatch, string? rtk) =>
-        WrittenHooks = SessionHooks.Write(temp, key, hatch, rtk);
+        HooksFail ? null : WrittenHooks = SessionHooks.Write(temp, key, hatch, rtk);
 
     public UsageLimit.Recognised? Limit { get; set; }
 
