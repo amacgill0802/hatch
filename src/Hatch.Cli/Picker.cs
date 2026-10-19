@@ -31,7 +31,7 @@ public enum Pick
     /// </summary>
     Hopped,
 
-    /// <summary>Every clear candidate is pinned to a model another agent runs - nothing was claimed.</summary>
+    /// <summary>Every clear candidate is one this agent cannot take - nothing was claimed.</summary>
     Skipped,
 }
 
@@ -53,7 +53,7 @@ public sealed class PickFailedException(string key, Exception inner) : Exception
 public sealed record HoppedIssue(string Key, string From, string To, string Reason);
 
 /// <param name="Busy">One line per candidate that was taken, naming the key and who has it.</param>
-/// <param name="Skipped">One line per clear candidate passed over before any claim, naming the key and the model it is pinned to.</param>
+/// <param name="Skipped">One line per clear candidate passed over before any claim, naming the key and why this agent cannot take it.</param>
 /// <param name="Chosen">
 /// Where the claimed dispatch spawns, and what it resets - set only when
 /// <see cref="Outcome"/> is <see cref="Pick.Claimed"/>.
@@ -104,7 +104,7 @@ public sealed class Picker(
     Board board, string runner, Terminal say,
     IReadOnlyList<CheckoutEntry> checkouts, string standingRoot, string? standingBaseBranch,
     string? workspace = null, Func<string, string, IClone>? clone = null,
-    string agent = "claude", ModelFamilies? families = null)
+    string agent = "claude", ModelFamilies? families = null, IAgentAdapter? adapter = null)
 {
     /// <summary>
     /// How many clear rows to try before calling the board busy. A bounded walk,
@@ -171,15 +171,18 @@ public sealed class Picker(
         var clear = queue.Where(q => q.Blocked is null).ToList();
         if (clear.Count == 0) return new Picked(Pick.Idle, null, null, queue, [], Checkouts: checkouts);
 
-        // A row pinned to another agent's model is passed over before it is
-        // claimed - a claim taken only to be let go would fold the row for
-        // every other runner meanwhile. A hop row spawns nothing, so it stays.
+        // A row pinned to another agent's model, or whose denied-tools this
+        // agent cannot honour, is passed over before it is claimed - a claim
+        // taken only to be let go would fold the row for every other runner
+        // meanwhile. A hop row spawns nothing, so it stays.
         var skipped = new List<string>();
         var remaining = new List<QueueEntryDto>();
         foreach (var entry in clear)
         {
             if (!entry.Hop && WrongAgent(entry.Model, agent, _families) is { } why)
                 skipped.Add($"  {entry.Issue.Key}  {why}");
+            else if (!entry.Hop && adapter is not null && !adapter.CanDeny(entry.DeniedTools ?? [], out var denied))
+                skipped.Add($"  {entry.Issue.Key}  {denied}");
             else
                 remaining.Add(entry);
         }
@@ -349,10 +352,10 @@ public sealed class Picker(
         foreach (var line in busy) yield return $"hatch: {line}";
     }
 
-    /// <summary>The rows passed over for another agent's model, said properly - for a pass that found nothing else clear.</summary>
+    /// <summary>The rows passed over as one this agent cannot take, said properly - for a pass that found nothing else clear.</summary>
     public static IEnumerable<string> SkippedReport(IReadOnlyList<string> skipped)
     {
-        yield return "hatch: skipped - pinned to a model another agent runs";
+        yield return "hatch: skipped - one this agent cannot take";
 
         foreach (var line in skipped) yield return $"hatch: {line}";
     }

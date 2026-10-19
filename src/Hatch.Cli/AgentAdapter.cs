@@ -22,6 +22,20 @@ public interface IAgentAdapter
     /// </summary>
     bool CanSpawn(out string refusal);
 
+    /// <summary>
+    /// Whether this agent can honour every one of a playbook's denied-tools
+    /// rules faithfully. False with the sentence naming the first rule it
+    /// cannot honour, asked before a claim is taken for the same reason as
+    /// <see cref="CanSpawn"/>. The default says every rule can be honoured,
+    /// for an adapter - <see cref="ClaudeAdapter"/> - that passes them
+    /// straight through.
+    /// </summary>
+    bool CanDeny(IReadOnlyList<string> rules, out string refusal)
+    {
+        refusal = "";
+        return true;
+    }
+
     /// <summary>The unattended spawn - stdout read by a caller, stdin closed once the prompt is written.</summary>
     ProcessStartInfo BuildHeadless(SessionRequest request);
 

@@ -142,11 +142,12 @@ public static class Fixtures
 
     public static QueueEntryDto Row(
         string key, string? blocked = null, bool expedited = false, bool hop = false, string? priority = null,
-        string? hopKind = null, string? hopUnder = null, string? model = null) =>
+        string? hopKind = null, string? hopUnder = null, string? model = null,
+        IReadOnlyList<string>? deniedTools = null) =>
         new(
             Issue(key, expedited: expedited, express: hop, priority: priority), Status(3, "In Progress"),
             Status(4, "In Review"), blocked, Hop: hop, HopKind: hop ? hopKind ?? HopKinds.Express : null,
-            HopUnder: hop ? hopUnder : null, Model: model);
+            HopUnder: hop ? hopUnder : null, Model: model, DeniedTools: deniedTools);
 
     /// <summary>A verdict as a runner would have put it, conflicted unless said otherwise.</summary>
     public static MergeCheckDto MergeCheck(

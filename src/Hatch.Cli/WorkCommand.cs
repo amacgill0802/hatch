@@ -222,7 +222,7 @@ public sealed class WorkCommand(Runtime runtime)
             return 0;
         }
 
-        if (RefuseModel(work, model)) return 2;
+        if (RefuseRow(work, model)) return 2;
 
         var chosen = Checkouts.Choose(work.Repositories, runtime.Checkouts, runtime.Root, runtime.Settings.BaseBranch);
         if (chosen is null)
@@ -378,7 +378,7 @@ public sealed class WorkCommand(Runtime runtime)
                     return 0;
                 }
 
-                if (RefuseModel(named, model)) return 2;
+                if (RefuseRow(named, model)) return 2;
 
                 // Without a clone, so that the ordinary case - already matched, or
                 // never going to match at all - refuses exactly as it always has,
@@ -789,16 +789,26 @@ public sealed class WorkCommand(Runtime runtime)
     }
 
     /// <summary>
-    /// Whether this row is pinned to another agent's model - the flag, when
-    /// given, is the whole answer to "what model", since it beats the
-    /// playbook the same way it does everywhere else named is resolved.
+    /// Whether this row is one this agent cannot take - pinned to another
+    /// agent's model, where the flag, when given, is the whole answer to
+    /// "what model" since it beats the playbook the same way it does
+    /// everywhere else named is resolved; or carrying denied-tools rules this
+    /// agent's adapter cannot honour.
     /// </summary>
-    private bool RefuseModel(WorkDto work, string? model)
+    private bool RefuseRow(WorkDto work, string? model)
     {
-        if (Picker.WrongAgent(model ?? work.Playbook?.Model, runtime.Settings.Agent, runtime.Families) is not { } why)
-            return false;
+        if (Picker.WrongAgent(model ?? work.Playbook?.Model, runtime.Settings.Agent, runtime.Families) is { } why)
+        {
+            runtime.Say.Complain($"hatch: {work.Issue.Key} - {why}");
+            return true;
+        }
 
-        runtime.Say.Complain($"hatch: {work.Issue.Key} - {why}");
-        return true;
+        if (!runtime.Adapter.CanDeny(work.Playbook?.DeniedTools ?? [], out var denied))
+        {
+            runtime.Say.Complain($"hatch: {work.Issue.Key} - {denied}");
+            return true;
+        }
+
+        return false;
     }
 }

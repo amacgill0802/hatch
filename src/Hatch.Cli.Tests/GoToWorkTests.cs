@@ -573,7 +573,7 @@ public sealed class GoToWorkTests
 
         await new GoToWorkCommand(runtime).RunAsync(["--once"], default);
 
-        Assert.Contains(h.Say.Said, l => l.Contains("skipped - pinned to a model another agent runs", StringComparison.Ordinal));
+        Assert.Contains(h.Say.Said, l => l.Contains("skipped - one this agent cannot take", StringComparison.Ordinal));
         Assert.Contains(h.Say.Said, l => l.Contains(
             "AER-1  pinned to fake-1, a fake-agent model - this runner's agent is claude", StringComparison.Ordinal));
         Assert.DoesNotContain(h.Wire.Calls, c => c.Path.EndsWith("/claim", StringComparison.Ordinal));
