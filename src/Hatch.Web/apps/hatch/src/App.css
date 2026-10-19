@@ -4587,6 +4587,42 @@ button.hatch-option.chosen {
   margin-top: var(--sp-3);
 }
 
+.hatch-cumulative-flow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.hatch-cumulative-flow-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-3);
+}
+
+.hatch-cumulative-flow-legend-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  font-size: var(--t-label);
+}
+
+.hatch-cumulative-flow-swatch {
+  display: inline-block;
+  width: var(--sp-2);
+  height: var(--sp-2);
+  border-radius: var(--r-ctl);
+  background: var(--status-color);
+}
+
+/* The baseline is on the container rather than in the SVG, as .hatch-spend-plot's is. */
+.hatch-cumulative-flow-plot {
+  display: block;
+  width: 100%;
+  height: 140px;
+  border-bottom: 1px solid var(--line);
+}
+
 /* A phone keeps the key and the toggle and scrolls the chart. The header wraps
    so the strips drop under the title instead of overflowing the document, and
    wrap under each other when they do not fit side by side; PageHeader makes its

@@ -9,6 +9,11 @@ const REPORTS: { to: string; title: string; answers: string }[] = [
     title: 'Timeline',
     answers: 'When each epic was in flight, and how long its work sat in each column.',
   },
+  {
+    to: '/reports/cumulative-flow',
+    title: 'Cumulative flow',
+    answers: 'How much work sat in each column over time, and where it is piling up.',
+  },
 ];
 
 /** The front door to the Reports area: a card per report, each a link in. */
