@@ -43,8 +43,8 @@ public class HatchOptions
     /// else, guarded there the way the TTL above is.</para>
     ///
     /// <para>The second horizon - the one past which a row is not returned at
-    /// all - is deliberately not a setting. It is a fixed multiple of this
-    /// (<see cref="Runners.DropMultiple"/>), because the two are not
+    /// all - is deliberately not a setting. It is a fixed two hours, or this if
+    /// that is longer (<see cref="Runners.RetentionSeconds"/>), because the two are not
     /// independent judgements: one says "this runner is not answering" and the
     /// other says "this runner is not coming back", and an installation that
     /// could set them apart could set the second shorter than the first and

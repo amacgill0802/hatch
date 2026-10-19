@@ -17,24 +17,24 @@ namespace Hatch.Api.Modules.Hatch;
 /// <remarks>
 /// Nothing here sweeps and nothing here writes. A runner that stopped answering
 /// at midnight is idle at 00:01, gone at 00:02 and not in the answer at all by
-/// 00:16 - each of those by arithmetic against <c>LastSeenAt</c> at the moment
+/// 02:01 - each of those by arithmetic against <c>LastSeenAt</c> at the moment
 /// somebody asks, which is the same lazy expiry the claim uses. There is no
 /// timeout to tune and no background job to notice has stopped.
 /// </remarks>
 public sealed class Runners(IOptions<HatchOptions> options)
 {
     /// <summary>
-    /// How much longer than <see cref="GoneAfterSeconds"/> a row survives
-    /// before it is dropped from the read: ten times, so the shipped default is
-    /// gone after a minute and a half and forgotten after fifteen minutes.
+    /// How long after its last heartbeat a row is still returned by the read:
+    /// two hours, so a runner that died overnight is a ghost row somebody can
+    /// look at the next morning rather than one gone before they sit down.
     /// </summary>
     /// <remarks>
-    /// A constant and not a setting. The two horizons are one judgement seen
-    /// twice - "not answering" and "not coming back" - and an installation able
-    /// to set them independently could set the second shorter than the first,
-    /// which would make a row vanish before it was ever drawn as gone.
+    /// A constant and not a setting. The read is what the queue view and the
+    /// Runners page both draw, and <see cref="DropBefore"/> takes the longer of
+    /// this and <see cref="GoneAfterSeconds"/>, so a gone horizon above two
+    /// hours cannot drop a row before it was ever read as gone.
     /// </remarks>
-    public const int DropMultiple = 10;
+    public const int RetentionSeconds = 2 * 60 * 60;
 
     /// <summary>
     /// The silence after which a runner reads as gone, in seconds. Guarded here
@@ -51,7 +51,7 @@ public sealed class Runners(IOptions<HatchOptions> options)
     public DateTimeOffset Cutoff(DateTimeOffset now) => now.AddSeconds(-GoneAfterSeconds);
 
     /// <summary>The heartbeat before which a row is not handed out at all.</summary>
-    public DateTimeOffset DropBefore(DateTimeOffset now) => now.AddSeconds(-GoneAfterSeconds * DropMultiple);
+    public DateTimeOffset DropBefore(DateTimeOffset now) => now.AddSeconds(-Math.Max(GoneAfterSeconds, RetentionSeconds));
 
     /// <summary>
     /// Whether this runner is still answering. Exactly at the cutoff is here;

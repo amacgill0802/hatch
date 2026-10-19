@@ -6,7 +6,7 @@ namespace Hatch.Api.Tests.Hatch;
 /// <summary>
 /// The runner's two horizons, with no database under them: when a row is still
 /// being heard from, when it has aged out of the read entirely, and the fact
-/// that the second is always ten times the first.
+/// that the second is always two hours, or the first if that is longer.
 ///
 /// Worth a file of its own for <see cref="IssueClaimsTests"/>'s reason - the
 /// same arithmetic decides what a page draws and what a read returns, and a
@@ -40,27 +40,36 @@ public class RunnersTests
     }
 
     [Fact]
-    public void AGoneRunner_IsStillReturned_UntilTenTimesTheHorizon()
+    public void AGoneRunner_IsStillReturned_UntilTwoHours()
     {
         var runners = With(60);
 
         // Gone is a thing a row says about itself; dropped is a row that is not
-        // there. Between the two there are nine more horizons of a page saying
-        // "this loop stopped answering", which is the whole point of having two.
+        // there. Between the two there are two hours of a page saying "this
+        // loop stopped answering", which is the whole point of having two.
         Assert.False(runners.IsDropped(Now.AddSeconds(-60), Now));
-        Assert.False(runners.IsDropped(Now.AddSeconds(-600), Now));
-        Assert.True(runners.IsDropped(Now.AddSeconds(-600).AddTicks(-1), Now));
+        Assert.False(runners.IsDropped(Now.AddHours(-2), Now));
+        Assert.True(runners.IsDropped(Now.AddHours(-2).AddTicks(-1), Now));
     }
 
     [Fact]
-    public void TheDropHorizon_IsTenTimesTheConfiguredOne()
+    public void TheDropHorizon_IsTwoHours_WhateverShortHorizonIsConfigured()
     {
         // Not independently configurable, and this is what says so: an install
-        // that changed the first moved the second with it.
+        // that changed the first left the second where it was.
         var runners = With(30);
 
         Assert.Equal(Now.AddSeconds(-30), runners.Cutoff(Now));
-        Assert.Equal(Now.AddSeconds(-300), runners.DropBefore(Now));
+        Assert.Equal(Now.AddHours(-2), runners.DropBefore(Now));
+    }
+
+    [Fact]
+    public void AGoneHorizonLongerThanTwoHours_IsTheDropHorizonToo()
+    {
+        // Otherwise a row would be dropped before it was ever read as gone.
+        var runners = With(10_000);
+
+        Assert.Equal(Now.AddSeconds(-10_000), runners.DropBefore(Now));
     }
 
     [Fact]
