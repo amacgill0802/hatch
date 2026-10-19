@@ -2756,7 +2756,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/local-person` | GET | What to call whoever is sitting here, and whether anybody said so. `204` wherever the wall is up |
 | `/settings` | GET, PUT | **Person only** — plain `[RequireRole(User)]`, so a key is refused the read as well as the write. The two settings a Hatch install of its own has — see [the token, still](#the-token-still). PUT follows the bulk rule: a field left out is left alone, `""` clears it |
 | `/settings/claude-token` | GET | The token itself, wrapped with `SecretProtector` for the wire. The one route in Hatch that hands a live secret back out, and it is cut the opposite way to `/settings` beside it — **a key or a keyless runner may take it**, because its ordinary caller is the container runner's entrypoint (`containers/hatch-runner/`) authenticating a `claude` CLI it starts itself. **Refused outright wherever the wall is up** — every caller, key or person — because a token crossing a network is a different question from one handed to a container on the same laptop. `204` when none is set |
-| `/issues/{key}/work-log` | GET, POST | What each session on this issue cost, each entry also carrying its playbook's source and, for a file-sourced row, the trunk, sha and hash it was confirmed against, and which agent ran it (`PlaybookSource`, `PlaybookFileTrunk`, `PlaybookFileSha`, `PlaybookFileHash`, `Agent`). **POST is a key only** — a browser is refused outright, because the only honest writer of a meter reading is the dispatcher that read it. See [the leaderboard](#the-leaderboard) |
+| `/issues/{key}/work-log` | GET, POST | What each session on this issue cost, each entry also carrying its playbook's source and, for a file-sourced row, the trunk, sha and hash it was confirmed against, and which agent ran it (`PlaybookSource`, `PlaybookFileTrunk`, `PlaybookFileSha`, `PlaybookFileHash`, `Agent`); an entry's cost is null when the agent reported no price — unpriced, not `$0` — and a `GET`'s totals carry `unpricedSessions` beside the priced sum. **POST is a key only** — a browser is refused outright, because the only honest writer of a meter reading is the dispatcher that read it. See [the leaderboard](#the-leaderboard) |
 | `/work-log/sessions` | GET | The sessions in a range, ranked, with the range's own totals — see [the leaderboard](#the-leaderboard) |
 | `/work-log/history` | GET | The same rows folded into equal buckets of time, for the graph |
 | `/reports/timeline` | GET | When the work happened: top-level epics active in a range, and the work beneath each, as stretches in the board's active columns. `from`, `to` (default: the 90 days ending now), `projectId`, `createdBy`. Hatch-scoped, open to a key. `400` for an unparseable or inverted bound and for an unknown `projectId` — see [the timeline](#the-timeline) |
@@ -3268,8 +3268,9 @@ which epic ate the evening.
 Every number on the page comes from one table: `hatch.work_log_entries`, the row
 the dispatcher writes at the end of every unattended increment. It carries the
 session id, the issue, both instants, the duration, the turns, the four token
-counts, the notional USD, whether the run errored, and what the session said it
-did in its `work-log` block. For a repo-sourced project's session, the row
+counts, the notional USD — null when the agent reported no price — whether
+the run errored, and what the session said it did in its `work-log` block.
+For a repo-sourced project's session, the row
 also carries which of the three layers its playbook came from, and, for the
 file, the trunk, the sha and the hash it was confirmed against at spawn -
 null on a table-sourced row and on a row an older runner wrote. It also
@@ -3293,6 +3294,14 @@ window and one optional issue filter:
 Tokens are the headline everywhere and notional USD is beside them, sortable —
 so the day an account is billed per token, the money becomes the headline and
 nothing has to be rebuilt.
+
+An unpriced session draws as a dash with a title saying the agent reported no
+price, never `$0` — a zero on a leaderboard would be a lie about money. A sum
+over mixed rows reads as the priced total plus how many were left out (`3
+sessions · 1.4M tokens · $3.41 · 2 unpriced`, or, with none priced, `3
+sessions · 1.4M tokens · 3 unpriced`), the cost sort puts the unpriced rows
+last rather than first or scattered, and a bucket on the graph names its own
+unpriced count beside its total.
 
 ### The two reads behind it
 
@@ -6521,7 +6530,9 @@ except the last one:
 - `--once` — one pass, whatever it found, and out. The loop's own dry run
   against a board that is not a fixture.
 - `--max-runs N` — that many increments.
-- `--max-spend USD` — measured from what the increments reported, not estimated.
+- `--max-spend USD` — measured from what the increments reported, not
+  estimated; an increment whose agent reports no price is not in that sum, so
+  it cannot bind one.
 - `--until HH:MM` — wall clock. `--until 06:00` typed at eleven at night means
   the morning, because the alternative reading is a loop that stops seventeen
   hours before it started.
@@ -6737,6 +6748,14 @@ them alone. That rule is what stops the loop's own half-hourly
 undoing an edit somebody made at midnight. The consequence is worth knowing:
 once a runner has a row, **the row is where its bounds live**, and a flag typed
 at a checkout that already has one seeds nothing.
+
+**The Max spend field counts only priced increments** — its hint on the page
+says so once ("it counts only sessions whose agent reports a price, so it
+cannot bind one that does not"), rather than repeating it on every row. The
+loop's own closing tally says the same thing once a night, naming how many
+increments reported no price and were left out of the dollars it printed. This
+is unrelated to the hard limit and the clamp a runner carries per session,
+which are counted in tokens, not dollars, and bind exactly as before.
 
 **`hatch work` and `go-to-work --once` send exactly one heartbeat** and read
 nothing back. There is no second pass in either to apply an instruction to, so
