@@ -2248,7 +2248,13 @@ public record WorkLogEntryDto(
 /// </summary>
 /// <param name="Sessions">How many rows are in the sum.</param>
 /// <param name="Errors">How many of them ended badly. Their spend is in the totals either way.</param>
-/// <param name="TotalTokens">The four counts added up - one definition of the headline, as on an entry.</param>
+/// <param name="TotalTokens">The four counts added up - one definition of the headline, as on an entry. Unpriced sessions' tokens are in it.</param>
+/// <param name="CostUsd">The priced rows' sum. An unpriced session adds nothing to it - not zero, nothing - so it is a floor whenever <paramref name="UnpricedSessions"/> is above zero.</param>
+/// <param name="UnpricedSessions">
+/// How many rows in the sum reported no price: their tokens are in
+/// <paramref name="TotalTokens"/> and their dollars are in nothing. A client
+/// says "n unpriced" beside the money rather than letting the total pass as complete.
+/// </param>
 public record WorkLogTotalsDto(
     int Sessions,
     int Errors,
@@ -2257,7 +2263,8 @@ public record WorkLogTotalsDto(
     long CacheCreationTokens,
     long CacheReadTokens,
     long TotalTokens,
-    decimal CostUsd);
+    decimal CostUsd,
+    int UnpricedSessions);
 
 /// <summary>
 /// An issue's work log: what everything beneath it has cost, what it has cost
