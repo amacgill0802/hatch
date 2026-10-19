@@ -86,6 +86,8 @@ describe('resolveWindow', () => {
   it.each([
     ['1y', 365],
     ['2w', 14],
+    ['1w', 7],
+    ['1d', 1],
   ])('ends at the next midnight and reaches back the preset for range=%s', (key, count) => {
     const window = resolveWindow(params(`range=${key}`), NOW, 0);
 
@@ -120,8 +122,10 @@ describe('WINDOW_PRESETS', () => {
     expect(WINDOW_PRESETS.find((preset) => preset.key === '3m')?.days).toBe(DEFAULT_DAYS);
   });
 
-  it('is ticked by day, day, week, week, month', () => {
+  it('is ticked by hour, day, day, day, week, week, month', () => {
     expect(WINDOW_PRESETS.map((preset) => tickUnit(days(preset.days)))).toEqual([
+      'hour',
+      'day',
       'day',
       'day',
       'week',
@@ -132,7 +136,7 @@ describe('WINDOW_PRESETS', () => {
 });
 
 describe('parsePreset', () => {
-  it.each(['2w', '1m', '3m', '6m', '1y'])('reads %s', (key) => {
+  it.each(['1d', '1w', '2w', '1m', '3m', '6m', '1y'])('reads %s', (key) => {
     expect(parsePreset(key)).toBe(key);
   });
 

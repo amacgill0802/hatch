@@ -3501,7 +3501,8 @@ project they were filed in. `creators` ignores the creator filter, so the picker
 still offers the people the filter hides, but is limited to roots that made the
 answer; `unresolved` sums only the roots left after narrowing. On the page they
 are in the URL as `project` (a key) and `creator` (a name), beside the window's
-`from` and `to` and a `range` shorthand (`2w`, `1m`, `3m`, `6m`, `1y`). With
+`from` and `to` and a `range` shorthand (`1d`, `1w`, `2w`, `1m`, `3m`, `6m`,
+`1y`). With
 none of them the page opens on the 90 days ending at the reader's **next
 midnight** — the server's own default ends *now*, and the page's alignment to
 the reader's day is the browser's.

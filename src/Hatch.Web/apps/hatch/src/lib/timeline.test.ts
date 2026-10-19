@@ -71,6 +71,9 @@ describe('xOf', () => {
 
 describe('tickUnit', () => {
   it.each([
+    [1, 'hour'],
+    [2, 'hour'],
+    [3, 'day'],
     [7, 'day'],
     [31, 'day'],
     [32, 'week'],
@@ -83,6 +86,46 @@ describe('tickUnit', () => {
 
 describe('ticks', () => {
   const at = (iso: string) => Date.parse(iso);
+
+  describe('by hour', () => {
+    const scale = makeScale('2026-10-28T00:00:00.000Z', '2026-10-29T00:00:00.000Z');
+
+    it('has one tick per three hours, ends included, with the date on the first and on every midnight', () => {
+      const result = ticks(scale, 0, LOCALE);
+
+      expect(result.map((t) => t.label)).toEqual([
+        '28 Oct 00:00',
+        '03:00',
+        '06:00',
+        '09:00',
+        '12:00',
+        '15:00',
+        '18:00',
+        '21:00',
+        '29 Oct 00:00',
+      ]);
+      expect(result.map((t) => t.x)).toEqual(Array.from({ length: 9 }, (_, i) => i * 12.5));
+      expect(result.every((t) => t.unit === 'hour')).toBe(true);
+    });
+
+    it("lands on the reader's three-hour marks at offset 600", () => {
+      const result = ticks(scale, 600, LOCALE);
+
+      // The first mark at or after 10:00 local on the 28th is 12:00, 2 h in.
+      expect(result[0]).toEqual({ x: (2 / 24) * 100, label: '28 Oct 12:00', unit: 'hour' });
+      expect(result.map((t) => t.label)).toEqual([
+        '28 Oct 12:00',
+        '15:00',
+        '18:00',
+        '21:00',
+        '29 Oct 00:00',
+        '03:00',
+        '06:00',
+        '09:00',
+      ]);
+      expect(result[1].x - result[0].x).toBeCloseTo(12.5, 10);
+    });
+  });
 
   describe('by day', () => {
     const scale = makeScale('2026-10-28T00:00:00.000Z', '2026-11-07T00:00:00.000Z');
