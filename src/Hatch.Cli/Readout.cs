@@ -22,7 +22,7 @@ public sealed record UsageWindow(string Window, string Label, double Utilization
 
 /// <summary>Whose runner this is, and how its night is going.</summary>
 public sealed record RunnerSnapshot(
-    string RunnerName, string? ForName, int NightRuns, TimeSpan NightElapsed, decimal NightSpent, string? Bound)
+    string RunnerName, string? ForName, int NightRuns, TimeSpan NightElapsed, decimal NightSpent, string? Bound, int NightUnpriced = 0)
 {
     public static readonly RunnerSnapshot Empty = new("", null, 0, TimeSpan.Zero, 0m, null);
 }
@@ -216,7 +216,7 @@ public static class Readout
     private static string RunnerRow(RunnerSnapshot runner)
     {
         var who = runner.RunnerName.Length == 0 ? "" : runner.ForName is { Length: > 0 } f ? $"{runner.RunnerName} for {f}" : runner.RunnerName;
-        var night = $"{runner.NightRuns} increment(s) in {Format.Duration((long)runner.NightElapsed.TotalSeconds)}, {Format.Spent(runner.NightSpent)} spent";
+        var night = $"{runner.NightRuns} increment(s) in {Format.Duration((long)runner.NightElapsed.TotalSeconds)}, {Format.Spent(runner.NightSpent)} spent{(runner.NightUnpriced > 0 ? $", {runner.NightUnpriced} unpriced" : "")}";
         var bound = runner.Bound is { Length: > 0 } b ? $", stops at {b}" : "";
         return who.Length == 0 ? $"{night}{bound}" : $"{who} — {night}{bound}";
     }

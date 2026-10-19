@@ -169,6 +169,19 @@ public sealed class ReadoutTests
     }
 
     [Fact]
+    public void TheRunnerRow_CountsUnpricedIncrementsOnlyWhereThereAreSome()
+    {
+        var some = new RunnerSnapshot("Chrissy", null, 3, TimeSpan.Zero, 1m, null, NightUnpriced: 2);
+        var none = new RunnerSnapshot("Chrissy", null, 3, TimeSpan.Zero, 1m, null);
+
+        var withRow = Readout.Draw(new ReadoutSnapshot(null, null, some, [], null, NoControls), Now, 200, color: false)[0];
+        var withoutRow = Readout.Draw(new ReadoutSnapshot(null, null, none, [], null, NoControls), Now, 200, color: false)[0];
+
+        Assert.Contains("$1 spent, 2 unpriced", withRow, StringComparison.Ordinal);
+        Assert.DoesNotContain("unpriced", withoutRow, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ARunnerWithNoBound_SaysNothingAboutOne()
     {
         var runner = new RunnerSnapshot("Chrissy", null, 1, TimeSpan.Zero, 0m, null);
