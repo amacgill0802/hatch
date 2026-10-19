@@ -189,6 +189,39 @@ public class WorkControllerTests
         Assert.Equal("assigned to Ada - an unattended pass leaves a person's work alone", folded.Blocked);
     }
 
+    [Fact]
+    public async Task Queue_RowCarriesThePlaybooksModel()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.Todo, h.InProgress, "story", "sonnet", briefLimit: 1000));
+        await h.FileAsync("story", "runs on the playbook's model", h.Todo);
+
+        Assert.Equal("sonnet", Only(await h.Work.GetQueue(0, null, default)).Model);
+    }
+
+    [Fact]
+    public async Task Queue_RowCarriesTheIssuesModelOverride()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.Todo, h.InProgress, "story", "sonnet", briefLimit: 1000));
+        var issue = await h.FileAsync("story", "runs on its own model", h.Todo);
+        issue.ModelOverride = "claude-opus-5";
+        await h.Db.SaveChangesAsync();
+
+        Assert.Equal("claude-opus-5", Only(await h.Work.GetQueue(0, null, default)).Model);
+    }
+
+    [Fact]
+    public async Task Queue_RowWithNoPlaybookCarriesNoModel()
+    {
+        var h = await NewAsync();
+        h.Db.Playbooks.RemoveRange(h.Db.Playbooks.Where(p => p.FromStatusId == h.Todo));
+        await h.Db.SaveChangesAsync();
+        await h.FileAsync("story", "nothing matches this", h.Todo);
+
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default)).Model);
+    }
+
     /// <summary>
     /// "Mine held" (docs/hatch.md): plain `next`, without `mine`, still skips a
     /// ticket assigned to the caller's own person exactly as it skips anybody
@@ -1156,6 +1189,21 @@ public class WorkControllerTests
 
         Assert.Null(entry.Blocked);
         Assert.True(entry.Hop);
+    }
+
+    [Fact]
+    public async Task Queue_AHopRowStillCarriesAModel()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.Todo, h.InProgress, "story", "sonnet", briefLimit: 1000));
+        var issue = await h.FileAsync("story", "carried across, still sized", h.Todo);
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Todo);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.True(entry.Hop);
+        Assert.Equal("sonnet", entry.Model);
     }
 
     [Fact]

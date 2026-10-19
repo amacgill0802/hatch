@@ -75,6 +75,7 @@ const entry = (over: Partial<QueueEntry> = {}): QueueEntry => ({
   hopKind: null,
   hopUnder: null,
   clearNote: null,
+  model: null,
   ...over,
 });
 

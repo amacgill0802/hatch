@@ -249,7 +249,8 @@ public class WorkController(
             r.Hop,
             r.HopKind,
             r.HopUnder,
-            r.ClearNote)).ToList();
+            r.ClearNote,
+            r.Model)).ToList();
     }
 
     /// <summary>
