@@ -11,6 +11,7 @@ import {
   budgetRequest,
   deniedToolsDraft,
   deniedToolsRequest,
+  isOverridden,
   transitionLabel,
 } from '../lib/playbooks';
 import { hasMultipleProjects } from '../lib/useProjects';
@@ -132,7 +133,7 @@ export function PlaybookEditDialog({
     setDraft((d) => d && { ...d, ...next });
   }
 
-  async function save() {
+  async function save(prompt: string = draft!.prompt) {
     setSaving(true);
     try {
       if (playbook) {
@@ -146,7 +147,7 @@ export function PlaybookEditDialog({
           deniedTools: deniedToolsRequest(draft!.deniedTools),
           isCheck: draft!.isCheck,
           projectId: draft!.projectId,
-          prompt: draft!.prompt,
+          prompt,
         });
       } else {
         await createPlaybook({
@@ -161,7 +162,7 @@ export function PlaybookEditDialog({
           deniedTools: deniedToolsRequest(draft!.deniedTools),
           isCheck: draft!.isCheck,
           projectId: draft!.projectId || undefined,
-          prompt: draft!.prompt,
+          prompt,
         });
       }
       setError(null);
@@ -184,7 +185,8 @@ export function PlaybookEditDialog({
       footer={
         <div className="hatch-form-actions">
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" loading={saving} disabled={!draft.prompt.trim()} onClick={() => void save()}>
+          <Button variant="primary" loading={saving} disabled={!draft.prompt.trim() && (!playbook || playbook.defaultPrompt === null)}
+            onClick={() => void save()}>
             Save
           </Button>
         </div>
@@ -281,6 +283,21 @@ export function PlaybookEditDialog({
             />
           </Field>
         </div>
+
+        {playbook && playbook.defaultPrompt !== null && isOverridden(playbook) && (
+          <div className="hatch-playbook-prompt-diff">
+            <Field as="div" label="The operator&apos;s own wording" hint="Saving a blank prompt hands this row back to the prescribed text.">
+              <Button
+                onClick={() => {
+                  write({ prompt: '' });
+                  void save('');
+                }}
+              >
+                Drop the operator&apos;s own wording
+              </Button>
+            </Field>
+          </div>
+        )}
       </div>
     </Modal>
   );
