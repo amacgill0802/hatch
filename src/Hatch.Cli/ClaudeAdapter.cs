@@ -93,7 +93,7 @@ public sealed class ClaudeAdapter(string? configured = null, Action<string>? war
         return start;
     }
 
-    public IAgentStreamReader CreateReader(string root, RunFacts facts) => new StreamRender(root, facts, ResumeCommand);
+    public IAgentStreamReader CreateReader(string root, RunFacts facts, string model) => new StreamRender(root, facts, ResumeCommand);
 
     public string? ReadClosing(string json) => StreamRender.Closing(json);
 

@@ -49,8 +49,12 @@ public interface IAgentAdapter
     /// </summary>
     bool CanHook => true;
 
-    /// <summary>The reader that turns this agent's own stream into lines and the facts a caller needs out of it.</summary>
-    IAgentStreamReader CreateReader(string root, RunFacts facts);
+    /// <summary>
+    /// The reader that turns this agent's own stream into lines and the facts a
+    /// caller needs out of it. <paramref name="model"/> is the one the session
+    /// runs, for an agent whose stream never names it.
+    /// </summary>
+    IAgentStreamReader CreateReader(string root, RunFacts facts, string model);
 
     /// <summary>The prose a quiet run ended with, out of the one object it answers with.</summary>
     string? ReadClosing(string json);

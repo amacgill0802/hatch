@@ -1,0 +1,247 @@
+using System.Diagnostics;
+using System.Text.Json;
+
+namespace Hatch.Cli;
+
+/// <summary>The codex CLI, behind <see cref="IAgentAdapter"/>.</summary>
+public sealed class CodexAdapter(string? configured = null) : IAgentAdapter
+{
+    /// <summary>The binary <see cref="CanSpawn"/> found, and null until it has.</summary>
+    private string? _bin;
+
+    public string Id => "codex";
+
+    public string DisplayName => "Codex";
+
+    public IUsageProbe? Probe => null;
+
+    public IHookOutputWriter HookOutput { get; } = new CodexHookOutputWriter();
+
+    public bool CanSpawn(out string refusal)
+    {
+        if (_bin is not null)
+        {
+            refusal = "";
+            return true;
+        }
+
+        if (!TryFind(configured, out var found, out refusal)) return false;
+
+        _bin = found;
+        return true;
+    }
+
+    public ProcessStartInfo BuildHeadless(SessionRequest request)
+    {
+        var readOnly = EnsureDenyTranslatable(request.DeniedTools);
+
+        var start = Base(request, exec: true);
+        start.ArgumentList.Add("--json");
+        start.ArgumentList.Add("-c");
+        start.ArgumentList.Add($"model_reasoning_effort={MapEffort(request.Effort)}");
+
+        // One flag, never two: under `exec`, --approve-for-me refuses to sit
+        // beside -s, and it implies workspace-write on its own. A denied write
+        // tool downgrades to read-only instead, which is the only way this CLI
+        // has of saying "do not edit". Never --dangerously-bypass-approvals-and-sandbox,
+        // which would remove the very sandbox the downgrade relies on.
+        if (readOnly)
+        {
+            start.ArgumentList.Add("-s");
+            start.ArgumentList.Add("read-only");
+        }
+        else
+        {
+            start.ArgumentList.Add("--approve-for-me");
+        }
+
+        // The overlay directory the hooks were written into is this spawn's
+        // whole Codex home, and the last message is written beside it, outside
+        // the checkout, for the same reason the hooks are.
+        if (request.HookSettings is { Length: > 0 } codexHome)
+        {
+            start.Environment["CODEX_HOME"] = codexHome;
+            start.ArgumentList.Add("-o");
+            start.ArgumentList.Add(Path.Combine(codexHome, "last-message.txt"));
+        }
+
+        start.RedirectStandardInput = true;
+        start.RedirectStandardOutput = true;
+
+        return start;
+    }
+
+    public ProcessStartInfo BuildAttached(SessionRequest request)
+    {
+        // A rule that cannot be honoured unattended cannot be honoured any
+        // better with somebody at the keyboard, so the refusal is the same. But
+        // the read-only downgrade is an unattended measure: here the operator
+        // answers the prompts, so no sandbox flag and no approval flag is
+        // carried at all.
+        EnsureDenyTranslatable(request.DeniedTools);
+
+        var start = Base(request, exec: false);
+        start.ArgumentList.Add(request.Prompt);
+        return start;
+    }
+
+    public IAgentStreamReader CreateReader(string root, RunFacts facts, string model) =>
+        new CodexStreamReader(root, facts, MapModel(model), ResumeCommand);
+
+    /// <summary>
+    /// The last thing a run said, out of the NDJSON a quiet run wrote: an
+    /// <c>agent_message</c>, else the failure that ended it - the same "last one
+    /// wins" rule <see cref="CodexStreamReader"/> applies live.
+    /// </summary>
+    public string? ReadClosing(string json)
+    {
+        string? closing = null;
+        foreach (var raw in json.Split('\n'))
+        {
+            var line = raw.Trim();
+            if (!line.StartsWith('{')) continue;
+
+            JsonElement e;
+            try
+            {
+                e = JsonDocument.Parse(line).RootElement;
+            }
+            catch (JsonException)
+            {
+                continue;
+            }
+
+            var said = Text(e, "type") switch
+            {
+                "item.completed" when e.TryGetProperty("item", out var item) && Text(item, "type") == "agent_message" =>
+                    Text(item, "text"),
+                "turn.failed" when e.TryGetProperty("error", out var error) => Text(error, "message"),
+                "error" => Text(e, "message"),
+                _ => null,
+            };
+
+            if (said is not null) closing = said;
+        }
+
+        return closing;
+    }
+
+    public string ResumeCommand(string sessionId) => $"codex exec resume {sessionId}";
+
+    public IAgentHooks? WriteHooks(string temp, string key, string hatch, string? rtk) => CodexHooks.Write(temp, key, hatch, rtk);
+
+    public UsageLimit.Recognised? RecogniseLimit(string? said, DateTimeOffset endedAt, TimeZoneInfo? runnerZone = null) =>
+        UsageLimit.RecogniseCodex(said, endedAt, runnerZone);
+
+    /// <summary>
+    /// The binary to spawn, which is only known once <see cref="CanSpawn"/> has
+    /// said there is one. A caller that skipped the question is a bug, and
+    /// spawning whatever <c>PATH</c> happens to offer would hide it.
+    /// </summary>
+    private string Bin => _bin
+        ?? throw new InvalidOperationException("CanSpawn was never asked, so there is no codex CLI to spawn");
+
+    /// <summary>
+    /// Whether a denied-tools list asks for a read-only session, and a refusal
+    /// of any rule this CLI has no way to carry. Codex has a sandbox mode and
+    /// nothing finer: a bare edit tool is a write the sandbox can take away,
+    /// but a command, a pattern or an MCP tool is not, and quietly running
+    /// without the restriction would be a deny list in name only.
+    /// </summary>
+    private static bool EnsureDenyTranslatable(IReadOnlyList<string> tools)
+    {
+        var readOnly = false;
+        foreach (var rule in tools)
+        {
+            if (rule is "Edit" or "Write" or "NotebookEdit")
+            {
+                readOnly = true;
+                continue;
+            }
+
+            throw new InvalidOperationException(
+                $"the denied tool \"{rule}\" has no equivalent in codex, whose only restriction is a read-only sandbox " +
+                "that stands for Edit, Write and NotebookEdit alone - drop it from the playbook, or run it on claude");
+        }
+
+        return readOnly;
+    }
+
+    private ProcessStartInfo Base(SessionRequest request, bool exec)
+    {
+        var start = new ProcessStartInfo
+        {
+            FileName = Bin,
+            WorkingDirectory = request.Root,
+            UseShellExecute = false,
+        };
+
+        // The prompt this session is about to be handed names `hatch` commands,
+        // so the word has to resolve inside it. See Reach.
+        Reach.OnPath(start.Environment, Reach.OwnDirectory(Environment.ProcessPath));
+
+        if (exec) start.ArgumentList.Add("exec");
+
+        start.ArgumentList.Add("-m");
+        start.ArgumentList.Add(MapModel(request.Model));
+        start.ArgumentList.Add("-C");
+        start.ArgumentList.Add(request.Root);
+        foreach (var dir in request.AddDirs)
+        {
+            start.ArgumentList.Add("--add-dir");
+            start.ArgumentList.Add(dir);
+        }
+
+        return start;
+    }
+
+    /// <summary>
+    /// The playbook's aliases onto this vendor's own ids; a pinned id passes
+    /// through. Re-pull from the vendor's current model list when it changes -
+    /// the same caveat <c>ModelFamilies.Default</c>'s codex row carries.
+    /// </summary>
+    private static string MapModel(string model) => model switch
+    {
+        "haiku" => "gpt-6-luna",
+        "sonnet" => "gpt-6.1-sol",
+        "opus" or "fable" => "gpt-6-astra",
+        _ => model,
+    };
+
+    /// <summary>Codex's top effort is spelled <c>xhigh</c>; the rest of the playbook's words are its own.</summary>
+    private static string MapEffort(string effort) => effort == "max" ? "xhigh" : effort;
+
+    private static string? Text(JsonElement e, string name) =>
+        e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out var value) &&
+        value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+
+    private static bool TryFind(string? configured, out string bin, out string refusal)
+    {
+        refusal = "";
+
+        if (!string.IsNullOrWhiteSpace(configured))
+        {
+            bin = configured;
+            if (File.Exists(bin)) return true;
+
+            refusal = $"hatch: HATCH_CODEX_BIN is not there: {bin}";
+            return false;
+        }
+
+        bin = "codex";
+        if (Reach.Find("codex", Environment.GetEnvironmentVariable("PATH")) is { } found)
+        {
+            bin = found;
+            return true;
+        }
+
+        refusal = string.Join('\n',
+            "hatch: no codex CLI on PATH.",
+            "",
+            "  Install it, or point at one you have:",
+            "      export HATCH_CODEX_BIN=/path/to/codex");
+        return false;
+    }
+}

@@ -141,7 +141,7 @@ public sealed class FakeAdapter : IAgentAdapter
 
     public void Release(SessionRequest request) => Released.Add(request);
 
-    public IAgentStreamReader CreateReader(string root, RunFacts facts)
+    public IAgentStreamReader CreateReader(string root, RunFacts facts, string model)
     {
         OnReader?.Invoke(facts);
         return new FakeStreamReader(facts, ResumeCommand);
