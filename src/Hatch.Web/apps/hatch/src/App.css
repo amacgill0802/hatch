@@ -335,7 +335,8 @@
     cursor: pointer;
   }
 
-  .hatch-queue-control {
+  .hatch-queue-control,
+  .hatch-flow-viz-control {
     height: var(--facet-h);
   }
 
