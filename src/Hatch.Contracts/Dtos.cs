@@ -1403,6 +1403,7 @@ public record PlaybookDto(
     IReadOnlyList<string> Types,
     string Shape,
     string Prompt,
+    string? DefaultPrompt,
     string Model,
     string Effort,
     int? Budget,

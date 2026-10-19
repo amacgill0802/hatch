@@ -584,6 +584,10 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("DefaultPrompt")
+                        .HasMaxLength(20000)
+                        .HasColumnType("character varying(20000)");
+
                     b.Property<string>("DeniedTools")
                         .HasColumnType("jsonb");
 
@@ -609,7 +613,6 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasColumnType("integer");
 
                     b.Property<string>("Prompt")
-                        .IsRequired()
                         .HasMaxLength(20000)
                         .HasColumnType("character varying(20000)");
 

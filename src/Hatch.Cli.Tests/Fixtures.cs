@@ -60,7 +60,7 @@ public static class Fixtures
         string model = "opus", string effort = "high", int? budget = null, int? briefLimit = null,
         IReadOnlyList<string>? deniedTools = null, bool isCheck = false,
         int? projectId = null, string? projectKey = null, string? projectName = null) =>
-        new(1, 3, "In Progress", 4, "In Review", [], "any", "Do the thing.", model, effort, budget, briefLimit, deniedTools ?? [], isCheck, DateTimeOffset.UnixEpoch, projectId, projectKey, projectName);
+        new(1, 3, "In Progress", 4, "In Review", [], "any", "Do the thing.", null, model, effort, budget, briefLimit, deniedTools ?? [], isCheck, DateTimeOffset.UnixEpoch, projectId, projectKey, projectName);
 
     public static WorkDto Work(
         string key,
