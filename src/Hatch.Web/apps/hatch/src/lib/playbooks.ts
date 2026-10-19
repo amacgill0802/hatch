@@ -154,6 +154,47 @@ export function coverageOf(boardRow: CoverageRow, ownRows: CoverageRow[]): Cover
   return left === coverageCells(boardRow).length ? 'live' : 'partly';
 }
 
+const TYPE_PLURALS: Record<IssueType, string> = { epic: 'epics', story: 'stories', task: 'tasks', bug: 'bugs' };
+
+const andList = (xs: string[]): string =>
+  xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`;
+
+/**
+ * What a partly overridden board-wide row still runs for, in words - what the
+ * dispatcher (`Dispatch.Match`) would still send to the row, read off the cells
+ * `cellsLeft` returns. `for tasks and bugs only` when the leftover is a
+ * rectangle narrower in type, `for parents only` / `for leaves only` when
+ * narrower in shape, both at once as `for parent tasks and bugs only`; a
+ * leftover that is no rectangle names each remaining shape's types in turn.
+ * Types come out in ISSUE_TYPES order, whatever order `left` is in.
+ *
+ * `null` when the row is live or overridden: there is nothing to add.
+ */
+export function leftNote(boardRow: CoverageRow, left: CoverageCell[]): string | null {
+  const all = coverageCells(boardRow);
+  if (left.length === 0 || left.length === all.length) return null;
+
+  const shapes: CoverageCell['shape'][] = ['leaf', 'parent'];
+  const typesOf = (cells: CoverageCell[], shape?: CoverageCell['shape']): IssueType[] =>
+    ISSUE_TYPES.filter((t) => cells.some((c) => c.type === t && (shape === undefined || c.shape === shape)));
+  const shapesOf = (cells: CoverageCell[]): CoverageCell['shape'][] =>
+    shapes.filter((s) => cells.some((c) => c.shape === s));
+
+  const leftTypes = typesOf(left);
+  const leftShapes = shapesOf(left);
+  if (leftTypes.length * leftShapes.length !== left.length) {
+    const clauses = leftShapes.map((s) => `${s} ${andList(typesOf(left, s).map((t) => TYPE_PLURALS[t]))}`);
+    return `for ${clauses.join('; ')}`;
+  }
+
+  const typesNarrowed = leftTypes.length < typesOf(all).length;
+  const shapesNarrowed = leftShapes.length < shapesOf(all).length;
+  const nouns = andList(leftTypes.map((t) => TYPE_PLURALS[t]));
+  if (typesNarrowed && shapesNarrowed) return `for ${leftShapes[0]} ${nouns} only`;
+  if (typesNarrowed) return `for ${nouns} only`;
+  return `for ${leftShapes[0] === 'leaf' ? 'leaves' : 'parents'} only`;
+}
+
 /** Whether the page's project filter keeps this row: every row when cleared, every
     board-wide row regardless, otherwise only a row naming that project. */
 export function matchesProjectFilter(p: Pick<Playbook, 'projectKey'>, projectKey: string): boolean {

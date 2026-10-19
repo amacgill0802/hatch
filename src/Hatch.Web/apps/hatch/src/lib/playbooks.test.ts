@@ -18,6 +18,7 @@ import {
   isOverridden,
   isReviewPlaybook,
   isUncheckedEdit,
+  leftNote,
   matchesProjectFilter,
   playbookLabel,
   projectLabel,
@@ -273,6 +274,60 @@ describe('coverage', () => {
 
       expect(coverageOf(board, [row(U, U, ['task'])])).toBe('overridden');
       expect(coverageOf(board, [row(T, U, ['task'])])).toBe('live');
+    });
+  });
+
+  describe('leftNote', () => {
+    const note = (board: CoverageRow, own: CoverageRow[]) => leftNote(board, cellsLeft(board, own));
+
+    it('words the parent half left by an own leaf row', () => {
+      expect(note(row(T, U, ['story']), [row(T, U, ['story'], 'leaf')])).toBe('for parents only');
+    });
+
+    it('words the leaf half left by an own parent row', () => {
+      expect(note(row(T, U, ['story']), [row(T, U, ['story'], 'parent')])).toBe('for leaves only');
+    });
+
+    it('words one type left', () => {
+      expect(note(row(T, U, ['task', 'bug']), [row(T, U, ['task'])])).toBe('for bugs only');
+    });
+
+    it('lists several types in ISSUE_TYPES order, whatever order the row lists them in', () => {
+      expect(note(row(T, U, ['bug', 'task', 'story']), [row(T, U, ['story'])])).toBe('for tasks and bugs only');
+    });
+
+    it('says stories, not storys', () => {
+      expect(note(row(T, U, ['epic', 'story']), [row(T, U, ['epic'])])).toBe('for stories only');
+    });
+
+    it('narrows type and shape at once', () => {
+      const board = row(T, U, ['story', 'task', 'bug']);
+      const own = [row(T, U, ['story']), row(T, U, ['task', 'bug'], 'leaf')];
+
+      expect(note(board, own)).toBe('for parent tasks and bugs only');
+    });
+
+    it('names each shape separately when what is left is not a rectangle', () => {
+      expect(note(row(T, U, ['task', 'bug']), [row(T, U, ['task'], 'leaf')])).toBe('for leaf bugs; parent tasks and bugs');
+    });
+
+    it('never reads a partly overridden every-type row as unnarrowed', () => {
+      expect(note(row(T, U, []), [row(T, U, ['task'], 'leaf')])).toBe(
+        'for leaf epics, stories and bugs; parent epics, stories, tasks and bugs',
+      );
+    });
+
+    it('is null for a live row', () => {
+      expect(note(row(T, U, ['task']), [])).toBeNull();
+      expect(note(row(T, U, ['task']), [row(U, T, [])])).toBeNull();
+    });
+
+    it('is null for an overridden row', () => {
+      expect(note(row(T, U, ['task']), [row(T, U, [])])).toBeNull();
+    });
+
+    it('is null when left is empty', () => {
+      expect(leftNote(row(T, U, ['task']), [])).toBeNull();
     });
   });
 
