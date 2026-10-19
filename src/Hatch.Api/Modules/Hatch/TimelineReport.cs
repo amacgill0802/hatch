@@ -121,7 +121,7 @@ public static class TimelineReport
     /// One column to stand in for a stretch: <paramref name="resolved"/> is false
     /// when the event names a column the board no longer has.
     /// </summary>
-    private sealed record Stretch(int? StatusId, bool Resolved, DateTimeOffset From, DateTimeOffset? To);
+    internal sealed record Stretch(int? StatusId, bool Resolved, DateTimeOffset From, DateTimeOffset? To);
 
     /// <summary>
     /// One issue's active segments inside <c>[from, to]</c>, and how many of its
@@ -171,14 +171,14 @@ public static class TimelineReport
         return (segments, unresolved);
     }
 
-    private static bool Overlaps(Stretch s, DateTimeOffset from, DateTimeOffset to)
+    internal static bool Overlaps(Stretch s, DateTimeOffset from, DateTimeOffset to)
     {
         var start = s.From > from ? s.From : from;
         var end = s.To is { } e && e < to ? e : to;
         return end > start;
     }
 
-    private static List<Stretch> StretchesOf(Row row, List<Change> ordered, BoardIndex board)
+    internal static List<Stretch> StretchesOf(Row row, List<Change> ordered, BoardIndex board)
     {
         if (ordered.Count == 0)
         {
@@ -350,7 +350,7 @@ public static class TimelineReport
     /// is not tried, since a deleted column's name may have been reused. With no
     /// id the name is matched exactly.
     /// </summary>
-    private static (int? StatusId, bool Resolved) Resolve(string? name, int? id, BoardIndex board)
+    internal static (int? StatusId, bool Resolved) Resolve(string? name, int? id, BoardIndex board)
     {
         if (id is { } given) return board.All.Contains(given) ? (given, true) : (null, false);
         if (name is not null && board.ByName.TryGetValue(name, out var byName)) return (byName, true);

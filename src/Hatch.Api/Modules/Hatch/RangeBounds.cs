@@ -30,6 +30,19 @@ public static class RangeBounds
         $"a range bound is an instant (2026-09-12T17:00:00Z) - not \"{text}\"";
 
     /// <summary>
+    /// The range's start, pulled forward to <paramref name="firstCreatedAt"/>
+    /// when the range reaches back before anything existed - a stretch before
+    /// the first issue was created counts nothing, so there is no point
+    /// drawing it. Left alone when there is no issue, or the start already
+    /// sits at or after it, or it falls after <paramref name="end"/> (the
+    /// range is wholly before anything existed, which is a separate case for
+    /// the caller to decide, not this to paper over).
+    /// </summary>
+    /// <remarks>HA-946 calls this from <c>GetTimeline</c> as well.</remarks>
+    public static DateTimeOffset ClampStart(DateTimeOffset start, DateTimeOffset end, DateTimeOffset? firstCreatedAt) =>
+        firstCreatedAt is { } first && start < first && first <= end ? first : start;
+
+    /// <summary>
     /// The range a caller asked for, or the sentence refusing it: <c>null</c>
     /// when <paramref name="start"/> and <paramref name="end"/> are good.
     /// </summary>
