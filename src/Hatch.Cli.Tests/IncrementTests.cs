@@ -81,11 +81,15 @@ public sealed class IncrementTests
             return Task.FromResult(new SessionResult(0, ""));
         };
 
-        var report = await (h.Runtime with { Adapter = new FakeAdapter() }).Increment().RunAsync(
+        var adapter = new FakeAdapter();
+        var report = await (h.Runtime with { Adapter = adapter }).Increment().RunAsync(
             Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
 
         Assert.True(report.Moved);
         Assert.Equal("fake-session-1", report.SessionId);
+
+        Assert.NotNull(adapter.WrittenHooks);
+        Assert.Equal(adapter.WrittenHooks!.Opaque, h.Sessions.Spawned[0].HookSettings);
 
         var billed = h.Wire.To("POST", "/api/hatch/issues/AER-1/work-log")[0].Read<WorkLogEntryRequest>();
         Assert.Equal("fake-session-1", billed.SessionId);
