@@ -25,6 +25,7 @@ export const NAV: NavEntry[] = [
   { kind: 'link', to: '/', label: 'Board', end: true },
   { kind: 'link', to: '/plan', label: 'Plan' },
   { kind: 'link', to: '/reports', label: 'Reports' },
+  { kind: 'link', to: '/search', label: 'Search' },
   {
     kind: 'group',
     label: 'Agents',
