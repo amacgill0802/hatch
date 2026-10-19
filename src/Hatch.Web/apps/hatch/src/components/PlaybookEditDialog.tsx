@@ -185,8 +185,12 @@ export function PlaybookEditDialog({
       footer={
         <div className="hatch-form-actions">
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" loading={saving} disabled={!draft.prompt.trim() && (!playbook || playbook.defaultPrompt === null)}
-            onClick={() => void save()}>
+          <Button
+            variant="primary"
+            loading={saving}
+            disabled={!draft.prompt.trim() && (!playbook || playbook.defaultPrompt === null)}
+            onClick={() => void save()}
+          >
             Save
           </Button>
         </div>
