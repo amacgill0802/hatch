@@ -2355,6 +2355,7 @@ public record WorkLogHistoryDto(
 /// </remarks>
 /// <param name="Title">What the session said it did, or null when it never said - see <paramref name="Described"/>.</param>
 /// <param name="TotalTokens">The four counts added up - one definition of the headline, as everywhere else in the module.</param>
+/// <param name="Agent">Which agent ran this session, an id like <c>claude</c>. Null from a CLI built before this shipped; never guessed by the server.</param>
 public record WorkLogSessionDto(
     long Id,
     string SessionId,
@@ -2375,7 +2376,8 @@ public record WorkLogSessionDto(
     long TotalTokens,
     int? Requests,
     long? PeakContextTokens,
-    int? PromptChars);
+    int? PromptChars,
+    string? Agent);
 
 /// <summary>
 /// The sessions in a range, ranked - and what that whole range cost, whether or

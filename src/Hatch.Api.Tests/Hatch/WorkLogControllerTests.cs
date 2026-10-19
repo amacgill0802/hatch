@@ -290,6 +290,17 @@ public class WorkLogControllerTests
     }
 
     [Fact]
+    public async Task ASessionsAgent_IsCarriedExactlyAsStored()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        await h.SpendAsync(issue, 1_000, Now.AddHours(-1), agent: "claude");
+
+        Assert.Equal("claude", Assert.Single((await h.SessionsAsync()).Sessions).Agent);
+    }
+
+    [Fact]
     public async Task CostRanksOnTheDollars_AndEndedIsNewestFirst()
     {
         var h = await NewAsync();
@@ -606,7 +617,8 @@ public class WorkLogControllerTests
             long durationMs = 1_000,
             int turns = 1,
             int? requests = null,
-            long? peakContextTokens = null)
+            long? peakContextTokens = null,
+            string? agent = null)
         {
             IssueKey.TryParse(issue.Key, out var projectKey, out var number);
             var issueId = await Db.Issues.AsNoTracking().WithKey(projectKey, number).Select(i => i.Id).FirstAsync();
@@ -628,6 +640,7 @@ public class WorkLogControllerTests
                 InputTokens = tokens,
                 Requests = requests,
                 PeakContextTokens = peakContextTokens,
+                Agent = agent,
                 CreatedAt = Now,
             };
 
