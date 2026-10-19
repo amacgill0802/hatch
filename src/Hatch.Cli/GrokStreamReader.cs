@@ -61,17 +61,27 @@ namespace Hatch.Cli;
 /// </remarks>
 internal sealed class GrokStreamReader : IAgentStreamReader
 {
+    private const int ThinkingStep = 3_000;
+
+    private readonly string _root;
     private readonly RunFacts _facts;
+    private readonly Func<string, string> _resumeCommand;
     private readonly Stopwatch _stopwatch = Stopwatch.StartNew();
     private readonly HashSet<string> _counted = [];
 
     private string _buffer = "";
+    private string _textBuffer = "";
     private bool _sawError;
+    private bool _bannerPrinted;
     private long _peakContext;
+    private long _thoughtChars;
+    private long _thoughtsSaid;
 
-    internal GrokStreamReader(string root, RunFacts facts)
+    internal GrokStreamReader(string root, RunFacts facts, Func<string, string>? resumeCommand = null)
     {
+        _root = root;
         _facts = facts;
+        _resumeCommand = resumeCommand ?? (id => $"grok --resume {id}");
         _facts.SessionId = Guid.NewGuid().ToString();
     }
 
@@ -90,11 +100,26 @@ internal sealed class GrokStreamReader : IAgentStreamReader
     public DateTimeOffset? UsageReadAt => null;
 
     /// <summary>
-    /// Terminal drawing is out of scope for this reader - every case below
-    /// returns no lines, and is filed as HA-936, which layers printed lines
-    /// onto this same switch with no change to the facts logic here.
+    /// Wraps <see cref="ReadEvent"/> with a one-time banner, printed off the
+    /// very first call regardless of what that line parses to - the same way
+    /// <see cref="RunFacts.SessionId"/> is minted before any line arrives.
     /// </summary>
     public IEnumerable<string> Read(string raw)
+    {
+        var lines = ReadEvent(raw);
+        if (_bannerPrinted) return lines;
+
+        _bannerPrinted = true;
+        return Banner().Concat(lines);
+    }
+
+    private IEnumerable<string> Banner()
+    {
+        yield return $"hatch: session {_facts.SessionId}";
+        yield return $"hatch:   join it with  {_resumeCommand(_facts.SessionId!)}";
+    }
+
+    private IEnumerable<string> ReadEvent(string raw)
     {
         var line = raw.TrimStart();
         if (!line.StartsWith('{')) return [];
@@ -115,8 +140,10 @@ internal sealed class GrokStreamReader : IAgentStreamReader
 
         return type switch
         {
-            "tool_call" or "tool_call_update" => ClearBuffer(),
+            "tool_call" => ToolCall(e),
+            "tool_call_update" => ToolCallUpdate(e),
             "text" => TextEvent(e),
+            "thought" => Thought(e),
             "usage" => UsageEvent(e),
             "end" => Finish(e),
             "error" => Error(e),
@@ -124,10 +151,63 @@ internal sealed class GrokStreamReader : IAgentStreamReader
         };
     }
 
-    private IEnumerable<string> ClearBuffer()
+    private IEnumerable<string> ToolCall(JsonElement e)
     {
         _buffer = "";
-        return [];
+        foreach (var said in FlushText()) yield return said;
+        yield return $"  ⏺ {Text(e, "toolName")}  {ToolField(e)}";
+    }
+
+    /// <summary>
+    /// <see cref="StreamRender.Summarise"/>'s own field-order loop, duplicated
+    /// here over <c>rawInput</c> in place of <c>input</c> - that method is
+    /// private and tied to <see cref="StreamRender"/>'s own <c>_root</c>.
+    /// </summary>
+    private string ToolField(JsonElement e)
+    {
+        if (!e.TryGetProperty("rawInput", out var rawInput) || rawInput.ValueKind != JsonValueKind.Object)
+            return "";
+
+        foreach (var field in (string[])["command", "file_path", "pattern", "description", "url", "path", "key"])
+            if (Text(rawInput, field) is { Length: > 0 } value)
+                return StreamRender.Clip(StreamRender.Flat(StreamRender.Here(_root, value)));
+
+        return StreamRender.Clip(StreamRender.Flat(StreamRender.Here(_root, rawInput.ToString())));
+    }
+
+    private IEnumerable<string> ToolCallUpdate(JsonElement e)
+    {
+        _buffer = "";
+        foreach (var said in FlushText()) yield return said;
+
+        if (Text(e, "status") != "failed") yield break;
+
+        var text = ToolUpdateText(e);
+        var firstLine = text.ReplaceLineEndings("\n").Split('\n')[0];
+        var clipped = StreamRender.Clip(StreamRender.Flat(firstLine));
+        if (clipped.Length > 0) yield return $"  ✗ {clipped}";
+    }
+
+    /// <summary>
+    /// <c>content</c>'s first element, which may be a flat <c>{type:"text",
+    /// text:"…"}</c> block or ACP's own nested <c>{type:"content",
+    /// content:{type:"text",text:"…"}}</c> wrapper - tried in that order, then
+    /// the element's raw JSON - else <c>rawOutput</c>, its own string or its
+    /// raw JSON text otherwise.
+    /// </summary>
+    private static string ToolUpdateText(JsonElement e)
+    {
+        if (e.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array &&
+            content.EnumerateArray().FirstOrDefault() is { ValueKind: JsonValueKind.Object } first)
+        {
+            return Text(first, "text")
+                ?? (first.TryGetProperty("content", out var nested) ? Text(nested, "text") : null)
+                ?? first.ToString();
+        }
+
+        if (!e.TryGetProperty("rawOutput", out var rawOutput)) return "";
+
+        return rawOutput.ValueKind == JsonValueKind.String ? rawOutput.GetString() ?? "" : rawOutput.ToString();
     }
 
     private IEnumerable<string> TextEvent(JsonElement e)
@@ -135,19 +215,53 @@ internal sealed class GrokStreamReader : IAgentStreamReader
         if (Text(e, "data") is { Length: > 0 } data)
         {
             _buffer += data;
+            _textBuffer += data;
             _facts.LastAssistantText = data;
         }
 
         return [];
     }
 
+    /// <summary>
+    /// The thinking pulse. <see cref="StreamRender"/>'s own <c>ThinkingStep</c>
+    /// is private, so the literal is deliberately duplicated here rather than
+    /// shared.
+    /// </summary>
+    private IEnumerable<string> Thought(JsonElement e)
+    {
+        if (Text(e, "data") is { Length: > 0 } data) _thoughtChars += data.Length;
+
+        if (_thoughtChars < _thoughtsSaid + ThinkingStep) return [];
+
+        _thoughtsSaid = _thoughtChars;
+        return ["  ✻ thinking…"];
+    }
+
+    /// <summary>
+    /// Text buffered since the last flush, drawn as a blank line then its own
+    /// lines - mirroring <see cref="StreamRender.Assistant"/>'s own shape.
+    /// Never called from <see cref="TextEvent"/> itself, so a line is never
+    /// drawn split mid-word.
+    /// </summary>
+    private IEnumerable<string> FlushText()
+    {
+        var text = _textBuffer;
+        _textBuffer = "";
+
+        if (StreamRender.Flat(text).Length == 0) return [];
+
+        return new[] { "" }.Concat(text.ReplaceLineEndings("\n").Split('\n'));
+    }
+
     private IEnumerable<string> UsageEvent(JsonElement e)
     {
+        var flushed = FlushText().ToList();
+
         var messageId = Text(e, "messageId");
-        if (messageId is not null && !_counted.Add(messageId)) return [];
+        if (messageId is not null && !_counted.Add(messageId)) return flushed;
 
         CountTokens(e);
-        return [];
+        return flushed;
     }
 
     private void CountTokens(JsonElement e)
