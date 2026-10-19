@@ -25,6 +25,11 @@
     height: auto;
     min-height: 100%;
   }
+
+  /* Resolves against #root, which theme.css pins to 100dvh by the same :has(). */
+  .hatch-app:has(.hatch-board-page--pinned) {
+    height: 100dvh;
+  }
 }
 
 /* The layout Board, Plan, Agents and Manage sit in together, wherever

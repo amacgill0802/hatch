@@ -197,7 +197,11 @@ else keys off it today.
 Below `40rem`, the document itself is the scroller — not a fixed-height shell
 with a nested element scrolling inside it. That is what lets an on-screen
 keyboard resize the visual viewport without leaving a nested scroller stranded,
-and it is what lets a mobile browser's chrome collapse on scroll at all.
+and it is what lets a mobile browser's chrome collapse on scroll at all. The
+board page is the one exception, and only installed (standalone): there is no
+browser chrome to collapse and no on-screen-keyboard editor on that page, the
+two reasons the document scroller was chosen, so it pins the shell back to
+`100dvh` (`.hatch-board-page--pinned`) and its columns scroll inside it.
 
 ## Adopting `@hatch/ui`
 

@@ -45,7 +45,7 @@ import { aimAt } from '../lib/aim';
 import { getFlowBoard } from '../lib/flowViz';
 import type { FlowBoard } from '../lib/flowViz';
 import { whereOnBoard } from '../lib/goTo';
-import { readBoardView, resolveBoardLayout, startsCollapsed, writeBoardView } from '../lib/phoneBoard';
+import { pinnedBoard, readBoardView, resolveBoardLayout, startsCollapsed, writeBoardView } from '../lib/phoneBoard';
 import type { BoardView } from '../lib/phoneBoard';
 import { columnDroppableId, place, sendTo, targetStatusId } from '../lib/place';
 import type { Placement } from '../lib/place';
@@ -61,7 +61,7 @@ import { useCloseSubtree } from '../lib/useCloseSubtree';
 import { useIssueConfirmations } from '../lib/useIssueConfirmations';
 import { useLoaded } from '../lib/useLoaded';
 import { hasMultipleProjects, useProjects } from '../lib/useProjects';
-import { usePhone } from '../lib/viewport';
+import { usePhone, useStandalone } from '../lib/viewport';
 import { useWipOverride } from '../lib/useWipOverride';
 import { overridden, wipRefusal } from '../lib/wipOverride';
 import { meterText, preview, runs, tightest } from '../lib/wip';
@@ -100,6 +100,7 @@ const TOUCH_LIFT_TOLERANCE_PX = 8;
 
 export function BoardPage() {
   const isPhone = usePhone();
+  const pinned = pinnedBoard(isPhone, useStandalone());
 
   // The chosen layout at phone width, seeded from storage and written on
   // every press of the toggle - off the phone this is always 'full' (AC7),
@@ -591,7 +592,7 @@ export function BoardPage() {
   };
 
   return (
-    <div className="hatch-board-page">
+    <div className={`hatch-board-page${pinned ? ' hatch-board-page--pinned' : ''}`}>
       {/* The page names itself here rather than through PageHeader: the top bar
           is deliberately not a page heading, and the board is the one page whose
           visible title the operator asked to lose. */}
