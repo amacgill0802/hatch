@@ -33,6 +33,42 @@ export function queueWords(entry: QueueEntry): string {
   return `-> ${entry.toStatus?.name ?? '?'}`;
 }
 
+/** The eight bands `FlowBand` can draw - the four house-accent kinds a
+    blocked row already had a word for, and the four HA-967 added tokens
+    for. */
+export type FlowBandKind = 'clear' | 'working' | 'wip' | 'dependency' | 'turn' | 'family' | 'person' | 'other';
+
+/** The band a card wears for its place in the work queue, or null where it
+    wears none: the queue does not read this card at all, or the row in hand
+    describes a column the card has already left - a drop paints the card in
+    its new column before the reload lands (`BoardPage.tsx`'s `setBoard({
+    ...board, issues: placed.issues })`), and the row still held is the one
+    for the column the card just left, not the one it is now in. A row whose
+    `blockedKind` is null because it came from a server older than HA-937
+    reads as `other`, the same as an unnamed block, rather than as no band at
+    all. */
+export function flowBand(row: QueueEntry | undefined, card: IssueCard): { kind: FlowBandKind; words: string } | null {
+  if (!row || row.fromStatus.id !== card.statusId) return null;
+  if (row.blocked === null) return { kind: 'clear', words: 'Clear' };
+  switch (row.blockedKind) {
+    case 'working':
+      return { kind: 'working', words: 'Working' };
+    case 'wip':
+      return { kind: 'wip', words: 'WIP full' };
+    case 'dependency':
+      return { kind: 'dependency', words: 'Dependency' };
+    case 'turn':
+      return { kind: 'turn', words: 'In line' };
+    case 'family':
+      return { kind: 'family', words: 'Family' };
+    case 'person':
+      return { kind: 'person', words: 'Needs you' };
+    case 'other':
+    case null:
+      return { kind: 'other', words: 'Blocked' };
+  }
+}
+
 /** The word a hop row prints, naming which of the six reasons carried it -
     mirrors the CLI's `Picker.HopWord` exactly. */
 export function hopWord(hopKind: QueueEntry['hopKind'], hopUnder: string | null): string {

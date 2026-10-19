@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   anyAboveNormal,
   anyClaimed,
+  flowBand,
   isRefusedRunner,
   mergeTrains,
   queueCard,
@@ -440,6 +441,72 @@ describe('mergeTrains', () => {
 
     expect(trains.find((t) => t.projectKey === 'AER')?.driver).toBe('Jeff Winger');
     expect(trains.find((t) => t.projectKey === 'BER')?.driver).toBeNull();
+  });
+});
+
+describe('flowBand', () => {
+  it('draws nothing with no row at all', () => {
+    expect(flowBand(undefined, card())).toBeNull();
+  });
+
+  it('draws nothing when the row describes a column the card has already left', () => {
+    const row = entry({ fromStatus: status({ id: 1 }) });
+
+    expect(flowBand(row, card({ statusId: 2 }))).toBeNull();
+  });
+
+  it('says Clear for an unblocked row', () => {
+    const row = entry({ fromStatus: status({ id: 1 }), blocked: null });
+
+    expect(flowBand(row, card({ statusId: 1 }))).toEqual({ kind: 'clear', words: 'Clear' });
+  });
+
+  it('says Working for a working block', () => {
+    const row = entry({ fromStatus: status({ id: 1 }), blocked: 'HA-1 is working this', blockedKind: 'working' });
+
+    expect(flowBand(row, card({ statusId: 1 }))).toEqual({ kind: 'working', words: 'Working' });
+  });
+
+  it('says WIP full for a wip block', () => {
+    const row = entry({ fromStatus: status({ id: 1 }), blocked: 'In Progress is full', blockedKind: 'wip' });
+
+    expect(flowBand(row, card({ statusId: 1 }))).toEqual({ kind: 'wip', words: 'WIP full' });
+  });
+
+  it('says Dependency for a dependency block', () => {
+    const row = entry({ fromStatus: status({ id: 1 }), blocked: 'waiting on HA-2', blockedKind: 'dependency' });
+
+    expect(flowBand(row, card({ statusId: 1 }))).toEqual({ kind: 'dependency', words: 'Dependency' });
+  });
+
+  it('says In line for a turn block', () => {
+    const row = entry({ fromStatus: status({ id: 1 }), blocked: 'not its turn', blockedKind: 'turn' });
+
+    expect(flowBand(row, card({ statusId: 1 }))).toEqual({ kind: 'turn', words: 'In line' });
+  });
+
+  it('says Family for a family block', () => {
+    const row = entry({ fromStatus: status({ id: 1 }), blocked: 'a relative is claimed', blockedKind: 'family' });
+
+    expect(flowBand(row, card({ statusId: 1 }))).toEqual({ kind: 'family', words: 'Family' });
+  });
+
+  it('says Needs you for a person block', () => {
+    const row = entry({ fromStatus: status({ id: 1 }), blocked: 'owed an answer', blockedKind: 'person' });
+
+    expect(flowBand(row, card({ statusId: 1 }))).toEqual({ kind: 'person', words: 'Needs you' });
+  });
+
+  it('says Blocked for an other block', () => {
+    const row = entry({ fromStatus: status({ id: 1 }), blocked: 'something else', blockedKind: 'other' });
+
+    expect(flowBand(row, card({ statusId: 1 }))).toEqual({ kind: 'other', words: 'Blocked' });
+  });
+
+  it('says Blocked for a block with no blockedKind, from a server older than HA-937', () => {
+    const row = entry({ fromStatus: status({ id: 1 }), blocked: 'something else', blockedKind: null });
+
+    expect(flowBand(row, card({ statusId: 1 }))).toEqual({ kind: 'other', words: 'Blocked' });
   });
 });
 
