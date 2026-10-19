@@ -3,10 +3,12 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { ProjectMark, markVars } from '@hatch/ui';
 import { ClaimBadge } from './ClaimBadge';
+import { FlowBand } from './FlowBand';
 import { MomentChip } from './MomentChip';
 import { TypeGlyph } from './TypeGlyph';
 import { projectLogoUrl } from '../lib/projectLogo';
 import { isPlainClick } from '../lib/pointer';
+import type { FlowBandKind } from '../lib/queue';
 import { truncate } from '../lib/text';
 import type { IssueCard, Project } from '../types';
 
@@ -34,6 +36,10 @@ interface BoardCardProps {
       CardPreview on purpose: the preview follows the cursor, not a place in a
       column, and takes no indent. */
   depth?: number;
+  /** Where this card sits in the work queue, or null/absent for none - see
+      lib/queue.ts's `flowBand`. Absent from CardProps on purpose: the preview
+      follows the cursor across columns its row does not describe. */
+  band?: { kind: FlowBandKind; words: string } | null;
 }
 
 /** Owed an answer, and drawn as such wherever the card is drawn. */
@@ -79,6 +85,7 @@ export function BoardCard({
   found = false,
   onPeek,
   depth = 0,
+  band = null,
 }: CardProps & BoardCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: card.key });
   const nested = depth > 0;
@@ -104,6 +111,7 @@ export function BoardCard({
       {...listeners}
     >
       <CardFace card={card} waiting={waiting} terminal={terminal} project={project} />
+      <FlowBand band={band} />
     </Link>
   );
 }

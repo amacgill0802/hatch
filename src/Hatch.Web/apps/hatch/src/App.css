@@ -759,6 +759,78 @@
   pointer-events: none;
 }
 
+/* The band naming a card's place in the work queue - lib/queue.ts's
+   `flowBand` decides which, if any, `FlowBand` draws. Lies over the card's
+   lower half, opaque, taking its bottom corners, so it reads as a label
+   stamped on the card rather than a stripe beside it. The two shades come
+   from a hatch-flow-{kind} class below, the same handoff hatch-wip-{tightness}
+   makes above for --wip-tint/--wip-wash/--wip-ink. */
+.hatch-flow-band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--sp-2);
+  border-radius: 0 0 var(--r-ctl) var(--r-ctl);
+  background: var(--flow-fill);
+  color: var(--flow-ink);
+  font-size: var(--t-subhead);
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  text-align: center;
+}
+
+/* The four kinds a blocked row already had a word for, each the house
+   accent it already read as elsewhere on the board - clear success, working
+   primary, wip warn, dependency danger - with --on-accent for ink, the same
+   as .hatch-wip-over takes for its own solid fill. */
+.hatch-flow-clear {
+  --flow-fill: var(--success);
+  --flow-ink: var(--on-accent);
+}
+
+.hatch-flow-working {
+  --flow-fill: var(--primary);
+  --flow-ink: var(--on-accent);
+}
+
+.hatch-flow-wip {
+  --flow-fill: var(--warn);
+  --flow-ink: var(--on-accent);
+}
+
+.hatch-flow-dependency {
+  --flow-fill: var(--danger);
+  --flow-ink: var(--on-accent);
+}
+
+/* The four kinds HA-967 gave their own pair, since --on-accent cannot serve
+   them - see that pair's own tokens.css header for why. */
+.hatch-flow-turn {
+  --flow-fill: var(--flow-turn);
+  --flow-ink: var(--on-flow-turn);
+}
+
+.hatch-flow-family {
+  --flow-fill: var(--flow-family);
+  --flow-ink: var(--on-flow-family);
+}
+
+.hatch-flow-person {
+  --flow-fill: var(--flow-person);
+  --flow-ink: var(--on-flow-person);
+}
+
+.hatch-flow-other {
+  --flow-fill: var(--flow-other);
+  --flow-ink: var(--on-flow-other);
+}
+
 .hatch-card-head {
   display: flex;
   align-items: center;
