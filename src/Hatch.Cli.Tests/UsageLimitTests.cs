@@ -171,4 +171,50 @@ public sealed class UsageLimitTests
         Assert.False(hit!.Value.ResetKnown);
         Assert.Equal("6:00pm", UsageLimit.Clock(hit.Value.ResetAt, hit.Value.ResetKnown, local));
     }
+
+    [Fact]
+    public void Codex_reads_the_clock_form_through_Recognise()
+    {
+        var hit = UsageLimit.RecogniseCodex("You've hit your session limit · resets 7:40pm (America/New_York)", EndedAt);
+
+        Assert.NotNull(hit);
+        Assert.True(hit!.Value.ResetKnown);
+        Assert.Equal(DateTimeOffset.Parse("2026-09-28T23:40:00+00:00"), hit.Value.ResetAt);
+        Assert.Equal("session", hit.Value.Window);
+    }
+
+    [Theory]
+    [InlineData("You've hit your usage limit. Try again in 4 days")]
+    [InlineData("rate limit exceeded")]
+    [InlineData("usage_limit_reached")]
+    [InlineData("rate_limit_exceeded")]
+    public void Codex_limit_reports_with_no_clock_rest_the_backstop_hour(string said)
+    {
+        var hit = UsageLimit.RecogniseCodex(said, EndedAt);
+
+        Assert.NotNull(hit);
+        Assert.False(hit!.Value.ResetKnown);
+        Assert.Equal(EndedAt + UsageLimit.UnknownWindow, hit.Value.ResetAt);
+        Assert.Equal("session", hit.Value.Window);
+    }
+
+    [Fact]
+    public void Codex_weekly_limit_is_the_weekly_window()
+    {
+        var hit = UsageLimit.RecogniseCodex("weekly usage limit reached", EndedAt);
+
+        Assert.NotNull(hit);
+        Assert.False(hit!.Value.ResetKnown);
+        Assert.Equal("weekly", hit.Value.Window);
+    }
+
+    [Theory]
+    [InlineData("stream disconnected")]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData(null)]
+    public void Codex_ordinary_errors_and_nothing_said_are_not_a_limit(string? said)
+    {
+        Assert.Null(UsageLimit.RecogniseCodex(said, EndedAt));
+    }
 }
