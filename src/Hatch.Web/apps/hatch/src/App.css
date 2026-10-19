@@ -5680,6 +5680,61 @@ button.hatch-option.chosen {
   height: 18px;
 }
 
+/* ---- Flow arrows ----
+
+   The overlay FlowArrows draws over the board while a band is spotlit: one
+   stroke and one head per dependency edge, red where the edge runs upstream
+   of the spotlit card and muted where it runs downstream. Paint only - the
+   component sets left, top, width and height inline. */
+
+.hatch-flow-arrows {
+  /* Fixed, not absolute: .hatch-board scrolls sideways and
+     .hatch-column-cards scrolls down, and nothing here portals, so an
+     absolute overlay would scroll with whichever ancestor held it. Same
+     shape as .hatch-confirmations. */
+  position: fixed;
+  /* Load-bearing. An overlay that took the pointer would take it off the
+     band it was drawn for, the hover would end, the arrows would vanish, and
+     the board would flicker at frame rate. */
+  pointer-events: none;
+  /* Over the cards, which have no z-index of their own, and the chicklets'
+     90; under Callout's 95 and Modal's 100. No overflow either: the SVG's own
+     viewport clips, so no arrow escapes the board. */
+  z-index: 91;
+}
+
+/* No transition or animation on any of these: the arrows arrive and leave
+   with the spotlight, which already fades, and a line that drew itself in is
+   motion nobody asked for. */
+.hatch-flow-arrow-stroke {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.hatch-flow-arrow-head {
+  stroke: none;
+}
+
+/* The colours are compound selectors, so which rule wins never depends on
+   source order. --danger is the dependency band's own token; --muted is the
+   quieter ink. */
+.hatch-flow-arrow-stroke.hatch-flow-arrow-upstream {
+  stroke: var(--danger);
+}
+
+.hatch-flow-arrow-head.hatch-flow-arrow-upstream {
+  fill: var(--danger);
+}
+
+.hatch-flow-arrow-stroke.hatch-flow-arrow-downstream {
+  stroke: var(--muted);
+}
+
+.hatch-flow-arrow-head.hatch-flow-arrow-downstream {
+  fill: var(--muted);
+}
+
 .hatch-queue-reading-field {
   margin-bottom: var(--sp-3);
 }
