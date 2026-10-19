@@ -77,6 +77,7 @@ const entry = (over: Partial<QueueEntry> = {}): QueueEntry => ({
   clearNote: null,
   model: null,
   deniedTools: null,
+  blockedKind: null,
   ...over,
 });
 

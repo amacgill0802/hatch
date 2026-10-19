@@ -2316,6 +2316,7 @@ public class WorkControllerTests
         Assert.Equal(
             $"{Key(normal)} ranks normal and is clear - nothing at economy is picked up while higher-ranking work is available",
             queue.Single(e => e.Issue.Key == Key(thrifty)).Blocked);
+        Assert.Equal(BlockedKinds.Turn, queue.Single(e => e.Issue.Key == Key(thrifty)).BlockedKind);
     }
 
     [Fact]
@@ -3734,12 +3735,13 @@ public class WorkControllerTests
         var second = await h.FileAsync("story", "phase two", h.Todo);
         await h.DependsAsync(second, first);
 
-        var blocked = Value(await h.Work.GetQueue(0, null, default))
-            .Single(e => e.Issue.Key == Key(second)).Blocked;
+        var row = Value(await h.Work.GetQueue(0, null, default))
+            .Single(e => e.Issue.Key == Key(second));
 
         Assert.Equal(
             $"{Key(first)} is not done, and this cannot be implemented until it is",
-            blocked);
+            row.Blocked);
+        Assert.Equal(BlockedKinds.Dependency, row.BlockedKind);
     }
 
     [Fact]
@@ -6646,9 +6648,11 @@ public class WorkControllerTests
         Assert.Equal(
             "its branch holds main and its build passes",
             entries.Single(e => e.Issue.Key == Key(expedited)).Blocked);
+        Assert.Equal(BlockedKinds.Other, entries.Single(e => e.Issue.Key == Key(expedited)).BlockedKind);
         Assert.Equal(
             $"its branch holds main and its build passes - waiting its turn behind {Key(expedited)}, position 2 in the train",
             entries.Single(e => e.Issue.Key == Key(normal)).Blocked);
+        Assert.Equal(BlockedKinds.Turn, entries.Single(e => e.Issue.Key == Key(normal)).BlockedKind);
     }
 
     [Fact]
@@ -8523,6 +8527,7 @@ public class WorkControllerTests
         Assert.Equal(
             "hatch is working this from somewhere:/checkouts/one, last heard from just now",
             queue.Single(e => e.Issue.Key == Key(held)).Blocked);
+        Assert.Equal(BlockedKinds.Working, queue.Single(e => e.Issue.Key == Key(held)).BlockedKind);
 
         // And the pass takes the next thing rather than stopping.
         Assert.Equal(Key(free), Value(await h.Work.GetNextWork(0, null, null, default)).Issue.Key);
@@ -8557,6 +8562,7 @@ public class WorkControllerTests
         h.Time.Advance(TimeSpan.FromSeconds(TestClaims.Ttl + 1));
 
         Assert.Null(Only(await h.Work.GetQueue(0, null, default)).Blocked);
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default)).BlockedKind);
         Assert.Equal(Key(abandoned), Value(await h.Work.GetNextWork(0, null, null, default)).Issue.Key);
     }
 
@@ -8660,6 +8666,7 @@ public class WorkControllerTests
         Assert.Equal(
             $"{From()} {Key(task)}, below this, {Where}",
             queue.Single(e => e.Issue.Key == Key(story)).Blocked);
+        Assert.Equal(BlockedKinds.Family, queue.Single(e => e.Issue.Key == Key(story)).BlockedKind);
     }
 
     [Fact]
@@ -8897,9 +8904,12 @@ public class WorkControllerTests
         const string sentence =
             "the WIP section is full - 2 of 2 stories and bugs are in it - nothing more is pulled in until something leaves";
 
-        var queue = Value(await h.Work.GetQueue(0, null, default)).ToDictionary(e => e.Issue.Key, e => e.Blocked);
+        var rows = Value(await h.Work.GetQueue(0, null, default)).ToDictionary(e => e.Issue.Key);
+        var queue = rows.ToDictionary(r => r.Key, r => r.Value.Blocked);
         Assert.Equal(sentence, queue[Key(story)]);
         Assert.Equal(sentence, queue[Key(bug)]);
+        Assert.Equal(BlockedKinds.Wip, rows[Key(story)].BlockedKind);
+        Assert.Equal(BlockedKinds.Wip, rows[Key(bug)].BlockedKind);
 
         // No key and no title in it, so a digest of two rows folded for the
         // same reason still groups to one line.
