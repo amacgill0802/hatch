@@ -8,13 +8,17 @@ import { TypeBadge } from '../components/TypeBadge';
 import { agoPhrase } from '../lib/claim';
 import { message } from '../lib/errors';
 import {
+  boardRowNote,
   coverageOf,
   fileRowLabel,
   isReviewPlaybook,
   isUncheckedEdit,
   matchesProjectFilter,
+  notReadNote,
+  playbookLabel,
   transitionLabel,
 } from '../lib/playbooks';
+import type { CoverageRow } from '../lib/playbooks';
 import {
   absentSentence,
   boundCanonicals,
@@ -28,7 +32,7 @@ import {
 import { pullRequestWords } from '../lib/pullRequest';
 import { useLoaded } from '../lib/useLoaded';
 import { hasMultipleProjects, useProjects } from '../lib/useProjects';
-import type { Playbook, PlaybookFileRowDto, PlaybookFilesDto, Status } from '../types';
+import type { Playbook, PlaybookFileDto, PlaybookFileRowDto, PlaybookFilesDto, Project, Status } from '../types';
 
 /**
  * The matrix an agent is dispatched by, and the only place it can be changed.
@@ -46,6 +50,7 @@ export function PlaybooksPage() {
   const { data: files } = useLoaded<PlaybookFilesDto>(getPlaybookFiles);
   const { projects } = useProjects();
   const [projectFilter, setProjectFilter] = useState('');
+  const [showOverridden, setShowOverridden] = useState(false);
   const [editing, setEditing] = useState<Playbook | null>(null);
   const [creating, setCreating] = useState(false);
 
@@ -66,7 +71,6 @@ export function PlaybooksPage() {
     }
   }
 
-  const visible = playbooks?.filter((p) => matchesProjectFilter(p, projectFilter));
   const filteredProject = projectFilter ? projects.find((p) => p.key === projectFilter) ?? null : null;
   const activeFile =
     filteredProject?.repoSourced && files ? fileForProject(filteredProject, files.files) : null;
@@ -104,48 +108,17 @@ export function PlaybooksPage() {
       )}
 
       {playbooks && (playbooks.length > 0 || (activeFile?.rows.length ?? 0) > 0) && (
-        <Card flush>
-          <Table>
-            <thead>
-              <tr>
-                <th>Transition</th>
-                {hasMultipleProjects(projects) && <th>Project</th>}
-                <th>Types</th>
-                <th>Model</th>
-                <th>Effort</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {activeFile?.rows.map((row, i) => (
-                <PlaybookFileRowLine
-                  key={`${transitionLabel(row)}-${i}`}
-                  row={row}
-                  statuses={statuses ?? []}
-                  label={fileRowLabel(activeFile)}
-                />
-              ))}
-              {visible?.map((playbook) => (
-                <PlaybookRow
-                  key={playbook.id}
-                  playbook={playbook}
-                  projects={projects}
-                  statuses={statuses ?? []}
-                  note={
-                    activeFile && playbook.projectKey === null && coverageOf(playbook, activeFile.rows) === 'overridden'
-                      ? 'overridden by the file'
-                      : null
-                  }
-                  dimmed={Boolean(
-                    activeFile && playbook.projectKey === null && coverageOf(playbook, activeFile.rows) === 'overridden',
-                  )}
-                  onEdit={() => setEditing(playbook)}
-                  onDelete={() => void act(() => deletePlaybook(playbook.id))}
-                />
-              ))}
-            </tbody>
-          </Table>
-        </Card>
+        <PlaybooksTable
+          playbooks={playbooks}
+          activeFile={activeFile}
+          filteredProject={filteredProject}
+          projects={projects}
+          statuses={statuses ?? []}
+          showOverridden={showOverridden}
+          onToggleOverridden={() => setShowOverridden((v) => !v)}
+          onEdit={setEditing}
+          onDelete={(p) => void act(() => deletePlaybook(p.id))}
+        />
       )}
 
       <h2 className="hatch-section-title">Files on the trunk</h2>
@@ -222,6 +195,117 @@ export function PlaybooksPage() {
         onSaved={() => void reload()}
       />
     </div>
+  );
+}
+
+/**
+ * The main table itself: the file's own rows first, then every playbook the
+ * project filter keeps, with a `Show N overridden` toggle set aside behind
+ * it - the board-wide rows the filtered project's own layer wholly covers,
+ * and, for a repo-sourced project, that project's own leftover table rows,
+ * which the dispatcher never reads once the project reads a file instead.
+ * A partly overridden board-wide row is never set aside - it still runs for
+ * something - and carries `boardRowNote`'s words regardless of the toggle.
+ *
+ * Pure of the load, so a test can render it from props - there is no DOM
+ * runner to drive `useLoaded`.
+ */
+export function PlaybooksTable({
+  playbooks,
+  activeFile,
+  filteredProject,
+  projects,
+  statuses,
+  showOverridden,
+  onToggleOverridden,
+  onEdit,
+  onDelete,
+}: {
+  playbooks: Playbook[];
+  activeFile: PlaybookFileDto | null;
+  filteredProject: Project | null;
+  projects: Project[];
+  statuses: Status[];
+  showOverridden: boolean;
+  onToggleOverridden: () => void;
+  onEdit: (p: Playbook) => void;
+  onDelete: (p: Playbook) => void;
+}) {
+  const ownRows: CoverageRow[] = !filteredProject
+    ? []
+    : activeFile
+      ? activeFile.rows
+      : playbooks.filter((p) => p.projectKey === filteredProject.key);
+
+  const ownLabel = filteredProject
+    ? filteredProject.repoSourced
+      ? 'the file'
+      : playbookLabel({ projectKey: filteredProject.key })
+    : '';
+
+  function asideInfo(p: Playbook): { note: string | null; aside: boolean } {
+    if (!filteredProject) return { note: null, aside: false };
+    if (p.projectKey === null) {
+      return { note: boardRowNote(p, ownRows, ownLabel), aside: coverageOf(p, ownRows) === 'overridden' };
+    }
+    if (filteredProject.repoSourced && p.projectKey === filteredProject.key) {
+      return { note: notReadNote(p.projectKey), aside: true };
+    }
+    return { note: null, aside: false };
+  }
+
+  const rows = playbooks
+    .filter((p) => matchesProjectFilter(p, filteredProject?.key ?? ''))
+    .map((p) => ({ playbook: p, ...asideInfo(p) }));
+  const asideCount = rows.filter((r) => r.aside).length;
+
+  return (
+    <>
+      {asideCount > 0 && (
+        <Button variant="secondary" onClick={onToggleOverridden}>
+          {showOverridden ? `Hide ${asideCount} overridden` : `Show ${asideCount} overridden`}
+        </Button>
+      )}
+      <Card flush>
+        <Table>
+          <thead>
+            <tr>
+              <th>Transition</th>
+              {hasMultipleProjects(projects) && <th>Project</th>}
+              <th>Types</th>
+              <th>Model</th>
+              <th>Effort</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {activeFile?.rows.map((row, i) => (
+              <PlaybookFileRowLine
+                key={`${transitionLabel(row)}-${i}`}
+                row={row}
+                statuses={statuses}
+                label={fileRowLabel(activeFile)}
+              />
+            ))}
+            {rows.map(({ playbook, note, aside }) => {
+              if (aside && !showOverridden) return null;
+              return (
+                <PlaybookRow
+                  key={playbook.id}
+                  playbook={playbook}
+                  projects={projects}
+                  statuses={statuses}
+                  note={note}
+                  dimmed={aside}
+                  onEdit={() => onEdit(playbook)}
+                  onDelete={() => onDelete(playbook)}
+                />
+              );
+            })}
+          </tbody>
+        </Table>
+      </Card>
+    </>
   );
 }
 

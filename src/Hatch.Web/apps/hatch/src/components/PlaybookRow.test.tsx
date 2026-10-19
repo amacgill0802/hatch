@@ -219,19 +219,19 @@ describe('PlaybookRow', () => {
     const html = renderToStaticMarkup(
       <PlaybookRow playbook={BASE} projects={ONE_PROJECT} statuses={STATUSES} onEdit={noop} onDelete={noop} />,
     );
-    expect(html).not.toContain('shadowed by the file');
+    expect(html).not.toContain('overridden by the file');
 
     const notedHtml = renderToStaticMarkup(
       <PlaybookRow
         playbook={BASE}
         projects={ONE_PROJECT}
         statuses={STATUSES}
-        note="shadowed by the file"
+        note="overridden by the file"
         onEdit={noop}
         onDelete={noop}
       />,
     );
-    expect(notedHtml).toContain('shadowed by the file');
+    expect(notedHtml).toContain('overridden by the file');
   });
 
   it('adds the dimmed class to the row only when passed dimmed', () => {
