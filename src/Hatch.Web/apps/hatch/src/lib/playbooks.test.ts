@@ -7,6 +7,7 @@ import {
   deniedToolsDraft,
   deniedToolsRequest,
   fileRowLabel,
+  isOverridden,
   isReviewPlaybook,
   isUncheckedEdit,
   matchesProjectFilter,
@@ -195,5 +196,23 @@ describe('isUncheckedEdit', () => {
 
   it('is not a row that is not a check at all', () => {
     expect(isUncheckedEdit({ isCheck: false, deniedTools: [] })).toBe(false);
+  });
+});
+
+describe('isOverridden', () => {
+  it('is not a row with no prescribed text', () => {
+    expect(isOverridden({ prompt: 'Do the thing.', defaultPrompt: null })).toBe(false);
+  });
+
+  it('is not a row whose prompt equals its prescribed text', () => {
+    expect(isOverridden({ prompt: 'Do the thing.', defaultPrompt: 'Do the thing.' })).toBe(false);
+  });
+
+  it('is a row whose prompt differs from its prescribed text', () => {
+    expect(isOverridden({ prompt: 'Do the thing.', defaultPrompt: 'Do it differently.' })).toBe(true);
+  });
+
+  it('compares against an empty prescribed text rather than treating it as none', () => {
+    expect(isOverridden({ prompt: 'Do the thing.', defaultPrompt: '' })).toBe(true);
   });
 });
