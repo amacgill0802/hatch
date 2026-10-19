@@ -2069,10 +2069,29 @@ public class EfHatchPlaybook
     /// <summary>
     /// What the agent is told before it is shown the ticket. The ticket body is
     /// the brief; this is the method - what "one increment" means for this
-    /// transition, and what shape the answer takes.
+    /// transition, and what shape the answer takes. The operator's own words,
+    /// overriding <see cref="DefaultPrompt"/> - null until they have typed one.
+    /// <see cref="EffectivePrompt"/> is what a session actually reads; this
+    /// field alone is never enough on its own.
     /// </summary>
     [MaxLength(MaxPromptLength)]
-    public required string Prompt { get; set; }
+    public string? Prompt { get; set; }
+
+    /// <summary>
+    /// The prescribed text, moved freely by a migration because nobody's
+    /// wording lives here - null until a migration backfills it, and always
+    /// null on a playbook built from a repo's <c>.hatch/playbooks.yaml</c>,
+    /// whose wording is wholly the file's.
+    /// </summary>
+    [MaxLength(MaxPromptLength)]
+    public string? DefaultPrompt { get; set; }
+
+    /// <summary>
+    /// What a dispatched session is actually handed: the operator's own words
+    /// where there are any, the prescribed text otherwise, or "" if the row
+    /// has neither.
+    /// </summary>
+    public string EffectivePrompt => Prompt ?? DefaultPrompt ?? "";
 
     [MaxLength(MaxModelLength)]
     public required string Model { get; set; }

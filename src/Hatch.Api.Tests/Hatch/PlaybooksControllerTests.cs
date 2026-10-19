@@ -599,6 +599,40 @@ public class PlaybooksControllerTests
         Assert.Equal("fake-1", created.Model);
     }
 
+    // ---- DefaultPrompt ----
+
+    [Fact]
+    public async Task ANullPrompt_WithADefaultPromptSet_ReadsBackTheDefaultAsItsPrompt()
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync();
+        var playbook = await h.Db.Playbooks.SingleAsync(p => p.Id == row.Id);
+        playbook.Prompt = null;
+        playbook.DefaultPrompt = "the prescribed text";
+        await h.Db.SaveChangesAsync();
+
+        var read = await h.ReadAsync(row.Id);
+
+        Assert.Equal("the prescribed text", read.Prompt);
+        Assert.Equal("the prescribed text", read.DefaultPrompt);
+    }
+
+    [Fact]
+    public async Task APromptSet_OverADefaultPrompt_ReadsBackTheOverride()
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync();
+        var playbook = await h.Db.Playbooks.SingleAsync(p => p.Id == row.Id);
+        playbook.Prompt = "the operator's own words";
+        playbook.DefaultPrompt = "the prescribed text";
+        await h.Db.SaveChangesAsync();
+
+        var read = await h.ReadAsync(row.Id);
+
+        Assert.Equal("the operator's own words", read.Prompt);
+        Assert.Equal("the prescribed text", read.DefaultPrompt);
+    }
+
     // ---- Harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 9, 2, 12, 0, 0, TimeSpan.Zero);
