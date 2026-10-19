@@ -1,4 +1,7 @@
 using Hatch.Api.Modules.Hatch;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Time.Testing;
 
 namespace Hatch.Api.Tests.Hatch;
 
@@ -345,5 +348,159 @@ public class CumulativeFlowReportTests
 
         Assert.Equal("week", result.Step);
         Assert.True(result.Points.Count > WorkLogController.MaxBuckets);
+    }
+}
+
+/// <summary>
+/// The route: the same history <see cref="TimelineReportControllerTests"/>
+/// loads, folded by <see cref="CumulativeFlowReport"/> instead and answered
+/// as a <see cref="CumulativeFlowDto"/>.
+/// </summary>
+public class CumulativeFlowControllerTests
+{
+    private static readonly DateTimeOffset Now = new(2026, 1, 31, 12, 0, 0, TimeSpan.Zero);
+
+    private static readonly TimeSpan Ninety = TimeSpan.FromDays(90);
+
+    private sealed class Harness
+    {
+        public required HatchContext Db { get; init; }
+        public required ReportsController Reports { get; init; }
+        public required int ProjectId { get; init; }
+    }
+
+    /// <summary>One project, and a board of five columns: first, two active, terminal, deferred.</summary>
+    private static async Task<Harness> NewAsync()
+    {
+        var db = new HatchContext(
+            new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+
+        var project = new EfHatchProject { Key = "AER", Name = "Hatch", CreatedAt = Now };
+        db.AddRange(
+            project,
+            new EfHatchStatus { Name = "backlog", SortOrder = 10 },
+            new EfHatchStatus { Name = "todo", SortOrder = 20 },
+            new EfHatchStatus { Name = "doing", SortOrder = 30 },
+            new EfHatchStatus { Name = "done", SortOrder = 40, IsTerminal = true },
+            new EfHatchStatus { Name = "parked", SortOrder = 50, IsDeferred = true });
+        await db.SaveChangesAsync();
+
+        return new Harness
+        {
+            Db = db,
+            Reports = new ReportsController(
+                db, new StubActorDirectory(), TestClaims.With(), new FakeTimeProvider(Now)),
+            ProjectId = project.Id,
+        };
+    }
+
+    private static T Value<T>(ActionResult<T> result) =>
+        result.Value ?? throw new InvalidOperationException($"expected a value, got {result.Result?.GetType().Name ?? "nothing"}");
+
+    private static string Refusal<T>(ActionResult<T> result) =>
+        Assert.IsType<string>(Assert.IsType<BadRequestObjectResult>(result.Result).Value);
+
+    private static async Task<EfHatchIssue> AddIssueAsync(Harness h, int statusId, DateTimeOffset createdAt)
+    {
+        var issue = new EfHatchIssue
+        {
+            ProjectId = h.ProjectId,
+            Number = await h.Db.Issues.CountAsync(i => i.ProjectId == h.ProjectId) + 1,
+            Type = "epic", Title = "epic", Description = "", StatusId = statusId, Rank = 1024,
+            CreatedBy = "ann", CreatedAt = createdAt, UpdatedAt = createdAt,
+        };
+        h.Db.Issues.Add(issue);
+        await h.Db.SaveChangesAsync();
+        return issue;
+    }
+
+    private static async Task MoveAsync(Harness h, long issueId, string payload, int daysAgo)
+    {
+        h.Db.IssueEvents.Add(new EfHatchIssueEvent
+        {
+            IssueId = issueId, Actor = "ann", Kind = EfHatchIssueEvent.StatusChanged,
+            Payload = payload, At = Now.AddDays(-daysAgo),
+        });
+        await h.Db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task NoRange_IsTheNinetyDaysEndingNow_OnAnEmptyBoard()
+    {
+        var h = await NewAsync();
+
+        var flow = Value(await h.Reports.GetCumulativeFlow(null, null, default));
+
+        Assert.Equal(Now, flow.To);
+        Assert.Equal(Now - Ninety, flow.From);
+        Assert.Empty(flow.Points);
+    }
+
+    [Fact]
+    public async Task FromOnly_EndsNow()
+    {
+        var h = await NewAsync();
+        var from = Now.AddDays(-5);
+
+        var flow = Value(await h.Reports.GetCumulativeFlow(from.ToString("O"), null, default));
+
+        Assert.Equal(from, flow.From);
+        Assert.Equal(Now, flow.To);
+    }
+
+    [Fact]
+    public async Task ToOnly_BeginsNinetyDaysBeforeIt()
+    {
+        var h = await NewAsync();
+        var to = Now.AddDays(-10);
+
+        var flow = Value(await h.Reports.GetCumulativeFlow(null, to.ToString("O"), default));
+
+        Assert.Equal(to, flow.To);
+        Assert.Equal(to - Ninety, flow.From);
+    }
+
+    [Fact]
+    public async Task AnInvertedRange_IsRefused()
+    {
+        var h = await NewAsync();
+
+        var result = await h.Reports.GetCumulativeFlow(Now.ToString("O"), Now.AddDays(-1).ToString("O"), default);
+
+        Assert.Equal("a range ends before it begins", Refusal(result));
+    }
+
+    [Theory]
+    [InlineData("yesterday", null)]
+    [InlineData(null, "next week")]
+    public async Task AnUnparseableBound_IsRefusedByName(string? from, string? to)
+    {
+        var h = await NewAsync();
+
+        var result = await h.Reports.GetCumulativeFlow(from, to, default);
+
+        Assert.Equal(RangeBounds.NotAnInstant(from ?? to), Refusal(result));
+    }
+
+    [Fact]
+    public async Task EndToEnd_SeededIssueAndMove_AnswersTheBoardsColumnsAndTheCountAtEachPoint()
+    {
+        var h = await NewAsync();
+        var issue = await AddIssueAsync(h, statusId: 1, createdAt: Now.AddDays(-20));
+        await MoveAsync(h, issue.Id, "{\"from\":\"backlog\",\"to\":\"doing\",\"fromId\":1,\"toId\":3}", 10);
+
+        var flow = Value(await h.Reports.GetCumulativeFlow(Now.AddDays(-15).ToString("O"), Now.ToString("O"), default));
+
+        Assert.Equal([1, 2, 3, 4], flow.Columns);
+        Assert.Equal(0, flow.Unresolved);
+
+        var before = flow.Points.First(p => p.At == Now.AddDays(-15));
+        Assert.Equal(1, before.Counts[0]);
+        Assert.Equal(0, before.Counts[2]);
+
+        var after = flow.Points.Last();
+        Assert.Equal(Now, after.At);
+        Assert.Equal(0, after.Counts[0]);
+        Assert.Equal(1, after.Counts[2]);
     }
 }

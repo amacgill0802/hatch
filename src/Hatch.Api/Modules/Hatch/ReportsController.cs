@@ -49,43 +49,7 @@ public class ReportsController(
         if (projectId is { } wanted && !await db.Projects.AnyAsync(p => p.Id == wanted, ct))
             return BadRequest($"there is no project {wanted}");
 
-        var statuses = await db.Statuses.AsNoTracking()
-            .OrderBy(s => s.SortOrder)
-            .ThenBy(s => s.Id)
-            .ToListAsync(ct);
-
-        var rows = (await db.Issues.AsNoTracking()
-                .Select(i => new
-                {
-                    i.Id,
-                    i.ParentId,
-                    i.ProjectId,
-                    ProjectKey = i.Project!.Key,
-                    i.Number,
-                    i.Type,
-                    i.StatusId,
-                    i.Rank,
-                    i.CreatedAt,
-                    i.CreatedBy,
-                })
-                .ToListAsync(ct))
-            .Select(i => new TimelineReport.Row(
-                i.Id, i.ParentId, i.ProjectId, i.ProjectKey, i.Number, i.Type,
-                i.StatusId, i.Rank, i.CreatedAt, i.CreatedBy))
-            .ToList();
-
-        var events = await db.IssueEvents.AsNoTracking()
-            .Where(e => e.Kind == EfHatchIssueEvent.StatusChanged)
-            .OrderBy(e => e.IssueId)
-            .ThenBy(e => e.At)
-            .ThenBy(e => e.Id)
-            .Select(e => new { e.IssueId, e.Id, e.At, e.Payload })
-            .ToListAsync(ct);
-
-        var changes = events
-            .Select(e => TimelineReport.ParseChange(e.IssueId, e.Id, e.At, e.Payload))
-            .OfType<TimelineReport.Change>()
-            .ToList();
+        var (statuses, rows, changes) = await LoadHistoryAsync(ct);
 
         var result = TimelineReport.Fold(rows, changes, statuses, start, end, projectId, createdBy);
 
@@ -189,6 +153,35 @@ public class ReportsController(
             node.Children.Select(Entry).ToList());
     }
 
+    /// <summary>
+    /// How many issues sat in each board column over time, read off the same
+    /// status history as <see cref="GetTimeline"/> and swept once by
+    /// <see cref="CumulativeFlowReport.Fold"/> rather than per issue.
+    /// </summary>
+    /// <param name="from">The start of the range; ninety days before <paramref name="to"/> when absent.</param>
+    /// <param name="to">The end of the range; now when absent.</param>
+    [HttpGet("cumulative-flow")]
+    public async Task<ActionResult<CumulativeFlowDto>> GetCumulativeFlow(
+        [FromQuery] string? from, [FromQuery] string? to, CancellationToken ct)
+    {
+        var now = time.GetUtcNow();
+
+        if (RangeBounds.Resolve(from, to, now, DefaultRange, out var start, out var end) is { } refusal)
+            return BadRequest(refusal);
+
+        var (statuses, rows, changes) = await LoadHistoryAsync(ct);
+
+        var result = CumulativeFlowReport.Fold(rows, changes, statuses, start, end, now);
+
+        return new CumulativeFlowDto(
+            result.From,
+            result.To,
+            result.Step,
+            result.Columns,
+            result.Points.Select(p => new CumulativeFlowPointDto(p.At, p.Counts)).ToList(),
+            result.Unresolved);
+    }
+
     /// <summary>The card the loose work is drawn under: no issue, so nothing on it is real.</summary>
     private static readonly IssueCardDto OtherCard = new("other", "", "epic", "Other", 0, 0, null, null, null);
 
@@ -196,5 +189,54 @@ public class ReportsController(
     {
         if (node.IssueId is { } id) ids.Add(id);
         foreach (var child in node.Children) CollectIds(child, ids);
+    }
+
+    /// <summary>
+    /// Every issue and <c>status_changed</c> event in the tracker, the raw
+    /// material both reports fold - loaded once here so <see cref="GetTimeline"/>
+    /// and <see cref="GetCumulativeFlow"/> read it the same way.
+    /// </summary>
+    private async Task<(List<EfHatchStatus> Statuses, List<TimelineReport.Row> Rows, List<TimelineReport.Change> Changes)>
+        LoadHistoryAsync(CancellationToken ct)
+    {
+        var statuses = await db.Statuses.AsNoTracking()
+            .OrderBy(s => s.SortOrder)
+            .ThenBy(s => s.Id)
+            .ToListAsync(ct);
+
+        var rows = (await db.Issues.AsNoTracking()
+                .Select(i => new
+                {
+                    i.Id,
+                    i.ParentId,
+                    i.ProjectId,
+                    ProjectKey = i.Project!.Key,
+                    i.Number,
+                    i.Type,
+                    i.StatusId,
+                    i.Rank,
+                    i.CreatedAt,
+                    i.CreatedBy,
+                })
+                .ToListAsync(ct))
+            .Select(i => new TimelineReport.Row(
+                i.Id, i.ParentId, i.ProjectId, i.ProjectKey, i.Number, i.Type,
+                i.StatusId, i.Rank, i.CreatedAt, i.CreatedBy))
+            .ToList();
+
+        var events = await db.IssueEvents.AsNoTracking()
+            .Where(e => e.Kind == EfHatchIssueEvent.StatusChanged)
+            .OrderBy(e => e.IssueId)
+            .ThenBy(e => e.At)
+            .ThenBy(e => e.Id)
+            .Select(e => new { e.IssueId, e.Id, e.At, e.Payload })
+            .ToListAsync(ct);
+
+        var changes = events
+            .Select(e => TimelineReport.ParseChange(e.IssueId, e.Id, e.At, e.Payload))
+            .OfType<TimelineReport.Change>()
+            .ToList();
+
+        return (statuses, rows, changes);
     }
 }
