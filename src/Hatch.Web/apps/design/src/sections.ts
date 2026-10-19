@@ -12,6 +12,7 @@ import { CardPage } from './pages/CardPage';
 import { GridPage } from './pages/GridPage';
 import { TablePage } from './pages/TablePage';
 import { ModalPage } from './pages/ModalPage';
+import { CalloutPage } from './pages/CalloutPage';
 import { FieldPage } from './pages/FieldPage';
 import { ButtonPage } from './pages/ButtonPage';
 import { BadgePage } from './pages/BadgePage';
@@ -60,6 +61,7 @@ export const SECTIONS: Section[] = [
   { group: 'Components', slug: 'grid', title: 'Grid', Page: GridPage },
   { group: 'Components', slug: 'table', title: 'Table', Page: TablePage },
   { group: 'Components', slug: 'modal', title: 'Modal', Page: ModalPage },
+  { group: 'Components', slug: 'callout', title: 'Callout', Page: CalloutPage },
   { group: 'Components', slug: 'field', title: 'Field', Page: FieldPage },
   { group: 'Components', slug: 'button', title: 'Button', Page: ButtonPage },
   { group: 'Components', slug: 'badge', title: 'Badge', Page: BadgePage },
