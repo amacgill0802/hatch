@@ -510,7 +510,7 @@ export interface Issue {
   pullRequestUrl: string | null;
   /** The model every agent increment dispatched for this issue runs on, or null
       for whatever the playbook for its next move names. One of PLAYBOOK_MODELS,
-      or a pinned `claude-…` id somebody set through the API. */
+      or a pinned id somebody set through the API. */
   modelOverride: string | null;
   /** The thinking budget those increments run at, or null for the playbook's.
       Independent of `modelOverride`: an issue may carry either, both or
@@ -1043,7 +1043,7 @@ export interface Playbook {
   types: IssueType[];
   shape: PlaybookShape;
   prompt: string;
-  /** An alias, or a pinned `claude-…` name an operator typed by hand. */
+  /** An alias, or a pinned id an operator typed by hand. */
   model: string;
   effort: string;
   /** Millions of tokens, or null for no cap. */
