@@ -749,7 +749,7 @@ the alternative is one expensive decision made at the top of a tree and
 inherited by work nobody weighed.
 
 The values are a playbook's own values — the four aliases or a pinned
-`claude-…` id for a model, the five efforts — validated by the playbook's own
+id for a model, the five efforts — validated by the playbook's own
 rule and refused in the playbook's own sentence, so what an issue may be set to
 and what a playbook may be set to cannot drift apart. Setting one is closed to
 an API key; see [The one edge that is deliberately cut](#the-one-edge-that-is-deliberately-cut).
@@ -4718,7 +4718,10 @@ be advanced — or nothing, where it can. It takes the same `ancestorKey` and
 `offsetMinutes` and means the same things by them, and each row is what a
 dispatch carries minus the playbook prompt, the children and the questions:
 those are the payload of one agent working one issue, and loading them for
-every row would make a whole-board read expensive for nothing.
+every row would make a whole-board read expensive for nothing. What a row does
+carry is `QueueEntryDto.Model`, the model a session would run on (the issue's
+override, else the matched playbook's), which is what lets a runner skip a row
+pinned to another agent's family before it claims it.
 
 **The rows arrive in the board's own order.** Rightmost column first, and
 within a column the `(rank, id)` that `GET /api/hatch/board` serves that column
@@ -4861,7 +4864,22 @@ way anybody ever finds the right settings.
 
 `Model` is an alias (`haiku`, `sonnet`, `opus`, `fable`) rather than a pinned
 id, because a playbook says "the big one" and should still mean it a year from
-now; a full `claude-…` id is accepted for an operator with a reason to pin.
+now. An alias is a tier each agent maps for itself, so it means the same thing
+to every runner. A pinned id is not: it belongs to one agent's family, and the
+families are one list, `ModelFamilies` in `Hatch.Contracts`, which the server
+validates against (the board's playbook, a repository's playbook file and an
+issue's override all refuse in one sentence naming the aliases and the
+families: `a model is one of haiku, sonnet, opus, fable, or a pinned id of a
+supported agent (claude-opus-5 for claude) - not "nonsense-1"`) and the CLI
+reads. **Pinning an id is choosing an agent.** A runner whose agent
+(`HATCH_AGENT`, or `--agent`) is not that family skips the row before claiming
+it and says so under [what the pass skipped](#what-a-pass-skipped); `work <key>`
+refuses with the same sentence, `--dry-run` prints it, and the ticket waits for
+a runner of that agent (a board with none leaves it sitting). The sentence is
+`pinned to {model}, a {agent} model - this runner's agent is {agent}`. An alias,
+or no model, is never skipped, and `--model <alias>` on `work` beats the
+playbook and proceeds. (`claude-…` is the Claude family's shape, not the shape
+of a pinned id in general.)
 `Effort` is exactly what the CLI's `--effort` accepts, because a value it does
 not recognise is one it refuses at spawn time, long after the operator has
 stopped looking at the page they typed it on.
@@ -5031,7 +5049,9 @@ chooses which, and `HATCH_CLAUDE_BIN` says where the claude adapter's
 executable is when it is not on `PATH` (another agent's binary is named by a
 setting of its own). `--agent <id>` on `hatch work` or `hatch go-to-work` beats
 the setting for that run, and an id nobody has an adapter for is refused before
-anything is spawned.
+anything is spawned. The agent also decides which rows the runner takes: a row
+pinned to another agent's model is skipped (see the `Model` paragraph under
+[Playbooks](#playbooks)).
 
 It has the same shape as `--model` and `--effort` and the opposite lifetime, on
 purpose. Those are one operator's opinion about one increment, which is why a

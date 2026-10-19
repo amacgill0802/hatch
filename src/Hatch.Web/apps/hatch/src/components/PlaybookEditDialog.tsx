@@ -225,7 +225,7 @@ export function PlaybookEditDialog({
           <Field label="Shape" hint="Whether the issue's children matter: any, only a leaf, or only a parent.">
             <Choice value={draft.shape} options={PLAYBOOK_SHAPES} onChange={(shape) => write({ shape: shape as PlaybookShape })} />
           </Field>
-          <Field label="Model" hint="Which model the dispatched session runs on.">
+          <Field label="Model" hint="Which model the dispatched session runs on. An alias is a tier every agent maps for itself; a pinned id picks the agent that runs it.">
             <Choice value={draft.model} options={PLAYBOOK_MODELS} onChange={(model) => write({ model })} />
           </Field>
           <Field label="Effort" hint="How much thought it may spend on the move.">

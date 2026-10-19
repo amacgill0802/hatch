@@ -23,7 +23,7 @@ export function Choice({
   placeholder?: string;
   onChange: (value: string) => void;
 }) {
-  // A pinned claude-… name an operator typed by hand is offered back to them
+  // A pinned id an operator typed by hand is offered back to them
   // rather than silently swapped for an alias the moment they touch the row.
   // The empty string is not one of those: where it means anything it means
   // "unset", and the placeholder below is already drawing it.

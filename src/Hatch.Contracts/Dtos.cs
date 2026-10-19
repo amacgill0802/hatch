@@ -1905,6 +1905,12 @@ public record WorkRepositoryDto(string Remote, string Canonical, string? BaseBra
 /// (<c>"its stall question lapsed after 5 minutes untouched"</c>). Null on
 /// every row that is clear for the ordinary reason, which is most of them.
 /// </param>
+/// <param name="Model">
+/// What a session dispatched for this row would run on: the issue's own
+/// override, else the matched playbook's model. Null where no playbook
+/// matched, and on an approve or close hop, which spends no session. Read by
+/// a client that spawns, to know a row's model before it claims it.
+/// </param>
 public record QueueEntryDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -1914,7 +1920,8 @@ public record QueueEntryDto(
     bool Hop = false,
     string? HopKind = null,
     string? HopUnder = null,
-    string? ClearNote = null);
+    string? ClearNote = null,
+    string? Model = null);
 
 /// <summary>
 /// One issue in the review column that a runner holds a checkout for, and what
