@@ -86,6 +86,7 @@
   .hatch-topbar .hatch-topbar__brand,
   .hatch-topbar .hatch-menu__trigger--accent,
   .hatch-attention-control,
+  .hatch-overnight-control,
   .hatch-battery {
     min-height: 44px;
   }
@@ -5014,9 +5015,8 @@ button.hatch-option.chosen {
      battery measures roughly 68px (2 x --sp-2 padding, 2px of border, a 20px
      glyph, a --sp-1-5 gap and three figures of percentage), so this is that
      doubled. Both states are narrower than it and centre inside it, which is
-     what makes them measure the same. At phone width this narrows further,
-     by the same reasoning, to an exact floor rather than this estimate - see
-     the block below. */
+     what makes them measure the same. At phone width there is no floor at
+     all - a phone has no cursor to protect and no row width to spare. */
   min-width: 136px;
   padding: var(--sp-1) var(--sp-2);
   border: 1px solid transparent;
@@ -5039,21 +5039,11 @@ button.hatch-option.chosen {
   outline-offset: 2px;
 }
 
-/* At phone width the battery sits beside this control (HA-257) rather
-   than in the gear's panel, and the row has no room for the desk's
-   doubled width. Narrowed to exactly what the loudest state needs and no
-   further - a floor, not an estimate: 2 x 1px border + 2 x 8px --sp-2
-   padding = 18, + 20px glyph + 6px --sp-1-5 gap + three 18px pills (each
-   at its own min-width; a single tabular digit is narrower) with two
-   4px --sp-1 gaps between them = 62. 18 + 20 + 6 + 62 = 106. The resting
-   state ("Clear") is well under that, so both states still render at
-   106px - the same reasoning as the doubled width above, just a smaller
-   number. */
-@media (max-width: 40rem) {
-  .hatch-attention-control {
-    min-width: 106px;
-  }
-}
+/* At phone width (where the battery sits beside this control, HA-257) this
+   control carries no min-width at all: a phone has no cursor to protect from
+   a width change, and the row has no width to spend holding one steady, so it
+   measures its loudest state the way .hatch-battery already does. Do not
+   restore a floor here - lib/barCss.test.ts asserts there is none. */
 
 /* Nothing is waiting. Furniture: the same --on-chrome ink the nav wears, so a
    quiet control is not a third thing competing with it. */
@@ -5185,10 +5175,11 @@ button.hatch-option.chosen {
 
 /* The overnight control, beside this one in the bar's trailing slot - a
    thing to go and look at, not to do. Mirrors .hatch-attention-control for
-   its three carried-over decisions: quiet and loud share one width so the
-   bar does not shove itself out from under the cursor, the loud state is a
-   digit rather than a dot, and the accessible name says in words what the
-   colour says. */
+   its three carried-over decisions: on the desk quiet and loud share one
+   width so the bar does not shove itself out from under the cursor, the loud
+   state is a digit rather than a dot, and the accessible name says in words
+   what the colour says. At phone width there is no floor at all, for the
+   reason given on .hatch-attention-control. */
 .hatch-overnight-control {
   display: flex;
   align-items: center;
@@ -5214,12 +5205,6 @@ button.hatch-option.chosen {
 .hatch-overnight-control:focus-visible {
   outline: 2px solid var(--chrome-glow);
   outline-offset: 2px;
-}
-
-@media (max-width: 40rem) {
-  .hatch-overnight-control {
-    min-width: 106px;
-  }
 }
 
 .hatch-overnight-rest {

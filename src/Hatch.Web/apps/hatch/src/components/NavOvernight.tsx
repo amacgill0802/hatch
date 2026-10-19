@@ -9,7 +9,8 @@ import { Egg } from './Egg';
  * and *do*; a night's haul is something to go and *look at*, and folding it
  * in would mean the loop is "waiting on you" every morning after a good night.
  *
- * Quiet and loud occupy the same width (App.css), the loud state carries a
+ * Quiet and loud occupy the same width on the desk (App.css; a phone sets no
+ * floor at all), the loud state carries a
  * digit rather than a dot, and the accessible name says in words what the
  * colour says - the same three decisions NavAttention.tsx made, carried over
  * as written. Never draws nothing: "nothing landed" is an answer worth

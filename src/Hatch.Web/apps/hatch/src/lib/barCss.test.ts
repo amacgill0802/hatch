@@ -1,8 +1,9 @@
-/* The phone-width bar: the battery beside a narrowed attention control,
-   both 44px on a coarse pointer, and the attention control's two states
-   still measuring the same. Read as text, the way touchCss.test.ts,
-   wipCss.test.ts and confirmationsCss.test.ts read App.css - there is no DOM
-   in this runner to lay anything out in. */
+/* The phone-width bar: the battery beside an attention and an overnight
+   control that carry no min-width at phone width, all three 44px on a coarse
+   pointer, and the attention control's two states still measuring the same.
+   Read as text, the way touchCss.test.ts, wipCss.test.ts and
+   confirmationsCss.test.ts read App.css - there is no DOM in this runner to
+   lay anything out in. */
 /// <reference types="node" />
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
@@ -31,11 +32,13 @@ function declarationsOf(selector: string): Record<string, string> {
     blocks alone - for a selector a later, same-specificity rule elsewhere in
     the file also names, where a flat declarationsOf merge would silently
     report whichever rule is textually last rather than the one a given block
-    actually sets. The file has more than one block with this same query, so
-    every one of them is searched and merged, later winning - depth-counting
-    braces to find each block's matching close; nothing in this file nests an
-    `@media` inside another. */
-function declarationsWithin(mediaQuery: string, selector: string): Record<string, string> {
+    actually sets. Throws when nothing names the selector, a guard against a
+    typo'd one, unless `required` is false - for asserting a selector is
+    absent from the query. The file has more than one block with this same
+    query, so every one of them is searched and merged, later winning -
+    depth-counting braces to find each block's matching close; nothing in this
+    file nests an `@media` inside another. */
+function declarationsWithin(mediaQuery: string, selector: string, required = true): Record<string, string> {
   const props: Record<string, string> = {};
   const needle = `@media (${mediaQuery}) {`;
   for (let start = css.indexOf(needle); start !== -1; start = css.indexOf(needle, start + needle.length)) {
@@ -60,13 +63,19 @@ function declarationsWithin(mediaQuery: string, selector: string): Record<string
       }
     }
   }
-  if (Object.keys(props).length === 0) throw new Error(`no @media (${mediaQuery}) block in App.css names ${selector}`);
+  if (required && Object.keys(props).length === 0) throw new Error(`no @media (${mediaQuery}) block in App.css names ${selector}`);
   return props;
 }
 
-describe('the attention control at phone width', () => {
-  it('narrows to the loudest state\'s own exact floor', () => {
-    expect(declarationsWithin('max-width: 40rem', '.hatch-attention-control')['min-width']).toBe('106px');
+describe('the attention and overnight controls at phone width', () => {
+  it('carry no min-width inside the phone query', () => {
+    expect(declarationsWithin('max-width: 40rem', '.hatch-attention-control', false)).not.toHaveProperty('min-width');
+    expect(declarationsWithin('max-width: 40rem', '.hatch-overnight-control', false)).not.toHaveProperty('min-width');
+  });
+
+  it('still set min-width: 136px outside it', () => {
+    expect(declarationsOf('.hatch-attention-control')['min-width']).toBe('136px');
+    expect(declarationsOf('.hatch-overnight-control')['min-width']).toBe('136px');
   });
 
   it('still measures the same resting as asking - neither state sets its own width', () => {
@@ -77,9 +86,10 @@ describe('the attention control at phone width', () => {
   });
 });
 
-describe('the battery and the attention control on a coarse pointer', () => {
-  it('are both at least 44px tall, at every viewport width', () => {
+describe('the battery, the attention control and the overnight control on a coarse pointer', () => {
+  it('are all at least 44px tall, at every viewport width', () => {
     expect(declarationsOf('.hatch-battery')['min-height']).toBe('44px');
     expect(declarationsOf('.hatch-attention-control')['min-height']).toBe('44px');
+    expect(declarationsOf('.hatch-overnight-control')['min-height']).toBe('44px');
   });
 });
