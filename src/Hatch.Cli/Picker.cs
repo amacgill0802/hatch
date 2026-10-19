@@ -30,6 +30,9 @@ public enum Pick
     /// and no session runs, so there is nothing for the caller to let go of.
     /// </summary>
     Hopped,
+
+    /// <summary>Every clear candidate is pinned to a model another agent runs - nothing was claimed.</summary>
+    Skipped,
 }
 
 /// <summary>
@@ -50,6 +53,7 @@ public sealed class PickFailedException(string key, Exception inner) : Exception
 public sealed record HoppedIssue(string Key, string From, string To, string Reason);
 
 /// <param name="Busy">One line per candidate that was taken, naming the key and who has it.</param>
+/// <param name="Skipped">One line per clear candidate passed over before any claim, naming the key and the model it is pinned to.</param>
 /// <param name="Chosen">
 /// Where the claimed dispatch spawns, and what it resets - set only when
 /// <see cref="Outcome"/> is <see cref="Pick.Claimed"/>.
@@ -75,7 +79,8 @@ public sealed record Picked(
     IReadOnlyList<CheckoutEntry>? Checkouts = null,
     IReadOnlyList<IncrementReport>? CloneFailures = null,
     string? Refusal = null,
-    HoppedIssue? Hopped = null);
+    HoppedIssue? Hopped = null,
+    IReadOnlyList<string>? Skipped = null);
 
 /// <summary>
 /// Which ticket this runner is going to spend an increment on, and the lease on
@@ -98,7 +103,8 @@ public sealed record Picked(
 public sealed class Picker(
     Board board, string runner, Terminal say,
     IReadOnlyList<CheckoutEntry> checkouts, string standingRoot, string? standingBaseBranch,
-    string? workspace = null, Func<string, string, IClone>? clone = null)
+    string? workspace = null, Func<string, string, IClone>? clone = null,
+    string agent = "claude", ModelFamilies? families = null)
 {
     /// <summary>
     /// How many clear rows to try before calling the board busy. A bounded walk,
@@ -109,6 +115,7 @@ public sealed class Picker(
     public const int Attempts = 5;
 
     private readonly bool _clones = workspace is not null;
+    private readonly ModelFamilies _families = families ?? ModelFamilies.Default;
 
     /// <summary>The word a hop row prints, naming which of the seven reasons carried it.</summary>
     public static string HopWord(string? hopKind, string? hopUnder) => hopKind switch
@@ -125,6 +132,16 @@ public sealed class Picker(
 
     /// <summary>The label a hop row prints - <see cref="HopWord"/>, plus the reason nothing was spawned.</summary>
     public static string HopReason(string? hopKind, string? hopUnder) => $"{HopWord(hopKind, hopUnder)}, no session";
+
+    /// <summary>
+    /// Why a row pinned to <paramref name="model"/> is not this runner's, or
+    /// null when it is - no model, an alias, and a pinned id of
+    /// <paramref name="agent"/>'s own family are all anybody's to take.
+    /// </summary>
+    public static string? WrongAgent(string? model, string agent, ModelFamilies families) =>
+        families.AgentOf(model) is { } owner && owner != agent
+            ? $"pinned to {model}, a {owner} model - this runner's agent is {agent}"
+            : null;
 
     public async Task<Picked> PickAsync(
         string? under, int offsetMinutes, CancellationToken ct, TimeSpan? heartbeat = null, bool mine = false)
@@ -154,10 +171,26 @@ public sealed class Picker(
         var clear = queue.Where(q => q.Blocked is null).ToList();
         if (clear.Count == 0) return new Picked(Pick.Idle, null, null, queue, [], Checkouts: checkouts);
 
+        // A row pinned to another agent's model is passed over before it is
+        // claimed - a claim taken only to be let go would fold the row for
+        // every other runner meanwhile. A hop row spawns nothing, so it stays.
+        var skipped = new List<string>();
+        var remaining = new List<QueueEntryDto>();
+        foreach (var entry in clear)
+        {
+            if (!entry.Hop && WrongAgent(entry.Model, agent, _families) is { } why)
+                skipped.Add($"  {entry.Issue.Key}  {why}");
+            else
+                remaining.Add(entry);
+        }
+
+        if (remaining.Count == 0)
+            return new Picked(Pick.Skipped, null, null, queue, [], Checkouts: checkouts, Skipped: skipped);
+
         var busy = new List<string>();
         var cloneFailures = new List<IncrementReport>();
 
-        foreach (var entry in clear.Take(Attempts))
+        foreach (var entry in remaining.Take(Attempts))
         {
             var key = entry.Issue.Key;
 
@@ -289,7 +322,7 @@ public sealed class Picker(
                 }
 
                 return new Picked(Pick.Claimed, work, claim, queue, busy, resolved.Chosen, checkouts,
-                    cloneFailures.Count > 0 ? cloneFailures : null);
+                    cloneFailures.Count > 0 ? cloneFailures : null, Skipped: skipped.Count > 0 ? skipped : null);
             }
             catch (Exception e)
             {
@@ -299,7 +332,7 @@ public sealed class Picker(
         }
 
         return new Picked(Pick.Busy, null, null, queue, busy, Checkouts: checkouts,
-            CloneFailures: cloneFailures.Count > 0 ? cloneFailures : null);
+            CloneFailures: cloneFailures.Count > 0 ? cloneFailures : null, Skipped: skipped.Count > 0 ? skipped : null);
     }
 
     /// <summary>
@@ -314,5 +347,13 @@ public sealed class Picker(
             : "hatch: every issue an agent could take is being worked by another runner";
 
         foreach (var line in busy) yield return $"hatch: {line}";
+    }
+
+    /// <summary>The rows passed over for another agent's model, said properly - for a pass that found nothing else clear.</summary>
+    public static IEnumerable<string> SkippedReport(IReadOnlyList<string> skipped)
+    {
+        yield return "hatch: skipped - pinned to a model another agent runs";
+
+        foreach (var line in skipped) yield return $"hatch: {line}";
     }
 }

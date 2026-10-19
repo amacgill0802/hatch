@@ -19,8 +19,161 @@ public sealed class PickerTests
     /// and the ones that do can hand in their own.
     /// </summary>
     private static Picker MakePicker(
-        Harness h, IReadOnlyList<CheckoutEntry>? checkouts = null, string? standingRoot = null) =>
-        new(h.Board, "test:/checkout", h.Say, checkouts ?? h.Runtime.Checkouts, standingRoot ?? h.Root, null);
+        Harness h, IReadOnlyList<CheckoutEntry>? checkouts = null, string? standingRoot = null,
+        string agent = "claude", ModelFamilies? families = null) =>
+        new(h.Board, "test:/checkout", h.Say, checkouts ?? h.Runtime.Checkouts, standingRoot ?? h.Root, null,
+            agent: agent, families: families);
+
+    /// <summary>Claude's family and one more, so a runner can be the other agent.</summary>
+    private static readonly ModelFamilies TwoAgents = new([
+        ModelFamilies.Default.Rows[0], new ModelFamily("fake-agent", "^fake-[a-z0-9-]+$", "fake-1")]);
+
+    private const string Claimed = "/api/hatch/issues/AER-2/claim";
+
+    [Fact]
+    public async Task A_row_pinned_to_another_agents_family_is_skipped_before_it_is_claimed()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1", model: "claude-opus-5"), Fixtures.Row("AER-2", model: "opus") });
+        h.Wire.Reply("POST", Claimed, HttpStatusCode.OK, Fixtures.Taken(token));
+        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2"));
+        h.Wire.Reply("DELETE", Claimed, HttpStatusCode.NoContent);
+
+        var picked = await MakePicker(h, agent: "fake-agent", families: TwoAgents)
+            .PickAsync(null, 0, default, Harness.Beat);
+
+        Assert.Equal(Pick.Claimed, picked.Outcome);
+        Assert.Equal("AER-2", picked.Work!.Issue.Key);
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
+        Assert.Equal(
+            ["  AER-1  pinned to claude-opus-5, a claude model - this runner's agent is fake-agent"],
+            picked.Skipped);
+
+        await picked.Claim!.ReleaseAsync();
+    }
+
+    [Fact]
+    public async Task A_board_whose_only_clear_row_is_pinned_to_another_agent_is_skipped_and_nothing_is_claimed()
+    {
+        using var h = new Harness();
+
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1", model: "claude-opus-5") });
+
+        var picked = await MakePicker(h, agent: "fake-agent", families: TwoAgents)
+            .PickAsync(null, 0, default, Harness.Beat);
+
+        Assert.Equal(Pick.Skipped, picked.Outcome);
+        Assert.Single(picked.Skipped!);
+        Assert.Empty(picked.Busy);
+        Assert.Null(picked.Work);
+        Assert.DoesNotContain(h.Wire.Calls, c => c.Path.EndsWith("/claim", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("claude")]
+    [InlineData("fake-agent")]
+    public async Task An_alias_and_an_unpinned_row_are_never_skipped(string agent)
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-2", model: "opus") });
+        h.Wire.Reply("POST", Claimed, HttpStatusCode.OK, Fixtures.Taken(token));
+        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2"));
+        h.Wire.Reply("DELETE", Claimed, HttpStatusCode.NoContent);
+
+        var picked = await MakePicker(h, agent: agent, families: TwoAgents)
+            .PickAsync(null, 0, default, Harness.Beat);
+
+        Assert.Equal(Pick.Claimed, picked.Outcome);
+        Assert.Null(picked.Skipped);
+        await picked.Claim!.ReleaseAsync();
+
+        h.Wire.Replace("GET", Queue, HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Row("AER-2") }, Fixtures.Json));
+        var unpinned = await MakePicker(h, agent: agent, families: TwoAgents)
+            .PickAsync(null, 0, default, Harness.Beat);
+
+        Assert.Equal(Pick.Claimed, unpinned.Outcome);
+        Assert.Null(unpinned.Skipped);
+        await unpinned.Claim!.ReleaseAsync();
+    }
+
+    [Fact]
+    public async Task The_claude_runner_takes_a_claude_pin_and_skips_the_other_agents()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1", model: "fake-1"), Fixtures.Row("AER-2", model: "claude-opus-5") });
+        h.Wire.Reply("POST", Claimed, HttpStatusCode.OK, Fixtures.Taken(token));
+        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2"));
+        h.Wire.Reply("DELETE", Claimed, HttpStatusCode.NoContent);
+
+        var picked = await MakePicker(h, families: TwoAgents)
+            .PickAsync(null, 0, default, Harness.Beat);
+
+        Assert.Equal(Pick.Claimed, picked.Outcome);
+        Assert.Equal("AER-2", picked.Work!.Issue.Key);
+        Assert.Equal(
+            ["  AER-1  pinned to fake-1, a fake-agent model - this runner's agent is claude"],
+            picked.Skipped);
+
+        await picked.Claim!.ReleaseAsync();
+    }
+
+    [Fact]
+    public async Task Skipped_rows_do_not_spend_the_attempts()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+
+        var rows = Enumerable.Range(1, 6).Select(n => Fixtures.Row($"AER-{n + 10}", model: "claude-opus-5"))
+            .Append(Fixtures.Row("AER-2")).ToArray();
+        h.Wire.Json("GET", Queue, rows);
+        h.Wire.Reply("POST", Claimed, HttpStatusCode.OK, Fixtures.Taken(token));
+        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2"));
+        h.Wire.Reply("DELETE", Claimed, HttpStatusCode.NoContent);
+
+        var picked = await MakePicker(h, agent: "fake-agent", families: TwoAgents)
+            .PickAsync(null, 0, default, Harness.Beat);
+
+        Assert.Equal(Pick.Claimed, picked.Outcome);
+        Assert.Equal("AER-2", picked.Work!.Issue.Key);
+        Assert.Equal(6, picked.Skipped!.Count);
+
+        await picked.Claim!.ReleaseAsync();
+    }
+
+    [Fact]
+    public async Task A_hop_row_pinned_to_another_family_is_not_skipped()
+    {
+        using var h = new Harness();
+
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1", hop: true, model: "claude-opus-5") });
+        h.Wire.Json("POST", "/api/hatch/work/AER-1/hop", Fixtures.Issue("AER-1"));
+
+        var picked = await MakePicker(h, agent: "fake-agent", families: TwoAgents)
+            .PickAsync(null, 0, default, Harness.Beat);
+
+        Assert.Equal(Pick.Hopped, picked.Outcome);
+        Assert.Null(picked.Skipped);
+    }
+
+    [Fact]
+    public void The_skipped_report_names_the_header_then_each_row()
+    {
+        var report = Picker.SkippedReport(["  AER-1  why", "  AER-2  why too"]).ToList();
+
+        Assert.Equal(
+            [
+                "hatch: skipped - pinned to a model another agent runs",
+                "hatch:   AER-1  why",
+                "hatch:   AER-2  why too",
+            ],
+            report);
+    }
 
     [Fact]
     public async Task The_first_clear_row_is_claimed_and_read_back_with_the_token()
@@ -57,7 +210,7 @@ public sealed class PickerTests
         using var h = new Harness();
         var token = Guid.NewGuid();
 
-        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-2") });
+        h.Wire.Replace("GET", Queue, HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Row("AER-2") }, Fixtures.Json));
         h.Wire.Reply("POST", "/api/hatch/issues/AER-2/claim", HttpStatusCode.OK, Fixtures.Taken(token));
         h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2"));
         h.Wire.Reply("POST", "/api/hatch/issues/AER-2/claim/heartbeat", HttpStatusCode.NoContent);
@@ -82,7 +235,7 @@ public sealed class PickerTests
         using var h = new Harness();
         var token = Guid.NewGuid();
 
-        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-2") });
+        h.Wire.Replace("GET", Queue, HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Row("AER-2") }, Fixtures.Json));
         h.Wire.Reply("POST", "/api/hatch/issues/AER-2/claim", HttpStatusCode.OK, Fixtures.Taken(token));
         h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2"));
         h.Wire.Reply("POST", "/api/hatch/issues/AER-2/claim/heartbeat", HttpStatusCode.InternalServerError, "boom");
@@ -345,7 +498,7 @@ public sealed class PickerTests
             Fixtures.Repository(h.Runtime.Checkouts[0].Remote!, matchedRemote: h.Runtime.Checkouts[0].Remote),
         };
 
-        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-2") });
+        h.Wire.Replace("GET", Queue, HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Row("AER-2") }, Fixtures.Json));
         h.Wire.Reply("POST", "/api/hatch/issues/AER-2/claim", HttpStatusCode.OK, Fixtures.Taken(token));
         h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2", repositories: repos));
         h.Wire.Reply("DELETE", "/api/hatch/issues/AER-2/claim", HttpStatusCode.NoContent);
