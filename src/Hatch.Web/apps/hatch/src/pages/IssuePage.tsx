@@ -753,12 +753,12 @@ export function IssuePage() {
 
               Drawn from the constants the Playbooks page draws from, so what an
               issue may be set to and what a playbook may be set to cannot drift
-              apart. A pinned `claude-…` id somebody set through the API is
+              apart. A pinned id somebody set through the API is
               offered back rather than swapped for an alias - that is Choice's
               own doing. */}
           {project?.repoSourced && <p className="text-muted">{repoSourcedOverrideHint(project)}</p>}
 
-          <Field label="Model" hint="What an agent dispatched for this issue runs on.">
+          <Field label="Model" hint="What an agent dispatched for this issue runs on. A pinned id picks which agent runs it.">
             <Choice
               value={issue.modelOverride ?? ''}
               options={PLAYBOOK_MODELS}
