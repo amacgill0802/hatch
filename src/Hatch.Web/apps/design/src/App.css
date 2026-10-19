@@ -749,3 +749,12 @@
   padding: var(--sp-2) var(--sp-3);
   cursor: pointer;
 }
+
+/* Callout specimens: room beside the trigger for the callout to open into,
+   the same reason .menu-stage reserves it for a panel. */
+.callout-stage {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: var(--sp-4);
+  min-height: 120px;
+}
