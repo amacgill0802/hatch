@@ -65,7 +65,7 @@ export function RunnersPage() {
       {(failure ?? error) && <p className="text-danger">{failure ?? error}</p>}
 
       {runners?.length === 0 && (
-        <EmptyState message="Nothing has run here lately. A runner appears within a minute of hatch go-to-work starting, and drops off a quarter of an hour after it stops." />
+        <EmptyState message="Nothing has run here lately. A runner appears within a minute of hatch go-to-work starting, and drops off two hours after it stops." />
       )}
 
       {runners && runners.length > 0 && (
