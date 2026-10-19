@@ -20,9 +20,9 @@ public sealed class PickerTests
     /// </summary>
     private static Picker MakePicker(
         Harness h, IReadOnlyList<CheckoutEntry>? checkouts = null, string? standingRoot = null,
-        string agent = "claude", ModelFamilies? families = null) =>
+        string agent = "claude", ModelFamilies? families = null, IAgentAdapter? adapter = null) =>
         new(h.Board, "test:/checkout", h.Say, checkouts ?? h.Runtime.Checkouts, standingRoot ?? h.Root, null,
-            agent: agent, families: families);
+            agent: agent, families: families, adapter: adapter);
 
     /// <summary>Claude's family and one more, so a runner can be the other agent.</summary>
     private static readonly ModelFamilies TwoAgents = new([
@@ -162,13 +162,95 @@ public sealed class PickerTests
     }
 
     [Fact]
+    public async Task A_row_whose_denied_tools_its_adapter_cannot_honour_is_skipped_before_it_is_claimed()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+        var adapter = new FakeAdapter { CanDenyRefusal = "cannot deny Bash(git push:*)" };
+
+        h.Wire.Json("GET", Queue, new[]
+        {
+            Fixtures.Row("AER-1", deniedTools: ["Bash(git push:*)"]), Fixtures.Row("AER-2"),
+        });
+        h.Wire.Reply("POST", Claimed, HttpStatusCode.OK, Fixtures.Taken(token));
+        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2"));
+        h.Wire.Reply("DELETE", Claimed, HttpStatusCode.NoContent);
+
+        var picked = await MakePicker(h, adapter: adapter).PickAsync(null, 0, default, Harness.Beat);
+
+        Assert.Equal(Pick.Claimed, picked.Outcome);
+        Assert.Equal("AER-2", picked.Work!.Issue.Key);
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
+        Assert.Equal(["  AER-1  cannot deny Bash(git push:*)"], picked.Skipped);
+
+        await picked.Claim!.ReleaseAsync();
+    }
+
+    [Fact]
+    public async Task A_board_whose_only_clear_row_is_refused_by_the_adapter_is_skipped_and_nothing_is_claimed()
+    {
+        using var h = new Harness();
+        var adapter = new FakeAdapter { CanDenyRefusal = "cannot deny Bash(git push:*)" };
+
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1", deniedTools: ["Bash(git push:*)"]) });
+
+        var picked = await MakePicker(h, adapter: adapter).PickAsync(null, 0, default, Harness.Beat);
+
+        Assert.Equal(Pick.Skipped, picked.Outcome);
+        Assert.Single(picked.Skipped!);
+        Assert.Empty(picked.Busy);
+        Assert.Null(picked.Work);
+        Assert.DoesNotContain(h.Wire.Calls, c => c.Path.EndsWith("/claim", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_hop_row_refused_by_the_adapter_is_not_skipped()
+    {
+        using var h = new Harness();
+        var adapter = new FakeAdapter { CanDenyRefusal = "cannot deny Bash(git push:*)" };
+
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1", hop: true, deniedTools: ["Bash(git push:*)"]) });
+        h.Wire.Json("POST", "/api/hatch/work/AER-1/hop", Fixtures.Issue("AER-1"));
+
+        var picked = await MakePicker(h, adapter: adapter).PickAsync(null, 0, default, Harness.Beat);
+
+        Assert.Equal(Pick.Hopped, picked.Outcome);
+        Assert.Null(picked.Skipped);
+    }
+
+    [Fact]
+    public async Task A_denied_tools_row_is_never_skipped_with_no_adapter_or_one_that_does_not_refuse()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-2", deniedTools: ["Bash(git push:*)"]) });
+        h.Wire.Reply("POST", Claimed, HttpStatusCode.OK, Fixtures.Taken(token));
+        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2"));
+        h.Wire.Reply("DELETE", Claimed, HttpStatusCode.NoContent);
+
+        var picked = await MakePicker(h).PickAsync(null, 0, default, Harness.Beat);
+
+        Assert.Equal(Pick.Claimed, picked.Outcome);
+        Assert.Null(picked.Skipped);
+        await picked.Claim!.ReleaseAsync();
+
+        var unrefusing = await MakePicker(h, adapter: new FakeAdapter())
+            .PickAsync(null, 0, default, Harness.Beat);
+
+        Assert.Equal(Pick.Claimed, unrefusing.Outcome);
+        Assert.Null(unrefusing.Skipped);
+        await unrefusing.Claim!.ReleaseAsync();
+    }
+
+    [Fact]
     public void The_skipped_report_names_the_header_then_each_row()
     {
         var report = Picker.SkippedReport(["  AER-1  why", "  AER-2  why too"]).ToList();
 
         Assert.Equal(
             [
-                "hatch: skipped - pinned to a model another agent runs",
+                "hatch: skipped - one this agent cannot take",
                 "hatch:   AER-1  why",
                 "hatch:   AER-2  why too",
             ],

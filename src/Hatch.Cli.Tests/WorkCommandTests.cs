@@ -603,7 +603,7 @@ public sealed class WorkCommandTests
         Assert.Equal(2, code);
         Assert.Empty(h.Sessions.Spawned);
         Assert.Empty(h.Wire.Calls.Where(c => c.Method == "POST" && c.Path.EndsWith("/claim", StringComparison.Ordinal)));
-        Assert.Contains(h.Say.Said, l => l.Contains("skipped - pinned to a model another agent runs", StringComparison.Ordinal));
+        Assert.Contains(h.Say.Said, l => l.Contains("skipped - one this agent cannot take", StringComparison.Ordinal));
         Assert.Contains(h.Say.Said, l => l.Contains(
             "AER-1  pinned to fake-1, a fake-agent model - this runner's agent is claude", StringComparison.Ordinal));
     }
