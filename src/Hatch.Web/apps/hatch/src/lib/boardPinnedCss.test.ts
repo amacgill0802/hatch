@@ -58,3 +58,13 @@ describe('the pinned board page at phone width', () => {
     }
   });
 });
+
+describe('the pinned stacked board at phone width', () => {
+  it('makes the whole stack the one scroller', () => {
+    expect(declarationsWithin(appCss, 'max-width: 40rem', '.hatch-board-page--pinned .hatch-board--stacked')['overflow-y']).toBe('auto');
+  });
+
+  it('still gives each column no scrollbox of its own', () => {
+    expect(declarationsWithin(appCss, 'max-width: 40rem', '.hatch-board--stacked .hatch-column-cards')['overflow-y']).toBe('visible');
+  });
+});

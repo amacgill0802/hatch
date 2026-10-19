@@ -313,6 +313,15 @@
     min-height: 0;
   }
 
+  /* Stack-scrolls (HA-837's open question, answered): pinned, the whole stack
+     is the one scroller beneath the pinned bar and header - there is still no
+     per-column scrollbox (above), only this one more place to clip against and
+     scroll, which the sticky column heads (above) were already written to work
+     inside. */
+  .hatch-board-page--pinned .hatch-board--stacked {
+    overflow-y: auto;
+  }
+
   .hatch-board-filing {
     display: inline-flex;
     align-items: center;
