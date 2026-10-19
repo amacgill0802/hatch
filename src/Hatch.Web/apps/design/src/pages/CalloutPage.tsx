@@ -68,6 +68,18 @@ export function CalloutPage() {
       </GallerySection>
 
       <GallerySection
+        title="One open at a time"
+        note="A Callout.Group keeps at most one callout open: opening another in the same group switches at once between anchors rather than stacking."
+      >
+        <div className="stage-page callout-stage">
+          <Callout.Group>
+            <Anchor heading="First">Only one callout in this group is ever open.</Anchor>
+            <Anchor heading="Second">Opening this one closes the first - it does not stack.</Anchor>
+          </Callout.Group>
+        </div>
+      </GallerySection>
+
+      <GallerySection
         title="Every corner of the viewport"
         note="Each anchor is position: fixed to the real browser viewport, not to a stage box. Resize the window and every callout still lands wholly on screen, because placeCallout clamps against the viewport."
       >
