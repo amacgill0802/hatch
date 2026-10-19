@@ -18,6 +18,7 @@ import { BoardCard, CardPreview } from '../components/BoardCard';
 import { BoardFilters } from '../components/BoardFilters';
 import { CloseSubtreeDialog } from '../components/CloseSubtreeDialog';
 import { ColumnHead } from '../components/ColumnHead';
+import { FlowArrows } from '../components/FlowArrows';
 import { FlowVizControl } from '../components/FlowVizControl';
 import { IssuePeek } from '../components/IssuePeek';
 import { NewIssueDialog } from '../components/NewIssueDialog';
@@ -51,6 +52,7 @@ import { columnDroppableId, place, sendTo, targetStatusId } from '../lib/place';
 import type { Placement } from '../lib/place';
 import { columnBlocked } from '../lib/protectedColumns';
 import { flowBand, flowSentence } from '../lib/queue';
+import { chains } from '../lib/chains';
 import { spotlight } from '../lib/spotlight';
 import type { Spot } from '../lib/spotlight';
 import type { QueueEntry } from '../types';
@@ -314,6 +316,10 @@ export function BoardPage() {
   const hovered = flowing && dragging === null ? hoveredKey : null;
   const spots = useMemo(
     () => spotlight(hovered, board?.issues ?? [], board?.queue ?? []),
+    [hovered, board?.issues, board?.queue],
+  );
+  const edges = useMemo(
+    () => chains(hovered, board?.issues ?? [], board?.queue ?? []),
     [hovered, board?.issues, board?.queue],
   );
 
@@ -737,6 +743,10 @@ export function BoardPage() {
               ))}
             </div>
           </Callout.Group>
+
+          {/* Beside the board, never in it: a filter on an ancestor (dimmed
+              cards carry one) becomes the containing block of a fixed child. */}
+          <FlowArrows edges={edges} />
 
           {/* The card that follows the cursor. dnd-kit's sortable leaves the
               original in place and dims it, which by itself reads as a board
