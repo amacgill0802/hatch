@@ -25,6 +25,9 @@ public sealed record Runtime(
     /// <summary>The clock, so a test can put the loop at a particular hour.</summary>
     public TimeProvider Clock { get; init; } = TimeProvider.System;
 
+    /// <summary>The model families a pinned id is judged against, so a test can run a second agent.</summary>
+    public ModelFamilies Families { get; init; } = ModelFamilies.Default;
+
     /// <summary>
     /// What a pinned readout would draw, kept current whether or not a
     /// terminal is actually drawing one - see <see cref="ReadoutState"/>.
@@ -57,7 +60,7 @@ public sealed record Runtime(
 
     public int OffsetMinutes => Board.OffsetMinutes(Clock.GetLocalNow());
 
-    public Picker Picker() => new(Board, RunnerName, Say, Checkouts, Root, Settings.BaseBranch, Settings.Workspace, MakeClone);
+    public Picker Picker() => new(Board, RunnerName, Say, Checkouts, Root, Settings.BaseBranch, Settings.Workspace, MakeClone, Settings.Agent, Families);
 
     public Idle Idle(bool mine = false) => new(Board, Say, Checkouts, Settings.Workspace is not null, mine);
 
