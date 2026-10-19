@@ -947,6 +947,24 @@ export interface IssueSearch {
   text?: string | null;
 }
 
+/** Which parts of an issue held the words searched for - mirrors SearchHitDto.
+    Matched at SearchController.cs:247-251, in this order and no other. */
+export type SearchMatch = 'title' | 'description' | 'comment' | 'work-log';
+
+/** One hit from GET /api/hatch/search - mirrors SearchHitDto field for field. */
+export interface SearchHit {
+  card: IssueCard;
+  createdAt: string;
+  closedAt: string | null;
+  matched: SearchMatch[];
+}
+
+/** A page of search results - mirrors SearchDto. */
+export interface SearchResult {
+  total: number;
+  hits: SearchHit[];
+}
+
 /** One edit for many issues. Null leaves a field alone and `''` clears it, the
     same way a single-issue patch reads them. Title and description are
     deliberately absent: they describe one issue. */
