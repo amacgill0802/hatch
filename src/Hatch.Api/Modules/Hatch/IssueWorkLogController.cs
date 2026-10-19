@@ -123,6 +123,7 @@ public class IssueWorkLogController(HatchContext db, TimeProvider time, ICallerI
         entry.PlaybookFileTrunk = request.PlaybookFileTrunk;
         entry.PlaybookFileSha = request.PlaybookFileSha;
         entry.PlaybookFileHash = request.PlaybookFileHash;
+        entry.Agent = request.Agent;
 
         await db.SaveChangesAsync(ct);
 
@@ -218,7 +219,8 @@ public class IssueWorkLogController(HatchContext db, TimeProvider time, ICallerI
         w.PlaybookSource,
         w.PlaybookFileTrunk,
         w.PlaybookFileSha,
-        w.PlaybookFileHash);
+        w.PlaybookFileHash,
+        w.Agent);
 
     /// <summary>What goes in the column, or null when the run reported no models at all.</summary>
     private static string? WriteModels(IReadOnlyList<WorkLogModelUseDto> models) =>

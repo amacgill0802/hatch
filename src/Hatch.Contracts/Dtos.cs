@@ -2191,6 +2191,7 @@ public record WorkLogModelUseDto(
 /// arrived, which records zero tokens and whatever cost was reported: a session
 /// that ended badly still had an id and still cost something.
 /// </param>
+/// <param name="Agent">Which agent ran this session, an id like <c>claude</c>. Null from a CLI built before this shipped; never guessed by the server.</param>
 public record WorkLogEntryRequest(
     string SessionId,
     DateTimeOffset StartedAt,
@@ -2208,7 +2209,8 @@ public record WorkLogEntryRequest(
     string? PlaybookSource = null,
     string? PlaybookFileTrunk = null,
     string? PlaybookFileSha = null,
-    string? PlaybookFileHash = null);
+    string? PlaybookFileHash = null,
+    string? Agent = null);
 
 /// <summary>
 /// One row of the work log, as the issue page draws it.
@@ -2223,6 +2225,7 @@ public record WorkLogEntryRequest(
 /// headline figure has one definition.
 /// </param>
 /// <param name="CostUsd">Dollars, or null when the agent reported no price - unpriced, not free.</param>
+/// <param name="Agent">Which agent ran this session, an id like <c>claude</c>. Null from a CLI built before this shipped; never guessed by the server.</param>
 public record WorkLogEntryDto(
     long Id,
     string SessionId,
@@ -2247,7 +2250,8 @@ public record WorkLogEntryDto(
     string? PlaybookSource,
     string? PlaybookFileTrunk,
     string? PlaybookFileSha,
-    string? PlaybookFileHash);
+    string? PlaybookFileHash,
+    string? Agent);
 
 /// <summary>
 /// What a set of sessions cost, added up. See <see cref="WorkLogRollup"/> for
