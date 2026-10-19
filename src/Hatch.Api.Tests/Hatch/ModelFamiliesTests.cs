@@ -13,6 +13,10 @@ public class ModelFamiliesTests
     [InlineData("gpt-6-astra", "codex")]
     [InlineData("gpt-6.1-sol", "codex")]
     [InlineData("gpt-4", "codex")]
+    [InlineData("grok-4.6", "grok")]
+    [InlineData("grok-4.5", "grok")]
+    [InlineData("grok", null)]
+    [InlineData("groks-1", null)]
     [InlineData("opus", null)]
     [InlineData("nonsense-1", null)]
     [InlineData("", null)]
@@ -38,6 +42,7 @@ public class ModelFamiliesTests
     [Theory]
     [InlineData("claude-opus-5", "claude")]
     [InlineData("gpt-6-astra", "codex")]
+    [InlineData("grok-4.6", "grok")]
     public void AgentOf_KeepsTheDefaultFamiliesApart(string model, string agent)
     {
         Assert.Equal(agent, ModelFamilies.Default.AgentOf(model));
