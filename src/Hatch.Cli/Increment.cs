@@ -113,6 +113,9 @@ public sealed class IncrementReport
     /// <summary>"session" or "weekly" - which window the limit named in <see cref="UsageLimitResetAt"/> belongs to.</summary>
     public string? UsageLimitWindow { get; set; }
 
+    /// <summary>The agent whose usage ran out, for <see cref="Outcome"/> to name instead of assuming Claude.</summary>
+    public string? AgentDisplayName { get; set; }
+
     /// <summary>Whether this increment ended on a usage limit rather than an ordinary result.</summary>
     public bool UsageLimited => UsageLimitResetAt is not null;
 
@@ -226,7 +229,7 @@ public sealed class IncrementReport
     public string Outcome =>
         Moved ? $"{From} -> {Ended}{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
         : Preempted ? $"put down for {PreemptedKey} - {PreemptedTitle}"
-        : UsageLimited ? $"out of Claude usage until {UsageLimit.Clock(UsageLimitResetAt!.Value, UsageLimitResetKnown)}{(UsageLimitResetKnown ? "" : " (unknown, one hour assumed)")}"
+        : UsageLimited ? $"out of {AgentDisplayName} usage until {UsageLimit.Clock(UsageLimitResetAt!.Value, UsageLimitResetKnown)}{(UsageLimitResetKnown ? "" : " (unknown, one hour assumed)")}"
         : Skipped ? "skipped from the keyboard"
         : Resolved ? $"conflicts with {ConflictTrunk ?? Conflicts.UnnamedTrunk} resolved{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
         : FixPushed ? $"fix pushed, build pending{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
@@ -484,11 +487,12 @@ public sealed class Increment(
                 report.UsageLimitResetAt = hit.ResetAt;
                 report.UsageLimitResetKnown = hit.ResetKnown;
                 report.UsageLimitWindow = hit.Window;
+                report.AgentDisplayName = adapter.DisplayName;
 
                 say.Line("");
                 say.Line(hit.ResetKnown
-                    ? $"hatch: {report.Key} - out of Claude usage, resets {UsageLimit.Clock(hit.ResetAt, hit.ResetKnown)}"
-                    : $"hatch: {report.Key} - out of Claude usage, and the reset time could not be read - treating it as an hour away");
+                    ? $"hatch: {report.Key} - out of {adapter.DisplayName} usage, resets {UsageLimit.Clock(hit.ResetAt, hit.ResetKnown)}"
+                    : $"hatch: {report.Key} - out of {adapter.DisplayName} usage, and the reset time could not be read - treating it as an hour away");
             }
 
             // Everything from here on reads from or writes to the board, all of
@@ -1083,6 +1087,7 @@ public sealed class Increment(
             PlaybookFileTrunk = source == "file" ? work.PlaybookFile?.Trunk : null,
             PlaybookFileSha = source == "file" ? work.PlaybookFile?.Sha : null,
             PlaybookFileHash = source == "file" ? work.PlaybookFile?.Hash : null,
+            Agent = adapter.Id,
         };
 
         try

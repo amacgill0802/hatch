@@ -92,7 +92,9 @@ public sealed class WorkCommand(Runtime runtime)
         }
 
         var agentId = agent ?? runtime.Settings.Agent;
-        if (!Agents.Resolve(agentId, runtime.Settings.ClaudeBin, runtime.Say.Complain, out var agentSessions, out var agentRefusal))
+        if (!Agents.Resolve(
+            agentId, runtime.Settings.ClaudeBin, runtime.Say.Complain, out var agentSessions, out var agentAdapter,
+            out var agentRefusal))
         {
             runtime.Say.Complain(agentRefusal);
             return 1;
@@ -103,7 +105,10 @@ public sealed class WorkCommand(Runtime runtime)
         // FakeSessions; rebuilding unconditionally would silently swap it for
         // a real ClaudeSessionRunner on every run this command is tested with.
         if (agent is not null)
-            runtime = runtime with { Sessions = agentSessions, Settings = runtime.Settings with { Agent = agentId } };
+            runtime = runtime with
+            {
+                Sessions = agentSessions, Adapter = agentAdapter, Settings = runtime.Settings with { Agent = agentId },
+            };
 
         if (repoFlags.Count > 0 || workspaceFlag is not null)
         {
@@ -290,7 +295,8 @@ public sealed class WorkCommand(Runtime runtime)
             new RunnerHeartbeatRequest(
                 Kind: RunnerKinds.Once,
                 Line: key is { Length: > 0 } ticket ? $"one increment on {ticket}" : "one increment, by hand",
-                Where: runtime.Where),
+                Where: runtime.Where,
+                Agent: runtime.Adapter.Id),
             ct);
 
         if (beat.Refusal is { Length: > 0 } refusal)

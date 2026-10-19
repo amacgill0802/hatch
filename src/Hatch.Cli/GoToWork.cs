@@ -647,13 +647,15 @@ public sealed class GoToWorkCommand(Runtime runtime)
         // shape work uses and for the same reason: Harness hands every test a
         // FakeSessions, and an unconditional rebuild would silently swap it out.
         var agentId = agent ?? runtime.Settings.Agent;
-        if (!Agents.Resolve(agentId, runtime.Settings.ClaudeBin, runtime.Say.Complain, out var agentSessions, out var agentRefusal))
+        if (!Agents.Resolve(
+            agentId, runtime.Settings.ClaudeBin, runtime.Say.Complain, out var agentSessions, out var agentAdapter,
+            out var agentRefusal))
         {
             runtime.Say.Complain(agentRefusal);
             return 1;
         }
 
-        if (agent is not null) runtime = runtime with { Sessions = agentSessions };
+        if (agent is not null) runtime = runtime with { Sessions = agentSessions, Adapter = agentAdapter };
 
         var repoOverridden = repoFlags.Count > 0 || workspaceFlag is not null;
         if (repoOverridden)
@@ -1073,11 +1075,11 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 // its own heartbeat by nobody but the page.
                 idle.Clear();
                 busy.Clear();
-                var waiting = $"out of Claude usage until {UsageLimit.Clock(until, tally.ExhaustedKnown, runtime.Clock)}";
+                var waiting = $"out of {runtime.Adapter.DisplayName} usage until {UsageLimit.Clock(until, tally.ExhaustedKnown, runtime.Clock)}";
                 line.Line = waiting;
                 await SayQuietlyAsync(exhausted, now, interval, once,
                     digest: $"exhausted:{until:O}",
-                    still: "hatch: still out of Claude usage",
+                    still: $"hatch: still out of {runtime.Adapter.DisplayName} usage",
                     inFull: () =>
                     {
                         runtime.Say.Line($"hatch: this runner is {waiting} - taking no tickets until then");
@@ -1113,7 +1115,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
             if (exhausted.Running)
             {
                 runtime.Say.Line("");
-                runtime.Say.Line("hatch: back within Claude usage - taking tickets again");
+                runtime.Say.Line($"hatch: back within {runtime.Adapter.DisplayName} usage - taking tickets again");
             }
 
             exhausted.Clear();
@@ -1231,6 +1233,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 Mine: mine,
                 Standing: runtime.Checkouts.Any(c => c.Standing),
                 Where: runtime.Where,
+                Agent: runtime.Adapter.Id,
                 Exhausted: tally.ExhaustedUntil is not null,
                 ExhaustedUntil: tally.ExhaustedUntil,
                 // Absent before this loop's first rate_limit_event - a restart

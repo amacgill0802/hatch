@@ -92,6 +92,7 @@ public sealed class IncrementTests
         Assert.Equal("Did a fake thing", billed.Title);
         Assert.Equal("In fake detail.", billed.Summary);
         Assert.Equal(7, billed.Turns);
+        Assert.Equal("fake-agent", billed.Agent);
 
         Assert.True(h.Say.Mentions("fake-agent"));
 
@@ -99,6 +100,34 @@ public sealed class IncrementTests
         Assert.All(h.Say.Said, line => Assert.DoesNotContain("claude", line, StringComparison.OrdinalIgnoreCase));
         Assert.All(h.Sessions.Spawned, s => Assert.DoesNotContain("claude", s.Prompt, StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain("claude", billedBody, StringComparison.OrdinalIgnoreCase);
+
+        await claim.ReleaseAsync();
+    }
+
+    [Fact]
+    public async Task A_usage_limit_under_a_second_adapter_names_that_agent_not_claude()
+    {
+        using var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke("FAKE-RESULT fake-session-1|Did a fake thing|In fake detail.|7|2.5|45000");
+            return Task.FromResult(new SessionResult(0, ""));
+        };
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        var adapter = new FakeAdapter { Limit = new UsageLimit.Recognised(DateTimeOffset.UtcNow.AddHours(1), true, "session") };
+        var report = await (h.Runtime with { Adapter = adapter }).Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.True(report.UsageLimited);
+        Assert.Contains(h.Say.Said, l => l.Contains("out of Fake Agent usage", StringComparison.Ordinal));
+        Assert.All(h.Say.Said, l => Assert.DoesNotContain("Claude", l, StringComparison.OrdinalIgnoreCase));
 
         await claim.ReleaseAsync();
     }

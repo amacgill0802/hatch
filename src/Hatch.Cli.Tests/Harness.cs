@@ -131,7 +131,9 @@ public sealed class FakeAdapter : IAgentAdapter
 
     public IAgentHooks? WriteHooks(string temp, string key, string hatch, string? rtk) => SessionHooks.Write(temp, key, hatch, rtk);
 
-    public UsageLimit.Recognised? RecogniseLimit(string? said, DateTimeOffset endedAt, TimeZoneInfo? runnerZone = null) => null;
+    public UsageLimit.Recognised? Limit { get; set; }
+
+    public UsageLimit.Recognised? RecogniseLimit(string? said, DateTimeOffset endedAt, TimeZoneInfo? runnerZone = null) => Limit;
 }
 
 /// <summary>
