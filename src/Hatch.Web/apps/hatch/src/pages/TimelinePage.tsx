@@ -2,8 +2,8 @@ import { useCallback, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { EmptyState, PageHeader } from '@hatch/ui';
 import { getProjects, getStatuses, getTimeline } from '../api/client';
+import { ReportWindowControls } from '../components/ReportWindowControls';
 import { TimelineChart } from '../components/TimelineChart';
-import { TimelineControls } from '../components/TimelineControls';
 import { TimelineFilters } from '../components/TimelineFilters';
 import { TimelineHidden } from '../components/TimelineHidden';
 import {
@@ -12,17 +12,14 @@ import {
   makeScale,
   resolveCreator,
   resolveProject,
-  resolveWindow,
-  sameWindow,
   foldRows,
   toggled,
   unresolvedPhrase,
   withFilter,
-  withWindow,
-  type TimelineWindow,
 } from '../lib/timeline';
 import { hiddenEntries, readHidden, toggleHidden, writeHidden } from '../lib/timelineHidden';
 import { useLoaded } from '../lib/useLoaded';
+import { useReportWindow } from '../lib/useReportWindow';
 import type { Project, Status, Timeline } from '../types';
 
 /** The reads this page is made of, arriving together so a chart is never drawn
@@ -98,26 +95,14 @@ export function TimelineBody({ timeline, statuses, offsetMinutes, now, expanded,
 export function TimelinePage() {
   const [params, setParams] = useSearchParams();
 
-  /* Minutes east of UTC, read once per render rather than held: it is a fact
-     about the browser, as on the leaderboard. */
-  const offsetMinutes = -new Date().getTimezoneOffset();
+  const { from, to, now, offsetMinutes, move } = useReportWindow();
 
-  /* Keyed on the URL's own text rather than on `params`, which is a fresh
-     object every render - depending on it would resolve a new window each time
-     and refetch forever. `now` is read in here too, so it is fixed for as long
-     as the window is and the today marker does not drift under a refetch. */
   const search = params.toString();
-  const { from, to, now, projectKey, creator } = useMemo(() => {
-    const now = new Date();
+  const { projectKey, creator } = useMemo(() => {
     const url = new URLSearchParams(search);
 
-    return {
-      ...resolveWindow(url, now, offsetMinutes),
-      now,
-      projectKey: url.get(PROJECT) ?? '',
-      creator: resolveCreator(url),
-    };
-  }, [search, offsetMinutes]);
+    return { projectKey: url.get(PROJECT) ?? '', creator: resolveCreator(url) };
+  }, [search]);
 
   const load = useCallback(async (): Promise<TimelineView> => {
     const [statuses, projects] = await Promise.all([getStatuses(), getProjects()]);
@@ -133,16 +118,6 @@ export function TimelinePage() {
   }, [from, to, projectKey, creator]);
 
   const { data, error } = useLoaded<TimelineView>(load);
-
-  /* Compares the resolved window, not the URL text, so a press that would land
-     where the page already is - Today on the default, with no `from` or `to` in
-     the URL at all - writes nothing. Replaces rather than pushes, as the
-     leaderboard does: a run of presses is not a run of history entries. */
-  function move(next: TimelineWindow) {
-    if (sameWindow(next, { from, to })) return;
-
-    setParams(withWindow(params, next), { replace: true });
-  }
 
   /* Replace rather than push, as `move` does: flipping a filter is not a place
      somebody wants Back to walk them through. The window is left as it is. */
@@ -173,7 +148,8 @@ export function TimelinePage() {
            tab left open past midnight moves on the next press of Today. */
         actions={
           <>
-            <TimelineControls
+            <ReportWindowControls
+              defaultPreset="3m"
               window={{ from, to }}
               now={new Date()}
               offsetMinutes={offsetMinutes}
