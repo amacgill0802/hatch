@@ -2019,7 +2019,10 @@ board is not a poll that never gets there.
 `.hatch/playbooks.yaml`, as of the last time a runner's poll checked — the
 rows the file parsed to, or the one sentence saying why it did not. Like a
 [trunk build](#trunk-build), a playbooks file is a fact about a repository's
-trunk and nobody's issue, so it is not keyed on one.
+trunk and nobody's issue, so it is not keyed on one. A row's `prompt` is the
+whole of its wording and its `defaultPrompt` is always null: nothing marks it
+as the operator's own, there is nothing to hand it back to, and it changes only
+by a commit to the file.
 
 **One row per repository per trunk**, unique on `(Canonical, Trunk)`, the same
 reason a trunk build's own key is: two projects may bind one repository with
@@ -2295,8 +2298,8 @@ matter under a hundred lines of tidying.
 ### Playbook
 
 `EfHatchPlaybook` — `FromStatusId`, `ToStatusId`, `Types`, `Shape`, `Prompt`,
-`Model`, `Effort`, `Budget`, `BriefLimit`, `DeniedTools`, `IsCheck`, `ProjectId`.
-Unique on `(from, to, types, shape, project)`.
+`DefaultPrompt`, `Model`, `Effort`, `Budget`, `BriefLimit`, `DeniedTools`,
+`IsCheck`, `ProjectId`. Unique on `(from, to, types, shape, project)`.
 
 What an agent is told, and how much thought to spend, when it moves an issue of
 some type and shape from one column to the next. `Shape` is one of `any`
@@ -2309,6 +2312,14 @@ for every project on the board; a row naming one project speaks for that
 project alone. See [the dispatcher](#the-dispatcher). `IsCheck` is false by
 default and a person's write only — a key's `POST` or `PATCH` of it is refused
 with the rest of the playbook write — and what it means is in [Check](#check).
+
+**`Prompt` is the operator's own wording, `DefaultPrompt` the prescribed
+text.** `Prompt` is null until somebody writes their own; `DefaultPrompt` is
+null on a row a person created and always null on a row built from
+`.hatch/playbooks.yaml`. A dispatched session is handed `Prompt ??
+DefaultPrompt`, and on the wire `prompt` is that effective text beside
+`defaultPrompt`, the prescribed one. See [Playbooks](#playbooks) for what a row
+says about its own prompt.
 
 **A read-only example, not a shipped list.** `DeniedTools: ["Read", "Edit",
 "Write", "NotebookEdit", "Bash(git add *)", "Bash(git commit *)",
@@ -2749,7 +2760,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/playbook-files` | GET | Every stored [playbook file](#playbook-file), ordered by canonical then trunk, with the path itself alongside them — what the Playbooks page reads once a load, and what a runner's poll reads once a poll to know whether it has already put this sha |
 | `/playbook-files` | PUT | Keeps a runner's [playbook file](#playbook-file) for one repository's trunk. `{ remote, trunk, sha, content?, url?, runner }` — `content` the blob's exact bytes, base64-encoded, absent for a trunk with nothing at the path. Hashes and parses the content itself rather than trusting a client-sent verdict. The same refusals the trunk build's write takes, naming the trunk, plus content that is not valid base64 or over the parser's own size limit. No event and no question — there is no issue to write either on |
 | `/work/review` | GET | Every issue in the review column the caller holds a checkout of, with its bound repositories and the [merge checks](#merge-check) the board holds — what a runner's poll reads before it asks git anything. `?remote=` (repeatable) and `?standing=` as on the queue; no `clones`, because a poll clones nothing. Not narrowed by a claim, a question, a date or an assignee — see [checking the branches in review](#checking-the-branches-in-review) |
-| `/playbooks` | GET | **Reads only.** POST/PATCH/DELETE are plain `[RequireRole(User)]`. Each playbook carries `isCheck`; a person's `POST` and `PATCH` take `isCheck?` (absent is false on create and leaves it alone on patch) — see [Check](#check) |
+| `/playbooks` | GET | **Reads only.** POST/PATCH/DELETE are plain `[RequireRole(User)]`. Each playbook carries `isCheck`; a person's `POST` and `PATCH` take `isCheck?` (absent is false on create and leaves it alone on patch) — see [Check](#check). A response's `prompt` is the effective text and `defaultPrompt` the prescribed one, or null; a `PATCH` of a blank `prompt`, or of one equal to the prescribed text, hands the row back to its prescribed text (400 *a playbook needs a prompt* where there is none) — see [Playbooks](#playbooks) |
 | `/import/preview`, `/import/preview-text`, `/import` | POST | See [the importer](#the-importer) |
 | `/utilization` | GET | My own Claude headroom, off my own runners' heartbeats. `204` when no runner of mine has ever reported a reading — see [the battery](#the-battery) |
 | `/attention` | GET | What the loop is waiting on a person for — the issues up for review that carry a pull request, how many in that column carry none, every open question still waiting on somebody — not one whose ticket has already shipped, every repository's trunk whose latest build is failing (counted, unlike the rest below), and (listed, not counted) the issues in review whose branch conflicts or whose build has failed, plus how many of those are held back from the pull request list on that account (`reviewsHeldBack`), plus every live runner out of Claude usage (`exhaustedRunners`). One read for all of it — see [what is waiting on you](#what-is-waiting-on-you) |
@@ -4824,7 +4835,10 @@ own-project table rows, in the order drawn above between a project's own
 layer and the board-wide one - a file row beats a board-wide row whatever
 either names, specificity and the older-row tie-break run exactly as above,
 and a file row's age for that tie-break is its position in the file, earlier
-entries winning ties. A move the file has no row for falls through to the
+entries winning ties. A file row's `prompt` is the whole of its wording and its
+`defaultPrompt` is always null, so nothing on the Playbooks page marks it as
+the operator's own and there is nothing to hand it back to; it changes only by
+a commit to the file. A move the file has no row for falls through to the
 board-wide row; its own table rows are never a candidate at all while the
 setting is on (`Dispatch.MatchAsync` excludes them from the query itself, not
 by filtering afterward). `Dispatch.ScanAsync` builds this list once per
