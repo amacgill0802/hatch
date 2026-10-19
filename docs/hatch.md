@@ -4929,10 +4929,12 @@ rather than widening this one (see the worked example at the end of this
 section).
 
 The stock text was written for a conflict alone and reworded when failing builds
-were added. A migration (`RewordReviewPlaybook`) rewrites the row **only where it
-still reads the seeded text, byte for byte**, and leaves an edited row alone —
-an edited prompt is somebody's wording, and the operator is told on the ticket
-what to change. The reworded text does not say the merge is in progress, because
+were added. A migration (`RewordReviewPlaybook`) rewrote the row **only where it
+still read the seeded text, byte for byte**, and left an edited row alone — the
+guard every reword before the prescribed-text split (below) had to use. A reword
+now moves `DefaultPrompt` and nothing else, so there is no guard text to chain
+and no row left behind: an operator's own wording is untouched by construction,
+and sits beside the new prescribed text. The reworded text does not say the merge is in progress, because
 for a build dispatch it is not: it points at the branch section for the state of
 the tree.
 
@@ -4953,6 +4955,26 @@ configuration beyond an origin and a key. They are joined on column
 *name*, because a migration cannot know identity-generated ids — so an install
 that renamed its columns first seeds nothing, which is the right failure: a
 playbook wired to the wrong transition is worse than an empty table.
+
+**A row says when its prompt is the operator's own.** Every stock row carries
+its prescribed text, `DefaultPrompt`, beside whatever the operator has made of
+it, `Prompt`. `Prompt` is null until somebody writes their own wording, and a
+dispatched session is handed `Prompt ?? DefaultPrompt`; on the wire `prompt` is
+that effective text and `defaultPrompt` the prescribed one, or null on a row of
+the operator's own making. A migration may move `DefaultPrompt` freely, because
+nobody's wording lives in it. A row whose prompt differs from its prescribed text
+is marked *the operator's own wording* on the Playbooks page, and its edit dialog
+offers *Drop the operator's own wording*, which hands the row back. So does
+saving a blank prompt, or one equal to the prescribed text — either stores null —
+though a blank prompt is refused, as *a playbook needs a prompt*, on a row with
+no prescribed text to fall back to. Once handed back, a reword reaches the row
+again. Byte for byte was the test of the one backfill, `SeedPlaybookDefaultPrompt`,
+which ran after `PlaybookDefaultPrompt` added the column and made `Prompt`
+nullable: a stock row whose `Prompt` was identical to a stock text got that text
+as its `DefaultPrompt` and a null `Prompt`; a row that was not identical kept
+every word of its `Prompt`, and where it still opened with a stock text's first
+line learned that text as its `DefaultPrompt`; a row whose opening sentence had
+been rewritten learned none. Neither pass touched `UpdatedAt`.
 
 Every one of the nine either edits the tree or judges it:
 
@@ -4985,11 +5007,11 @@ it back.
 The epic row on `In Progress → In Review` is the verification playbook: it
 tells the session to check the epic's own acceptance criteria against the
 trunk, not just that every child has closed — see [running an
-epic](#running-an-epic). `VerifyEpicPlaybook` rewrites the row only where it
-still reads the seeded text, byte for byte, and leaves a retuned model or
-effort alone; it seeds the row only where nothing already covers an epic on
-that move and that shape, which is the one place it adds a row, and only on a
-board that does not already have one — so the count stays at nine on a
+epic](#running-an-epic). `VerifyEpicPlaybook` rewrote the row only where it
+still read the seeded text, byte for byte, and left a retuned model or
+effort alone; it seeded the row only where nothing already covered an epic on
+that move and that shape, which is the one place it added a row, and only on a
+board that did not already have one — so the count stays at nine on a
 standard fresh install.
 
 **The epic row on `To Do → In Progress`, seeded with the text *"you are
@@ -4997,10 +5019,10 @@ starting an epic, which means choosing what starts"*, is retired wherever the
 board now does that itself.** [The epic pull](#the-hop) (HA-113) carries an
 epic across that same move with no session once the WIP section covers it, so
 a session told to choose what starts would be telling the board what it
-already decided. `RetireEpicStartPlaybook` deletes the row only where it
-still reads the seeded text, byte for byte, and only on a move that crosses
-into the WIP section — an edited row, or a stock row on a board that has
-never turned WIP on, is left exactly as it is, and still dispatches a session
+already decided. `RetireEpicStartPlaybook` ran under the old guard: it deleted the row only where
+it still read the seeded text, byte for byte, and only on a move that crossed
+into the WIP section — an edited row, or a stock row on a board that had
+never turned WIP on, was left exactly as it was, and still dispatches a session
 the ordinary way.
 
 **The breakdown, analysis and implementation rows ask for less, and verify
@@ -5012,9 +5034,11 @@ filed into the column the ticket is leaving; and the implementation row, once
 every one of a story's or a task's own child tasks stands in a terminal or
 deferred column, verifies the ticket against the trunk criterion by criterion
 and records or opens its pull request, rather than implementing it again.
-`ShrinkStockPlaybooks` rewords all three rows only where each still reads its
-current text byte for byte — the same guard every reword before it has used —
-and leaves an edited row exactly as it is.
+`ShrinkStockPlaybooks` reworded all three rows only where each still read its
+current text byte for byte — the same guard every reword before it used — and
+left an edited row exactly as it was. From the prescribed-text split on, a stock
+reword is a change to `DefaultPrompt` and needs no such guard (see *A row says
+when its prompt is the operator's own*, above).
 
 **A board that wants a code review adds a check column; it does not widen the
 review row.** Take a six-column board, `To Do, In Progress, In Review, In QA,
