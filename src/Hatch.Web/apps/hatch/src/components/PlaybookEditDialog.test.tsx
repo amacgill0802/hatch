@@ -8,6 +8,7 @@ import type { Playbook, Project, Status } from '../types';
 // NewIssueDialog.test.tsx uses. What is proven below is the markup around the
 // field, never the field.
 vi.mock('./MarkdownEditor', () => ({ MarkdownEditor: () => null }));
+vi.mock('../lib/clientLogger', () => ({ clientLogger: { error: () => {} } }));
 
 const BASE: Playbook = {
   id: 1,
@@ -63,6 +64,7 @@ const ONE_PROJECT: Project[] = [
   },
 ];
 
+const PRESCRIBED = 'aria-label="Prescribed text"';
 const DROP = 'Drop the operator&#x27;s own wording';
 
 function noop() {}
@@ -104,5 +106,24 @@ describe('PlaybookEditDialog own-wording panel', () => {
   it('still refuses a blank prompt on a row with no prescribed text', () => {
     const html = render({ ...BASE, prompt: '', defaultPrompt: null });
     expect(saveButton(html)).toContain('disabled');
+  });
+
+  it('shows both texts in plain read-only boxes before the editor loads', () => {
+    const html = render({ ...BASE, defaultPrompt: 'Do it differently.' });
+    expect(html).toContain(PRESCRIBED);
+    expect(html).toContain('Do it differently.');
+    expect(html).toContain('readOnly');
+  });
+
+  it('shows no prescribed text for a row with no override', () => {
+    expect(render({ ...BASE, defaultPrompt: BASE.prompt })).not.toContain(PRESCRIBED);
+  });
+
+  it('shows no prescribed text for a row with none', () => {
+    expect(render({ ...BASE, defaultPrompt: null })).not.toContain(PRESCRIBED);
+  });
+
+  it('shows no prescribed text for a new playbook', () => {
+    expect(render(null)).not.toContain(PRESCRIBED);
   });
 });

@@ -3319,6 +3319,19 @@ input.hatch-inline-title-input {
   gap: var(--sp-2);
 }
 
+.hatch-playbook-prompt-diff__plain {
+  display: flex;
+  gap: var(--sp-3);
+}
+
+.hatch-playbook-prompt-diff__plain textarea {
+  flex: 1;
+}
+
+.hatch-playbook-prompt-diff__editor {
+  height: 320px;
+}
+
 /* The row's own open button fills its <td> and takes the table's cell padding
    itself, so the <td> gives up its half - otherwise the two would double up. */
 .hatch-table td:has(.hatch-playbook-row-open) {
