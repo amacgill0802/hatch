@@ -888,7 +888,7 @@ public sealed class Increment(
         }
 
         var prompt = Prompt.Compose(work, repositories, branches, conflict, build);
-        var render = adapter.CreateReader(root, facts);
+        var render = adapter.CreateReader(root, facts, model);
         var request = new SessionRequest(root, model, effort, prompt, quiet, addDirs, hooks?.Opaque, work.Playbook?.DeniedTools ?? [],
             SessionId: facts.SessionId);
 
