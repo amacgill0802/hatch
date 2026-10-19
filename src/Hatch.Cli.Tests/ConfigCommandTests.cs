@@ -46,7 +46,8 @@ public sealed class ConfigCommandTests : IDisposable
     [Fact]
     public async Task It_asks_for_the_origin_the_key_and_the_cli_and_writes_all_three()
     {
-        var input = new Replies("https://hatch.example", "hatch_ak_written", "/opt/claude", "claude");
+        var input = new Replies(
+            "https://hatch.example", "hatch_ak_written", "/opt/claude", "/opt/grok", "claude");
 
         Assert.Equal(0, await Command(input).RunAsync([], default));
 
@@ -54,12 +55,14 @@ public sealed class ConfigCommandTests : IDisposable
         Assert.Contains("HATCH_BASE=https://hatch.example", written);
         Assert.Contains("HATCH_KEY=hatch_ak_written", written);
         Assert.Contains("HATCH_CLAUDE_BIN=/opt/claude", written);
+        Assert.Contains("HATCH_GROK_BIN=/opt/grok", written);
         Assert.Contains("HATCH_AGENT=claude", written);
 
         Assert.Contains("Hatch origin", input.Asked[0]);
         Assert.Contains("API key", input.Asked[1]);
         Assert.Contains("claude CLI path", input.Asked[2]);
-        Assert.Contains("agent", input.Asked[3]);
+        Assert.Contains("grok CLI path", input.Asked[3]);
+        Assert.Contains("agent", input.Asked[4]);
     }
 
     /// <summary>
@@ -220,12 +223,12 @@ public sealed class ConfigCommandTests : IDisposable
     public async Task In_a_checkout_it_offers_the_runner_already_named_and_Enter_keeps_it()
     {
         var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
-        var input = new Replies("https://hatch.example", "", "", "", "");
+        var input = new Replies("https://hatch.example", "", "", "", "", "");
 
         Assert.Equal(
             0, await Command(input, root: root, runnerName: "Jeff Winger").RunAsync([], default));
 
-        Assert.Contains("What should the board call this runner? [Jeff Winger]:", input.Asked[4]);
+        Assert.Contains("What should the board call this runner? [Jeff Winger]:", input.Asked[5]);
         Assert.Empty(RunnerNames.Record.Read(RunnersPath));
     }
 
@@ -233,7 +236,7 @@ public sealed class ConfigCommandTests : IDisposable
     public async Task A_typed_name_is_recorded()
     {
         var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
-        var input = new Replies("https://hatch.example", "", "", "", "Liz Lemon");
+        var input = new Replies("https://hatch.example", "", "", "", "", "Liz Lemon");
 
         Assert.Equal(
             0, await Command(input, root: root, runnerName: "Jeff Winger").RunAsync([], default));
@@ -245,7 +248,7 @@ public sealed class ConfigCommandTests : IDisposable
     public async Task An_empty_typed_name_is_refused_with_nothing_written()
     {
         var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
-        var input = new Replies("https://hatch.example", "", "", "", new string(' ', 3));
+        var input = new Replies("https://hatch.example", "", "", "", "", new string(' ', 3));
 
         var code = await Command(input, root: root, runnerName: "Jeff Winger").RunAsync([], default);
 
@@ -259,7 +262,7 @@ public sealed class ConfigCommandTests : IDisposable
     public async Task A_name_that_is_not_plain_ASCII_is_refused_with_nothing_written()
     {
         var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
-        var input = new Replies("https://hatch.example", "", "", "", "Jeff Wïnger");
+        var input = new Replies("https://hatch.example", "", "", "", "", "Jeff Wïnger");
 
         var code = await Command(input, root: root, runnerName: "Jeff Winger").RunAsync([], default);
 
@@ -272,7 +275,8 @@ public sealed class ConfigCommandTests : IDisposable
     public async Task A_name_over_the_limit_is_refused_with_nothing_written()
     {
         var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
-        var input = new Replies("https://hatch.example", "", "", "", new string('x', ClaimRequest.MaxRunnerLength + 1));
+        var input = new Replies(
+            "https://hatch.example", "", "", "", "", new string('x', ClaimRequest.MaxRunnerLength + 1));
 
         var code = await Command(input, root: root, runnerName: "Jeff Winger").RunAsync([], default);
 
@@ -285,7 +289,7 @@ public sealed class ConfigCommandTests : IDisposable
     public async Task A_name_held_by_a_live_runner_elsewhere_is_refused_with_nothing_written()
     {
         var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
-        var input = new Replies("https://hatch.example", "hatch_ak_ok", "", "", "Liz Lemon");
+        var input = new Replies("https://hatch.example", "hatch_ak_ok", "", "", "", "Liz Lemon");
 
         var code = await Command(
                 input, root: root, runnerName: "Jeff Winger",
@@ -625,6 +629,24 @@ public sealed class ConfigCommandTests : IDisposable
         Assert.Contains("HATCH_CLAUDE_BIN=/opt/claude", written);
         Assert.Empty(input.Asked);
         Assert.DoesNotContain("hatch_ak_thesecret", Said + Complained);
+    }
+
+    /// <summary>The same round trip, for the other known agent's own bin setting.</summary>
+    [Fact]
+    public async Task Key_keeps_HATCH_GROK_BIN_and_HATCH_AGENT_grok_without_asking_anything()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
+        File.WriteAllLines(ConfigPath, [
+            "HATCH_BASE=https://kept", "HATCH_GROK_BIN=/opt/grok", "HATCH_AGENT=grok",
+        ]);
+
+        Assert.Equal(0, await Command(new Replies()).RunAsync(["--key", "hatch_ak_thesecret"], default));
+
+        var written = File.ReadAllLines(ConfigPath);
+        Assert.Contains("HATCH_BASE=https://kept", written);
+        Assert.Contains("HATCH_KEY=hatch_ak_thesecret", written);
+        Assert.Contains("HATCH_GROK_BIN=/opt/grok", written);
+        Assert.Contains("HATCH_AGENT=grok", written);
     }
 
     [Fact]

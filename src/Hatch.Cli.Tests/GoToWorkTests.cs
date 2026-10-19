@@ -636,6 +636,22 @@ public sealed class GoToWorkTests
         Assert.Empty(h.Wire.Calls.Where(c => c.Path != Review));
     }
 
+    /// <summary>The StopWhy sentence names whichever agent was asked for, not always claude.</summary>
+    [Fact]
+    public async Task A_night_with_no_grok_CLI_to_spawn_names_grok_rather_than_claude()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var missing = Path.Combine(h.Temp, "nowhere", "grok");
+        var runtime = h.Runtime with { Settings = h.Runtime.Settings with { GrokBin = missing } };
+
+        Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync(["--once", "--agent", "grok"], default));
+
+        Assert.Contains(h.Say.Complained, l => l.Contains($"HATCH_GROK_BIN is not there: {missing}", StringComparison.Ordinal));
+        Assert.Contains(h.Say.Said, l => l.Contains("there is no grok CLI to spawn", StringComparison.Ordinal));
+        Assert.Empty(h.Wire.Calls.Where(c => c.Path != Review));
+    }
+
     [Fact]
     public async Task An_interrupt_gives_the_ticket_back_and_still_prints_the_tally()
     {

@@ -17,7 +17,7 @@ public sealed class WorkCommand(Runtime runtime)
         "                  [--model <model>] [--effort <effort>] [--dry-run] [--no-keys]",
         "                  [--repo <path>]... [--workspace <dir>]",
         "",
-        "  One increment: claim a ticket, spawn one headless claude session with the",
+        "  One increment: claim a ticket, spawn one headless agent session with the",
         "  prompt, model and effort its column and type call for, and exit when that",
         "  session ends. Run inside the checkout the board is about, or name one with",
         "  --repo or HATCH_REPOS.",
@@ -93,8 +93,8 @@ public sealed class WorkCommand(Runtime runtime)
 
         var agentId = agent ?? runtime.Settings.Agent;
         if (!Agents.Resolve(
-            agentId, runtime.Settings.ClaudeBin, runtime.Say.Complain, out var agentSessions, out var agentAdapter,
-            out var agentRefusal))
+            agentId, runtime.Settings.ClaudeBin, runtime.Settings.GrokBin, runtime.Say.Complain,
+            out var agentSessions, out var agentAdapter, out var agentRefusal))
         {
             runtime.Say.Complain(agentRefusal);
             return 1;

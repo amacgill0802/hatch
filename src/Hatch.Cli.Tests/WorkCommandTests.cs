@@ -364,7 +364,37 @@ public sealed class WorkCommandTests
 
         Assert.Equal(1, await new WorkCommand(runtime).RunAsync(["AER-1"], default));
 
-        Assert.Contains(h.Say.Complained, l => l.Contains("nope", StringComparison.Ordinal) && l.Contains("claude", StringComparison.Ordinal));
+        Assert.Contains(h.Say.Complained, l => l.Contains("nope", StringComparison.Ordinal) && l.Contains("grok", StringComparison.Ordinal));
+        Assert.Empty(h.Wire.Calls);
+    }
+
+    /// <summary>The id resolves to the Grok adapter, dry run or not - --dry-run never asks CanSpawn anything, claude included.</summary>
+    [Fact]
+    public async Task A_dry_run_with_agent_grok_names_the_grok_adapter()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", "/api/hatch/work/next", Fixtures.Work("AER-1"));
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["--agent", "grok", "--dry-run"], default));
+
+        Assert.Contains(h.Say.Said, l => l == "# agent grok");
+    }
+
+    /// <summary>
+    /// HA-917's acceptance scenario, run for real rather than dry: a setting read
+    /// from the lowest layer, an id resolved to the Grok adapter, and the board
+    /// left untouched - all before any claim is taken.
+    /// </summary>
+    [Fact]
+    public async Task Agent_grok_with_no_CLI_installed_refuses_before_it_reads_the_board()
+    {
+        using var h = new Harness();
+        var missing = Path.Combine(h.Temp, "nowhere", "grok");
+        var runtime = h.Runtime with { Settings = h.Runtime.Settings with { GrokBin = missing } };
+
+        Assert.Equal(1, await new WorkCommand(runtime).RunAsync(["--agent", "grok", "AER-1"], default));
+
+        Assert.Contains(h.Say.Complained, l => l.Contains($"HATCH_GROK_BIN is not there: {missing}", StringComparison.Ordinal));
         Assert.Empty(h.Wire.Calls);
     }
 

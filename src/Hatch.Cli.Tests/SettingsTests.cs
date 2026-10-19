@@ -92,6 +92,26 @@ public sealed class SettingsTests : IDisposable
         Assert.Equal(Settings.Layer.Environment, settings.SourceOf("HATCH_CLAUDE_BIN"));
     }
 
+    /// <summary>The same three layers <c>HATCH_CLAUDE_BIN</c> reads through, for the other known agent.</summary>
+    [Fact]
+    public void Grok_bin_reads_from_the_same_three_layers()
+    {
+        var checkout = Write("checkout.env", "HATCH_BASE=https://this-repository");
+        var user = Write("user.config", "HATCH_BASE=https://mine", "HATCH_KEY=hatch_ak_mine");
+
+        Assert.True(Settings.TryLoad(
+            checkout, Env(("HATCH_GROK_BIN", "/opt/grok")), out var settings, out _, user));
+
+        Assert.Equal("/opt/grok", settings.GrokBin);
+        Assert.Equal(Settings.Layer.Environment, settings.SourceOf("HATCH_GROK_BIN"));
+    }
+
+    [Fact]
+    public void Known_agent_ids_include_grok()
+    {
+        Assert.Contains("grok", Settings.KnownAgentIds);
+    }
+
     /// <summary>An exported variable that is there but empty is not a value.</summary>
     [Fact]
     public void An_empty_exported_value_falls_through_to_the_file_below_it()

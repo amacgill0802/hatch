@@ -9,11 +9,11 @@ namespace Hatch.Cli.Tests;
 /// <remarks>
 /// This runner is always <c>claude</c> here, never the other family in
 /// <see cref="TwoAgents"/> - <see cref="Agents.Resolve"/> only knows
-/// <c>claude</c> today (<see cref="Settings.KnownAgentIds"/>), so a
+/// <c>claude</c> and <c>grok</c> (<see cref="Settings.KnownAgentIds"/>), so a
 /// <see cref="Runtime"/> built with <c>Settings.Agent</c> set to anything else
-/// refuses at <see cref="WorkCommand.RunAsync"/>'s own agent resolve before
-/// ever reaching a ticket. The mismatch this exercises instead is the pinned
-/// row belonging to the other family, which is the same comparison
+/// still refuses at <see cref="WorkCommand.RunAsync"/>'s own agent resolve
+/// before ever reaching a ticket. The mismatch this exercises instead is the
+/// pinned row belonging to the other family, which is the same comparison
 /// <see cref="Picker.WrongAgent"/> makes either way round.
 /// </remarks>
 public sealed class WorkModelFamilyTests

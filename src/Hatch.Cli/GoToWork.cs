@@ -648,8 +648,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
         // FakeSessions, and an unconditional rebuild would silently swap it out.
         var agentId = agent ?? runtime.Settings.Agent;
         if (!Agents.Resolve(
-            agentId, runtime.Settings.ClaudeBin, runtime.Say.Complain, out var agentSessions, out var agentAdapter,
-            out var agentRefusal))
+            agentId, runtime.Settings.ClaudeBin, runtime.Settings.GrokBin, runtime.Say.Complain,
+            out var agentSessions, out var agentAdapter, out var agentRefusal))
         {
             runtime.Say.Complain(agentRefusal);
             return 1;
@@ -937,7 +937,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
         if (!runtime.Sessions.CanSpawn(out var missing))
         {
             runtime.Say.Complain(missing);
-            tally.StopWhy = "there is no claude CLI to spawn";
+            tally.StopWhy = $"there is no {runtime.Adapter.Id} CLI to spawn";
             return false;
         }
 
