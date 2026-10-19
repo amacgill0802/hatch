@@ -2217,7 +2217,8 @@ rows matched — the match is an `EXISTS`, not a join.
 or work-log match decides whether an issue is found, not where it sorts.
 Ties: closed ahead of open, then newest-closed, then newest-created. Without
 `q` — or with one that reduces to no terms, where `SearchQuery.ToTsQuery`
-returns null — the list is newest-created first.
+returns null — the list is newest first by closed, or created where open, so
+a column's issues come most-recently-closed first.
 
 **`matched` on a hit** lists which of `title`, `description`, `comment`,
 `work-log` found it, in that order.
