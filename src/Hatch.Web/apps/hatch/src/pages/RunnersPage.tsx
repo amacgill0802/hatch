@@ -12,6 +12,7 @@ import {
   boundsRequest,
   drivesLabel,
   isControllable,
+  MAX_SPEND_HINT,
   mineLabel,
   repositoriesLabel,
   runnerActivity,
@@ -216,7 +217,7 @@ function BoundsForm({ runner, onSave }: { runner: Runner; onSave: (request: Runn
         <Field label="Max runs" hint="Increments this night may spend, counting the ones already spent. Empty is no cap.">
           <input inputMode="numeric" value={draft.maxRuns} onChange={(e) => set('maxRuns', e.target.value)} />
         </Field>
-        <Field label="Max spend" hint="Dollars, on the same terms.">
+        <Field label="Max spend" hint={MAX_SPEND_HINT}>
           <input inputMode="decimal" value={draft.maxSpend} onChange={(e) => set('maxSpend', e.target.value)} />
         </Field>
         <MomentField

@@ -21,6 +21,7 @@ const totals = (over: Partial<WorkLogTotals> = {}): WorkLogTotals => ({
   cacheReadTokens: 0,
   totalTokens: 1_000,
   costUsd: 1,
+  unpricedSessions: 0,
   ...over,
 });
 
@@ -33,6 +34,7 @@ const empty: WorkLogTotals = {
   cacheReadTokens: 0,
   totalTokens: 0,
   costUsd: 0,
+  unpricedSessions: 0,
 };
 
 const bucket = (start: string, over?: Partial<WorkLogTotals>): WorkLogBucket => ({
@@ -101,6 +103,15 @@ describe('bars', () => {
     expect(bars(history(), 'tokens', 'en-GB')[0].label).toBe('Fri 4 Sept — 800k tokens');
     expect(bars(history({ bucket: 'hour' }), 'cost', 'en-GB')[2].label).toContain('Sun 6 Sept, ');
     expect(bars(history({ bucket: 'hour' }), 'cost', 'en-GB')[2].label).toContain('— $40.00');
+  });
+
+  it("names a bucket's unpriced count on the cost measure, and never on tokens", () => {
+    const unpriced = history({
+      buckets: [bucket('2026-09-04T12:00:00Z', { totalTokens: 800_000, costUsd: 3, unpricedSessions: 2 })],
+    });
+
+    expect(bars(unpriced, 'cost', 'en-GB')[0].label).toBe('Fri 4 Sept — $3.00, 2 unpriced');
+    expect(bars(unpriced, 'tokens', 'en-GB')[0].label).toBe('Fri 4 Sept — 800k tokens');
   });
 });
 

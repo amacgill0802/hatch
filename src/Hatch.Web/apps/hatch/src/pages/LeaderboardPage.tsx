@@ -26,11 +26,12 @@ import { useLoaded } from '../lib/useLoaded';
 import {
   compactTokens,
   compactTokensOrDash,
+  costPhrase,
+  costTitle,
   durationPhrase,
   entryMark,
   entryTitle,
   errorPhrase,
-  moneyPhrase,
   resumeCommand,
   totalsPhrase,
 } from '../lib/workLog';
@@ -295,7 +296,9 @@ function PodiumRow({ session }: { session: WorkLogSession }) {
         <span>
           <strong>{compactTokens(session.totalTokens)}</strong> tokens
         </span>
-        <span className="text-muted">{moneyPhrase(session.costUsd)}</span>
+        <span className="text-muted" title={costTitle(session.costUsd)}>
+          {costPhrase(session.costUsd)}
+        </span>
         <Link to={`/issues/${session.issueKey}`} className="hatch-leaderboard-key">
           {session.issueKey}
         </Link>
@@ -321,7 +324,7 @@ function Row({ session }: { session: WorkLogSession }) {
       <td>{compactTokens(session.totalTokens)}</td>
       <td>{session.requests ?? '—'}</td>
       <td>{compactTokensOrDash(session.peakContextTokens)}</td>
-      <td>{moneyPhrase(session.costUsd)}</td>
+      <td title={costTitle(session.costUsd)}>{costPhrase(session.costUsd)}</td>
       <td>{new Date(session.endedAt).toLocaleString()}</td>
       <td>{durationPhrase(session.durationMs)}</td>
     </tr>

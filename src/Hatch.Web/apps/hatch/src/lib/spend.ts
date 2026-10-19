@@ -73,13 +73,15 @@ export function bars(history: WorkLogHistory, measure: SpendMeasure, locale?: st
 
   return history.buckets.map((bucket) => {
     const value = measureValue(bucket.totals, measure);
+    const unpriced =
+      measure === 'cost' && bucket.totals.unpricedSessions > 0 ? `, ${bucket.totals.unpricedSessions} unpriced` : '';
 
     return {
       start: bucket.start,
       end: bucket.end,
       value,
       fraction: tallest > 0 ? value / tallest : 0,
-      label: `${bucketLabel(bucket.start, history.bucket, locale)} — ${measurePhrase(value, measure)}`,
+      label: `${bucketLabel(bucket.start, history.bucket, locale)} — ${measurePhrase(value, measure)}${unpriced}`,
     };
   });
 }

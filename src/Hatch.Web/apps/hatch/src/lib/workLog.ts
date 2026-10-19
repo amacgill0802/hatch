@@ -59,6 +59,17 @@ export function moneyPhrase(usd: number): string {
   return usd >= 0.01 ? `$${usd.toFixed(2)}` : `$${usd.toFixed(4)}`;
 }
 
+/** Why a cost reads as a dash instead of a number - the title that goes on it. */
+export const UNPRICED_TITLE = 'The agent reported no price for this session';
+
+/** `moneyPhrase`, or a dash for a session whose agent reported no price at all -
+    not the same as a real `$0`, which `moneyPhrase` still draws as `$0`. */
+export const costPhrase = (usd: number | null): string => (usd === null ? '—' : moneyPhrase(usd));
+
+/** The title that belongs beside `costPhrase`'s dash, explaining it - undefined
+    for a priced row, which needs no explaining. */
+export const costTitle = (usd: number | null): string | undefined => (usd === null ? UNPRICED_TITLE : undefined);
+
 /**
  * How long it ran: `14m02s`, `1h02m`, `4s`.
  *
@@ -148,7 +159,8 @@ export const totalsPhrase = (totals: WorkLogTotals): string =>
   [
     `${totals.sessions} ${totals.sessions === 1 ? 'session' : 'sessions'}`,
     `${compactTokens(totals.totalTokens)} tokens`,
-    moneyPhrase(totals.costUsd),
+    ...(totals.sessions - totals.unpricedSessions > 0 ? [moneyPhrase(totals.costUsd)] : []),
+    ...(totals.unpricedSessions > 0 ? [`${totals.unpricedSessions} unpriced`] : []),
   ].join(' · ');
 
 /** The same for what this issue spent on its own, said only when it differs -

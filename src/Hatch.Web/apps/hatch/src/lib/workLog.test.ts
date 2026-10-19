@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   compactTokens,
   compactTokensOrDash,
+  costPhrase,
+  costTitle,
   durationPhrase,
   entryMark,
   entryTitle,
@@ -14,6 +16,7 @@ import {
   resumeCommand,
   showsWorkLog,
   totalsPhrase,
+  UNPRICED_TITLE,
 } from './workLog';
 import type { WorkLog, WorkLogEntry, WorkLogTotals } from '../types';
 
@@ -26,6 +29,7 @@ const totals = (over: Partial<WorkLogTotals> = {}): WorkLogTotals => ({
   cacheReadTokens: 59_000,
   totalTokens: 63_380,
   costUsd: 3.41,
+  unpricedSessions: 0,
   ...over,
 });
 
@@ -108,6 +112,28 @@ describe('moneyPhrase', () => {
   it('says $0 only when it is', () => {
     expect(moneyPhrase(0)).toBe('$0');
     expect(moneyPhrase(Number.NaN)).toBe('$0');
+  });
+});
+
+describe('costPhrase', () => {
+  it('draws a dash for a session whose agent reported no price at all', () => {
+    expect(costPhrase(null)).toBe('—');
+  });
+
+  it('otherwise reads exactly as moneyPhrase does, a real zero included', () => {
+    expect(costPhrase(0)).toBe(moneyPhrase(0));
+    expect(costPhrase(3.4123)).toBe(moneyPhrase(3.4123));
+  });
+});
+
+describe('costTitle', () => {
+  it('explains the dash', () => {
+    expect(costTitle(null)).toBe(UNPRICED_TITLE);
+  });
+
+  it('says nothing for a priced row, which needs no explaining', () => {
+    expect(costTitle(0)).toBeUndefined();
+    expect(costTitle(3.4123)).toBeUndefined();
   });
 });
 
@@ -233,6 +259,18 @@ describe('the sentences the totals say', () => {
     expect(totalsPhrase(totals({ sessions: 3, totalTokens: 1_400_000, costUsd: 3.41 }))).toBe(
       '3 sessions · 1.4M tokens · $3.41',
     );
+  });
+
+  it('appends the unpriced count when some of the subtree reported no price', () => {
+    expect(
+      totalsPhrase(totals({ sessions: 3, totalTokens: 1_400_000, costUsd: 3.41, unpricedSessions: 2 })),
+    ).toBe('3 sessions · 1.4M tokens · $3.41 · 2 unpriced');
+  });
+
+  it('drops the money entirely when none of the subtree was priced', () => {
+    expect(
+      totalsPhrase(totals({ sessions: 3, totalTokens: 1_400_000, costUsd: 0, unpricedSessions: 3 })),
+    ).toBe('3 sessions · 1.4M tokens · 3 unpriced');
   });
 
   it('says session, singular, at one', () => {
