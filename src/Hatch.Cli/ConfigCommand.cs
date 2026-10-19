@@ -154,6 +154,7 @@ public sealed record ConfigCommand(
         var origin = fold("HATCH_BASE").Value ?? "";
         var key = fold("HATCH_KEY").Value ?? "";
         var claudeBin = fold("HATCH_CLAUDE_BIN").Value ?? "";
+        var grokBin = fold("HATCH_GROK_BIN").Value ?? "";
         var agent = fold("HATCH_AGENT").Value ?? "";
         var repos = fold("HATCH_REPOS").Value ?? "";
         var workspace = fold("HATCH_WORKSPACE").Value ?? "";
@@ -187,7 +188,10 @@ public sealed record ConfigCommand(
         In.Prompt($"claude CLI path, for `work` [{(claudeBin.Length > 0 ? claudeBin : "on PATH")}]: ");
         if (In.Line() is { Length: > 0 } typedBin) claudeBin = typedBin;
 
-        In.Prompt($"agent, for `work` [{(agent.Length > 0 ? agent : "claude")}]: ");
+        In.Prompt($"grok CLI path, for `work` [{(grokBin.Length > 0 ? grokBin : "on PATH")}]: ");
+        if (In.Line() is { Length: > 0 } typedGrokBin) grokBin = typedGrokBin;
+
+        In.Prompt($"agent ({string.Join(", ", Settings.KnownAgentIds)}), for `work` [{(agent.Length > 0 ? agent : "claude")}]: ");
         if (In.Line() is { Length: > 0 } typedAgent) agent = typedAgent;
 
         // Only in a checkout - a runner's name is a fact about one of them, and
@@ -219,7 +223,7 @@ public sealed record ConfigCommand(
             }
         }
 
-        Write(origin, key, claudeBin, repos, workspace, agent);
+        Write(origin, key, claudeBin, repos, workspace, agent, grokBin);
 
         if (chosenRunner is not null) RunnerNames.Record.Set(RunnersPath, Checkout.Canonical(Root!), chosenRunner);
 
@@ -228,6 +232,7 @@ public sealed record ConfigCommand(
         Environment["HATCH_BASE"] = origin;
         Environment["HATCH_KEY"] = key;
         if (claudeBin.Length > 0) Environment["HATCH_CLAUDE_BIN"] = claudeBin;
+        if (grokBin.Length > 0) Environment["HATCH_GROK_BIN"] = grokBin;
         if (agent.Length > 0) Environment["HATCH_AGENT"] = agent;
 
         Say.Line("");
@@ -270,11 +275,12 @@ public sealed record ConfigCommand(
         var fold = Settings.Layers(CheckoutEnvFile, Environment, ConfigPath);
         var key = fold("HATCH_KEY").Value ?? "";
         var claudeBin = fold("HATCH_CLAUDE_BIN").Value ?? "";
+        var grokBin = fold("HATCH_GROK_BIN").Value ?? "";
         var agent = fold("HATCH_AGENT").Value ?? "";
         var repos = fold("HATCH_REPOS").Value ?? "";
         var workspace = fold("HATCH_WORKSPACE").Value ?? "";
 
-        Write(origin, key, claudeBin, repos, workspace, agent);
+        Write(origin, key, claudeBin, repos, workspace, agent, grokBin);
 
         Environment["HATCH_BASE"] = origin;
 
@@ -312,6 +318,7 @@ public sealed record ConfigCommand(
         var fold = Settings.Layers(CheckoutEnvFile, Environment, ConfigPath);
         var origin = fold("HATCH_BASE").Value ?? "";
         var claudeBin = fold("HATCH_CLAUDE_BIN").Value ?? "";
+        var grokBin = fold("HATCH_GROK_BIN").Value ?? "";
         var agent = fold("HATCH_AGENT").Value ?? "";
         var repos = fold("HATCH_REPOS").Value ?? "";
         var workspace = fold("HATCH_WORKSPACE").Value ?? "";
@@ -325,7 +332,7 @@ public sealed record ConfigCommand(
         if (!key.StartsWith("hatch_ak_", StringComparison.Ordinal))
             Say.Complain("hatch: warning - that does not start with hatch_ak_. Carrying on; the call below will say.");
 
-        Write(origin, key, claudeBin, repos, workspace, agent);
+        Write(origin, key, claudeBin, repos, workspace, agent, grokBin);
 
         Environment["HATCH_KEY"] = key;
 
@@ -463,6 +470,7 @@ public sealed record ConfigCommand(
         var origin = fold("HATCH_BASE").Value ?? "";
         var key = fold("HATCH_KEY").Value ?? "";
         var claudeBin = fold("HATCH_CLAUDE_BIN").Value ?? "";
+        var grokBin = fold("HATCH_GROK_BIN").Value ?? "";
         var agent = fold("HATCH_AGENT").Value ?? "";
         var workspace = fold("HATCH_WORKSPACE").Value ?? "";
 
@@ -476,7 +484,7 @@ public sealed record ConfigCommand(
             return 1;
         }
 
-        Write(origin, key, claudeBin, string.Join(Path.PathSeparator, paths), workspace, agent);
+        Write(origin, key, claudeBin, string.Join(Path.PathSeparator, paths), workspace, agent, grokBin);
 
         Environment["HATCH_REPOS"] = paths.Count > 0 ? string.Join(Path.PathSeparator, paths) : null;
 
@@ -505,6 +513,7 @@ public sealed record ConfigCommand(
         var origin = fold("HATCH_BASE").Value ?? "";
         var key = fold("HATCH_KEY").Value ?? "";
         var claudeBin = fold("HATCH_CLAUDE_BIN").Value ?? "";
+        var grokBin = fold("HATCH_GROK_BIN").Value ?? "";
         var agent = fold("HATCH_AGENT").Value ?? "";
         var reposRaw = fold("HATCH_REPOS").Value ?? "";
         var repos = reposRaw is { Length: > 0 }
@@ -514,7 +523,7 @@ public sealed record ConfigCommand(
         if (Settings.IsWorkspaceOff(dir))
         {
             // A word and not a directory: nothing to overlap and nothing to make.
-            Write(origin, key, claudeBin, reposRaw, Settings.WorkspaceOff, agent);
+            Write(origin, key, claudeBin, reposRaw, Settings.WorkspaceOff, agent, grokBin);
             Environment["HATCH_WORKSPACE"] = Settings.WorkspaceOff;
             Say.Line($"wrote {ConfigPath}");
             return 0;
@@ -533,7 +542,7 @@ public sealed record ConfigCommand(
             return 1;
         }
 
-        Write(origin, key, claudeBin, reposRaw, dir, agent);
+        Write(origin, key, claudeBin, reposRaw, dir, agent, grokBin);
 
         Environment["HATCH_WORKSPACE"] = dir;
 
@@ -670,7 +679,9 @@ public sealed record ConfigCommand(
     /// no-op concept on Windows, where the file inherits the directory's ACL
     /// and <c>%APPDATA%</c> is already per-user.
     /// </remarks>
-    private void Write(string origin, string key, string claudeBin, string repos, string workspace = "", string agent = "")
+    private void Write(
+        string origin, string key, string claudeBin, string repos, string workspace = "", string agent = "",
+        string grokBin = "")
     {
         var directory = Path.GetDirectoryName(ConfigPath);
         if (directory is { Length: > 0 }) Directory.CreateDirectory(directory);
@@ -694,6 +705,7 @@ public sealed record ConfigCommand(
         };
 
         if (claudeBin.Length > 0) lines.Add($"HATCH_CLAUDE_BIN={claudeBin}");
+        if (grokBin.Length > 0) lines.Add($"HATCH_GROK_BIN={grokBin}");
         if (agent.Length > 0) lines.Add($"HATCH_AGENT={agent}");
         if (repos.Length > 0) lines.Add($"HATCH_REPOS={repos}");
         if (workspace.Length > 0) lines.Add($"HATCH_WORKSPACE={workspace}");
