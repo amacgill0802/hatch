@@ -114,11 +114,27 @@ public class IssuePlaybookControllerTests
         var h = await NewAsync();
         var issue = await h.FileAsync();
 
-        var refusal = await h.Playbook.PatchIssuePlaybook(issue.Key, new IssuePlaybookRequest("gpt-4", null), default);
+        var refusal = await h.Playbook.PatchIssuePlaybook(issue.Key, new IssuePlaybookRequest("nonsense-1", null), default);
 
         Assert.Equal(
-            "a model is one of haiku, sonnet, opus, fable, or a pinned name like claude-opus-5 - not \"gpt-4\"",
+            "a model is one of haiku, sonnet, opus, fable, or a pinned id of a supported agent " +
+            "(claude-opus-5 for claude) - not \"nonsense-1\"",
             Reason(refusal.Result));
+    }
+
+    [Fact]
+    public async Task APinnedId_OfASecondFamily_IsAcceptedWhenItsRowIsListed()
+    {
+        var families = new ModelFamilies([
+            ModelFamilies.Default.Rows[0],
+            new ModelFamily("fake", "^fake-[a-z0-9-]+$", "fake-1"),
+        ]);
+        var h = await NewAsync(families);
+        var issue = await h.FileAsync();
+
+        var patched = await h.SetAsync(issue.Key, "fake-1", null);
+
+        Assert.Equal("fake-1", patched.ModelOverride);
     }
 
     [Fact]
@@ -287,7 +303,7 @@ public class IssuePlaybookControllerTests
                 .ToList();
     }
 
-    private static async Task<Harness> NewAsync()
+    private static async Task<Harness> NewAsync(ModelFamilies? families = null)
     {
         var db = new HatchContext(
             new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
@@ -302,7 +318,7 @@ public class IssuePlaybookControllerTests
 
         return new Harness
         {
-            Playbook = new IssuePlaybookController(db, new StubActorDirectory(), TestClaims.With(), caller, time),
+            Playbook = new IssuePlaybookController(db, new StubActorDirectory(), TestClaims.With(), caller, time, families),
             Issues = new IssuesController(db, new RankService(db), new StubActorDirectory(), TestClaims.With(), caller, time, new ProjectAccess(db, new StubActorDirectory())),
             Thread = new IssueThreadController(db, caller, time),
             Time = time,

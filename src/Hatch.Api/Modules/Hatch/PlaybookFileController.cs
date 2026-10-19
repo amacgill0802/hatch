@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Services.Auth;
+using Hatch.Contracts;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -17,7 +18,8 @@ namespace Hatch.Api.Modules.Hatch;
 [ApiController]
 [Route("api/hatch/playbook-files")]
 [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
-public class PlaybookFileController(HatchContext db, ICallerIdentity caller, TimeProvider time) : ControllerBase
+public class PlaybookFileController(
+    HatchContext db, ICallerIdentity caller, TimeProvider time, ModelFamilies? families = null) : ControllerBase
 {
     /// <summary>Every stored playbook-file verdict, ordered by canonical then trunk - what the page reads once a load.</summary>
     [HttpGet]
@@ -119,7 +121,7 @@ public class PlaybookFileController(HatchContext db, ICallerIdentity caller, Tim
             var hash = Convert.ToHexStringLower(SHA256.HashData(decoded));
             var statuses = await db.Statuses.AsNoTracking().ToListAsync(ct);
             names = statuses.ToDictionary(s => s.Id, s => s.Name);
-            var (parsedRows, problem) = PlaybookFile.Parse(decoded, statuses);
+            var (parsedRows, problem) = PlaybookFile.Parse(decoded, statuses, families);
 
             if (problem is null)
             {
