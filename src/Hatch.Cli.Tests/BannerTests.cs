@@ -183,6 +183,18 @@ public sealed class BannerTests
     }
 
     [Fact]
+    public void TokensWithNoPrice_ReadUnpricedAndNeverZeroOrNotReported()
+    {
+        var lines = Banner.Closing(Report(moved: true, totalTokens: 128_000, cost: null));
+
+        var took = Assert.Single(lines, l => l.Contains("Took", StringComparison.Ordinal));
+        Assert.Contains("128k tokens", took, StringComparison.Ordinal);
+        Assert.Contains("unpriced", took, StringComparison.Ordinal);
+        Assert.DoesNotContain("cost not reported", took, StringComparison.Ordinal);
+        Assert.DoesNotContain("$0", took, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AUsageLine_IsAddedOnlyWhereThereIsOne()
     {
         var withUsage = Banner.Closing(Report(moved: true), usageLine: "session 42% (reset in 3h)");

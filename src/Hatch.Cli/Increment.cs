@@ -143,6 +143,12 @@ public sealed class IncrementReport
     /// <summary>Dollars, out of the result event.</summary>
     public decimal? Cost { get; set; }
 
+    /// <summary>
+    /// A session that reported tokens and no price. A run that died before any
+    /// result has neither, and stays "not reported".
+    /// </summary>
+    public bool Unpriced => Cost is null && TotalTokens is not null;
+
     /// <summary>What the CLI exited with.</summary>
     public int ExitCode { get; set; }
 
