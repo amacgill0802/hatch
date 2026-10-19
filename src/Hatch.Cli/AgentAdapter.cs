@@ -43,6 +43,16 @@ public interface IAgentAdapter
     void Release(SessionRequest request) { }
 
     /// <summary>
+    /// The file <see cref="BuildHeadless"/> told this agent's CLI to write its
+    /// final answer to, or null where it asked for none - recomputed from
+    /// <paramref name="request"/> alone, since the path follows from the same
+    /// inputs the build had. Read back once the run ends, and preferred over the
+    /// stream's own last text where the two disagree: a stream cut off mid-render
+    /// can end before the model's true last word.
+    /// </summary>
+    string? OutputLastMessagePath(SessionRequest request) => null;
+
+    /// <summary>
     /// Whether this agent has a door for a hooks file outside the checkout at
     /// all. False is not a failure to say anything about; it is distinct from
     /// <see cref="WriteHooks"/> returning null because a write failed.
