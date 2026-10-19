@@ -262,7 +262,8 @@ public static class Fixtures
             Turns: 12, CostUsd: cost, InputTokens: tokens, OutputTokens: 0, CacheCreationTokens: 0,
             CacheReadTokens: 0, TotalTokens: tokens, Models: [],
             Requests: requests, PeakContextTokens: peakContextTokens, PromptChars: null,
-            PlaybookSource: null, PlaybookFileTrunk: null, PlaybookFileSha: null, PlaybookFileHash: null);
+            PlaybookSource: null, PlaybookFileTrunk: null, PlaybookFileSha: null, PlaybookFileHash: null,
+            Agent: null);
 
     public static string Taken(Guid token, int ttlSeconds = 300, int stallLapseSeconds = 0) =>
         JsonSerializer.Serialize(

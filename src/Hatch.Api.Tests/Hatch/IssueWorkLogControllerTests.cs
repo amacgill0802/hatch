@@ -191,6 +191,31 @@ public class IssueWorkLogControllerTests
     }
 
     [Fact]
+    public async Task Agent_IsPassedThroughUnchanged()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        var entry = await h.PostAsync(issue.Key, Reported() with { Agent = "claude" });
+
+        Assert.Equal("claude", entry.Agent);
+
+        var log = await h.ReadAsync(issue.Key);
+        Assert.Equal("claude", Assert.Single(log.Entries).Agent);
+    }
+
+    [Fact]
+    public async Task Agent_IsNullWhenNotSent()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        var entry = await h.PostAsync(issue.Key, Reported());
+
+        Assert.Null(entry.Agent);
+    }
+
+    [Fact]
     public async Task TheFourCounts_AreTheSumOfTheBreakdownAndNotSentByTheCaller()
     {
         var h = await NewAsync();

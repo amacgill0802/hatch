@@ -1186,6 +1186,10 @@ namespace Hatch.Api.Modules.Hatch.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
 
+                    b.Property<string>("Agent")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
                     b.Property<long>("CacheCreationTokens")
                         .HasColumnType("bigint");
 

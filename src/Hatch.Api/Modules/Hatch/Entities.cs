@@ -2412,6 +2412,12 @@ public class EfHatchWorkLogEntry
     [MaxLength(EfHatchPlaybookFile.MaxHashLength)] public string? PlaybookFileHash { get; set; }
 
     /// <summary>
+    /// Which agent ran this session, an id like <c>claude</c>. Null on a row
+    /// posted by an older CLI, which never sent it.
+    /// </summary>
+    [MaxLength(16)] public string? Agent { get; set; }
+
+    /// <summary>
     /// Notional API list price, in dollars, as the CLI reported it. Eight
     /// places because a short session costs a fraction of a cent and rounding
     /// it to two would make a night of them add up to nothing. Null means the
