@@ -36,7 +36,8 @@ public class SearchController(
     /// <remarks>
     /// Every parameter is optional and they combine with AND. With words
     /// (<paramref name="q"/>) the best match comes first, closed issues ahead of
-    /// open ones among equals; without, newest first. A <paramref name="q"/>
+    /// open ones among equals; without, newest first, where newest means closed,
+    /// or created where still open. A <paramref name="q"/>
     /// that reduces to no terms is no <paramref name="q"/> at all, because an
     /// empty search box means the whole list rather than none of it.
     /// </remarks>
@@ -118,7 +119,9 @@ public class SearchController(
                 .ThenByDescending(i => i.ClosedAt)
                 .ThenByDescending(i => i.CreatedAt)
                 .ThenByDescending(i => i.Id)
-            : query.OrderByDescending(i => i.CreatedAt).ThenByDescending(i => i.Id);
+            : query.OrderByDescending(i => i.ClosedAt ?? i.CreatedAt)
+                .ThenByDescending(i => i.CreatedAt)
+                .ThenByDescending(i => i.Id);
 
         var page = ordered.Skip(offset).Take(limit);
 
