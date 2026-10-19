@@ -222,6 +222,43 @@ public class WorkControllerTests
         Assert.Null(Only(await h.Work.GetQueue(0, null, default)).Model);
     }
 
+    [Fact]
+    public async Task Queue_RowCarriesThePlaybooksDeniedTools()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.Todo, h.InProgress, "story", "sonnet", briefLimit: 1000,
+            deniedTools: ["Bash(git push:*)", "WebFetch"]));
+        await h.FileAsync("story", "denied what the playbook denies", h.Todo);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.Equal(new[] { "Bash(git push:*)", "WebFetch" }, entry.DeniedTools);
+    }
+
+    [Fact]
+    public async Task Queue_RowWithNoPlaybookCarriesNoDeniedTools()
+    {
+        var h = await NewAsync();
+        h.Db.Playbooks.RemoveRange(h.Db.Playbooks.Where(p => p.FromStatusId == h.Todo));
+        await h.Db.SaveChangesAsync();
+        await h.FileAsync("story", "nothing matches this", h.Todo);
+
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default)).DeniedTools);
+    }
+
+    [Fact]
+    public async Task Queue_RowWhosePlaybookDeniesNothingCarriesAnEmptyList()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.Todo, h.InProgress, "story", "sonnet", briefLimit: 1000));
+        await h.FileAsync("story", "a playbook that denies nothing", h.Todo);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.NotNull(entry.DeniedTools);
+        Assert.Empty(entry.DeniedTools);
+    }
+
     /// <summary>
     /// "Mine held" (docs/hatch.md): plain `next`, without `mine`, still skips a
     /// ticket assigned to the caller's own person exactly as it skips anybody
@@ -1204,6 +1241,21 @@ public class WorkControllerTests
 
         Assert.True(entry.Hop);
         Assert.Equal("sonnet", entry.Model);
+    }
+
+    [Fact]
+    public async Task Queue_AHopRowStillCarriesTheDeniedTools()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.Todo, h.InProgress, "story", "sonnet", briefLimit: 1000, deniedTools: ["WebFetch"]));
+        var issue = await h.FileAsync("story", "carried across, still denied", h.Todo);
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Todo);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.True(entry.Hop);
+        Assert.Equal(new[] { "WebFetch" }, entry.DeniedTools);
     }
 
     [Fact]
@@ -10778,7 +10830,7 @@ public class WorkControllerTests
 
     private static EfHatchPlaybook Playbook(
         int from, int to, string types, string model, string shape = "any", int? briefLimit = null,
-        int? projectId = null, bool isCheck = false) => new()
+        int? projectId = null, bool isCheck = false, IReadOnlyList<string>? deniedTools = null) => new()
     {
         FromStatusId = from,
         ToStatusId = to,
@@ -10788,6 +10840,7 @@ public class WorkControllerTests
         Model = model,
         Effort = "high",
         BriefLimit = briefLimit,
+        DeniedTools = EfHatchPlaybook.WriteDeniedTools(deniedTools),
         ProjectId = projectId,
         IsCheck = isCheck,
         CreatedAt = Now,

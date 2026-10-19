@@ -1912,6 +1912,11 @@ public record WorkRepositoryDto(string Remote, string Canonical, string? BaseBra
 /// matched, and on an approve or close hop, which spends no session. Read by
 /// a client that spawns, to know a row's model before it claims it.
 /// </param>
+/// <param name="DeniedTools">
+/// The matched playbook's denied-tools rules, as written; null where no
+/// playbook matched, empty where it denies nothing. Read by a client that
+/// spawns, to skip a row its agent cannot honour before it claims it.
+/// </param>
 public record QueueEntryDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -1922,7 +1927,8 @@ public record QueueEntryDto(
     string? HopKind = null,
     string? HopUnder = null,
     string? ClearNote = null,
-    string? Model = null);
+    string? Model = null,
+    IReadOnlyList<string>? DeniedTools = null);
 
 /// <summary>
 /// One issue in the review column that a runner holds a checkout for, and what

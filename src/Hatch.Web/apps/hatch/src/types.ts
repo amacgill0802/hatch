@@ -1145,6 +1145,9 @@ export interface QueueEntry {
   /** What a session dispatched for this row would run on - the issue's
       override, else the playbook's. As on `QueueEntryDto`. */
   model: string | null;
+  /** The matched playbook's denied-tools rules as written; null where none
+      matched, empty where it denies nothing. As on `QueueEntryDto`. */
+  deniedTools: string[] | null;
 }
 
 /** One column's share of a subtree: how many of its leaves sit there. A status

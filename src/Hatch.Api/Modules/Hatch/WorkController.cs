@@ -250,7 +250,8 @@ public class WorkController(
             r.HopKind,
             r.HopUnder,
             r.ClearNote,
-            r.Model)).ToList();
+            r.Model,
+            r.DeniedTools)).ToList();
     }
 
     /// <summary>

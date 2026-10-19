@@ -4732,7 +4732,10 @@ those are the payload of one agent working one issue, and loading them for
 every row would make a whole-board read expensive for nothing. What a row does
 carry is `QueueEntryDto.Model`, the model a session would run on (the issue's
 override, else the matched playbook's), which is what lets a runner skip a row
-pinned to another agent's family before it claims it.
+pinned to another agent's family before it claims it. `QueueEntryDto.DeniedTools`
+is the matched playbook's deny rules as written (null with no playbook, empty
+where it denies nothing), which lets a runner skip a row its agent cannot honour
+a deny rule for before it claims it.
 
 **The rows arrive in the board's own order.** Rightmost column first, and
 within a column the `(rank, id)` that `GET /api/hatch/board` serves that column

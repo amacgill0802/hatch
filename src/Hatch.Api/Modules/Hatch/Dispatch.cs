@@ -310,7 +310,8 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                             : null,
                         effective[issue.Id].Level,
                         effective[issue.Id].FromKey,
-                        Model: issue.ModelOverride ?? playbook?.Model));
+                        Model: issue.ModelOverride ?? playbook?.Model,
+                        DeniedTools: playbook is null ? null : EfHatchPlaybook.ReadDeniedTools(playbook.DeniedTools) ?? []));
                 }
             }
 
@@ -1426,7 +1427,7 @@ public sealed record ScanRow(
     EfHatchIssue Issue, EfHatchStatus From, EfHatchStatus? To, string? Blocked, string Kind, bool Hop,
     string? HopKind = null, string? HopUnder = null, string? ClearNote = null,
     int EffectivePriority = PriorityLevels.Normal, string? EffectiveFrom = null,
-    string? Model = null);
+    string? Model = null, IReadOnlyList<string>? DeniedTools = null);
 
 /// <summary>
 /// A finished pass, or the argument it would not accept. A refusal carries
