@@ -15,6 +15,7 @@ import { PullToRefresh } from './components/PullToRefresh';
 import { BoardPage } from './pages/BoardPage';
 import { PlanPage } from './pages/PlanPage';
 import { ReportsPage } from './pages/ReportsPage';
+import { SearchPage } from './pages/SearchPage';
 import { TimelinePage } from './pages/TimelinePage';
 import { LeaderboardPage } from './pages/LeaderboardPage';
 import { IssuePage } from './pages/IssuePage';
@@ -138,6 +139,7 @@ function AppShell() {
             <Route path="/plan" element={<PlanPage />} />
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/reports/timeline" element={<TimelinePage />} />
+            <Route path="/search" element={<SearchPage />} />
             <Route path="/leaderboard" element={<LeaderboardPage />} />
             <Route path="/bulk" element={<BulkPage />} />
             <Route path="/projects" element={<ProjectsPage />} />
