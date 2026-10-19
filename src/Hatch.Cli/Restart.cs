@@ -162,6 +162,9 @@ public sealed record NightState
     /// <summary>What they cost, in dollars.</summary>
     public decimal Spent { get; init; }
 
+    /// <summary>How many increments reported tokens and no price, so a restart does not forget them. Absent in an older state file, which reads as none.</summary>
+    public int Unpriced { get; init; }
+
     /// <summary>When the first incarnation started, so the elapsed time is the night's.</summary>
     public DateTimeOffset Started { get; init; }
 

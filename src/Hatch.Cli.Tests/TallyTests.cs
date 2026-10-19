@@ -6,7 +6,7 @@ namespace Hatch.Cli.Tests;
 public sealed class TallyTests
 {
     private static IncrementReport Report(
-        string key = "AER-1", int exit = 0, decimal cost = 1m, bool moved = true, bool lost = false,
+        string key = "AER-1", int exit = 0, decimal? cost = 1m, long? totalTokens = null, bool moved = true, bool lost = false,
         DateTimeOffset? usageLimitResetAt = null, bool letGo = false, bool preempted = false, int filed = 0,
         bool skipped = false, bool clamped = false, long? clampedAtTokens = null, int? clampedAtRequests = null,
         bool hardLimited = false, long? hardLimitedAtTokens = null, int? hardLimitedAtRequests = null) =>
@@ -21,6 +21,7 @@ public sealed class TallyTests
             LetGo = letGo,
             ExitCode = exit,
             Cost = cost,
+            TotalTokens = totalTokens,
             LostLease = lost,
             UsageLimitResetAt = usageLimitResetAt,
             Preempted = preempted,
@@ -214,6 +215,80 @@ public sealed class TallyTests
         spend.Record(Report(cost: 1.5m));
         Assert.True(spend.ShouldStop());
         Assert.Contains("$3.50", spend.StopWhy!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void An_unpriced_increment_is_counted_but_never_against_max_spend()
+    {
+        var tally = new Tally(TimeProvider.System) { MaxSpend = 3m };
+
+        tally.Record(Report(cost: 2m));
+        tally.Record(Report(cost: null, totalTokens: 90_000));
+
+        Assert.Equal(2m, tally.Spent);
+        Assert.Equal(1, tally.Unpriced);
+        Assert.False(tally.ShouldStop());
+    }
+
+    [Fact]
+    public void An_increment_with_neither_tokens_nor_cost_is_not_reported_and_not_unpriced()
+    {
+        var tally = new Tally(TimeProvider.System);
+
+        tally.Record(Report(cost: null, totalTokens: null));
+
+        Assert.Equal(0, tally.Unpriced);
+    }
+
+    [Fact]
+    public void The_tally_says_once_that_unpriced_increments_are_outside_the_dollars_and_the_cap()
+    {
+        var say = new Transcript();
+        var tally = new Tally(TimeProvider.System) { MaxSpend = 3m };
+        for (var i = 0; i < 3; i++) tally.Record(Report(cost: null, totalTokens: 1_000));
+        tally.StopWhy = "--once, and the pass is done";
+        tally.Print(say);
+
+        var line = Assert.Single(say.Said, l => l.Contains("reported no price", StringComparison.Ordinal));
+        Assert.Contains("3 increment(s) reported no price", line, StringComparison.Ordinal);
+        Assert.Contains("--max-spend counts only priced increments", line, StringComparison.Ordinal);
+        Assert.Contains(say.Said, l => l.Contains("3 unpriced", StringComparison.Ordinal) && l.Contains("$0", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Without_a_max_spend_the_unpriced_line_does_not_mention_one()
+    {
+        var say = new Transcript();
+        var tally = new Tally(TimeProvider.System);
+        tally.Record(Report(cost: null, totalTokens: 1_000));
+        tally.Print(say);
+
+        var line = Assert.Single(say.Said, l => l.Contains("reported no price", StringComparison.Ordinal));
+        Assert.DoesNotContain("--max-spend", line, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_night_with_nothing_unpriced_says_nothing_of_it()
+    {
+        var say = new Transcript();
+        var tally = new Tally(TimeProvider.System) { MaxSpend = 3m };
+        tally.Record(Report(cost: 1m, totalTokens: 1_000));
+        tally.Print(say);
+
+        Assert.DoesNotContain(say.Said, l => l.Contains("unpriced", StringComparison.Ordinal) || l.Contains("reported no price", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void The_unpriced_count_survives_a_restart()
+    {
+        var first = new Tally(TimeProvider.System);
+        first.Record(Report(cost: null, totalTokens: 1_000));
+        first.Record(Report(cost: null, totalTokens: 2_000));
+
+        var second = new Tally(TimeProvider.System, first.ToState());
+
+        Assert.Equal(2, second.Unpriced);
+        Assert.Contains("2 unpriced", second.SoFar(), StringComparison.Ordinal);
     }
 
     [Fact]
