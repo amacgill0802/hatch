@@ -444,21 +444,21 @@ public sealed partial class StreamRender : IAgentStreamReader
 
         foreach (var field in (string[])["command", "file_path", "pattern", "description", "url", "path", "key"])
             if (Text(input, field) is { Length: > 0 } value)
-                return Clip(Flat(Here(value)));
+                return Clip(Flat(Here(_root, value)));
 
-        return Clip(Flat(Here(input.ToString())));
+        return Clip(Flat(Here(_root, input.ToString())));
     }
 
     /// <summary>
     /// Paths as the repository says them. An absolute path to a file in this
     /// tree is most of a terminal line spent on the part that never changes.
     /// </summary>
-    private string Here(string said) =>
-        _root.Length > 0 ? said.Replace(_root.TrimEnd('/') + "/", "") : said;
+    internal static string Here(string root, string said) =>
+        root.Length > 0 ? said.Replace(root.TrimEnd('/') + "/", "") : said;
 
-    private static string Flat(string said) => Whitespace().Replace(said, " ").Trim();
+    internal static string Flat(string said) => Whitespace().Replace(said, " ").Trim();
 
-    private static string Clip(string said) => said.Length > Width ? said[..(Width - 1)] + "…" : said;
+    internal static string Clip(string said) => said.Length > Width ? said[..(Width - 1)] + "…" : said;
 
     /// <summary>Minutes and seconds, as somebody reads them off a terminal.</summary>
     public static string Clock(long seconds) => $"{seconds / 60}m{seconds % 60:00}s";
