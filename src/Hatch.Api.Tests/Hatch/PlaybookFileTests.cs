@@ -338,7 +338,7 @@ public class PlaybookFileTests
         Assert.Null(rows);
         Assert.Contains(
             "a model is one of haiku, sonnet, opus, fable, or a pinned id of a supported agent " +
-            "(claude-opus-5 for claude) - not \"nonsense-1\"",
+            "(claude-opus-5 for claude; gpt-6-astra for codex) - not \"nonsense-1\"",
             problem);
     }
 
