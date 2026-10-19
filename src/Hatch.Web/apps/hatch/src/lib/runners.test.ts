@@ -11,6 +11,7 @@ import {
   mineLabel,
   repositoriesLabel,
   runnerActivity,
+  runnerStrip,
 } from './runners';
 import type { Runner } from '../types';
 
@@ -117,6 +118,56 @@ describe('runnerActivity', () => {
   it('names the weekday for a reset tomorrow', () => {
     const words = activityWords(runner({ exhaustedUntil: at(26 * 3_600_000) }), NOW);
     expect(words).toMatch(/^Out of usage until [A-Za-z]+ at \d{1,2}:\d{2}(am|pm)$/);
+  });
+});
+
+describe('runnerStrip', () => {
+  it('is empty for an empty list', () => {
+    expect(runnerStrip([], NOW)).toEqual([]);
+  });
+
+  it('keeps the order given, not sorted', () => {
+    const a = runner({ name: 'alfa' });
+    const b = runner({ name: 'bravo' });
+
+    expect(runnerStrip([b, a], NOW).map((row) => row.name)).toEqual(['bravo', 'alfa']);
+  });
+
+  it('gives a working row its claim key and line, Working, success and gone false', () => {
+    const [row] = runnerStrip([runner({ claimKey: 'AER-12', line: 'reading the brief' })], NOW);
+
+    expect(row).toMatchObject({
+      words: 'Working',
+      tone: 'success',
+      claimKey: 'AER-12',
+      line: 'reading the brief',
+      gone: false,
+    });
+  });
+
+  it('drops the line from an idle row even when the runner still has one', () => {
+    const [row] = runnerStrip([runner({ line: 'an old line' })], NOW);
+
+    expect(row.line).toBeNull();
+    expect(row.claimKey).toBeNull();
+  });
+
+  it('is gone with no claim key three hours after the last heartbeat', () => {
+    const [row] = runnerStrip([runner({ lastSeenAt: at(-3 * 3_600_000), claimKey: 'AER-12' })], NOW);
+
+    expect(row).toMatchObject({
+      gone: true,
+      words: 'Gone',
+      tone: 'danger',
+      ago: '3 hours ago',
+      claimKey: null,
+    });
+  });
+
+  it('keeps Paused on a paused row', () => {
+    const [row] = runnerStrip([runner({ state: 'paused' })], NOW);
+
+    expect(row.words).toBe('Paused');
   });
 });
 

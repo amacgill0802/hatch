@@ -13,6 +13,7 @@
    row against one instant. */
 
 import { resetClockWords } from './attention';
+import { agoPhrase } from './claim';
 import type { Runner, RunnerPatchRequest } from '../types';
 
 /** The six states a row can be in, in the order they are decided. */
@@ -73,6 +74,60 @@ export function activityWords(runner: Runner, now: Date): string {
     default:
       return 'Idle';
   }
+}
+
+/** What each activity is worth saying loudly. Working is the one worth a colour
+    - it is the row that is spending money right now - and gone is the one worth
+    a warning. */
+export const ACTIVITY_TONES: Record<RunnerActivity, 'muted' | 'success' | 'danger' | 'primary'> = {
+  working: 'success',
+  stopping: 'primary',
+  paused: 'primary',
+  exhausted: 'danger',
+  gone: 'danger',
+  idle: 'muted',
+};
+
+/** One row of the strip the queue modal draws: every per-runner decision the
+    strip needs, already made, so the component only draws. */
+export interface RunnerStripRow {
+  name: string;
+  where: string | null;
+  activity: RunnerActivity;
+  words: string;
+  tone: 'muted' | 'success' | 'danger' | 'primary';
+  claimKey: string | null;
+  line: string | null;
+  ago: string;
+  gone: boolean;
+}
+
+/**
+ * The strip's rows, in the order the runners were given - the server's order,
+ * most recently heard from first, is the order, so this does not sort.
+ *
+ * `claimKey` and `line` belong to a working row only: the strip draws the key
+ * beside the badge as a link, so a ghost, an idle runner and a paused one
+ * carry neither, and `words` says plainly `Working` rather than
+ * `activityWords`' `Working AER-12`, which would say the key twice.
+ */
+export function runnerStrip(runners: readonly Runner[], now: Date): RunnerStripRow[] {
+  return runners.map((runner) => {
+    const activity = runnerActivity(runner, now);
+    const working = activity === 'working';
+
+    return {
+      name: runner.name,
+      where: runner.where,
+      activity,
+      words: working ? 'Working' : activityWords(runner, now),
+      tone: ACTIVITY_TONES[activity],
+      claimKey: working ? runner.claimKey : null,
+      line: working ? runner.line : null,
+      ago: agoPhrase(runner.lastSeenAt, now),
+      gone: activity === 'gone',
+    };
+  });
 }
 
 /**
