@@ -1,7 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { PlaybookRow } from './PlaybookRow';
-import type { Playbook, Project, Status } from '../types';
+import { PlaybookFileRowLine } from '../pages/PlaybooksPage';
+import type { Playbook, PlaybookFileRowDto, Project, Status } from '../types';
+
+// PlaybooksPage pulls in PlaybookEditDialog, whose Prompt field's
+// MarkdownEditor reaches lib/clientLogger, which reads `window` at import,
+// and there is no jsdom here - the same stub PlaybookEditDialog.test.tsx uses.
+vi.mock('./MarkdownEditor', () => ({ MarkdownEditor: () => null }));
+vi.mock('../lib/clientLogger', () => ({ clientLogger: { error: () => {} } }));
 
 const BASE: Playbook = {
   id: 1,
@@ -64,6 +71,26 @@ const TWO_PROJECTS: Project[] = [
 
 const noop = () => undefined;
 
+function cells(html: string): string[] {
+  return html.match(/<td[^>]*>.*?<\/td>/gs) ?? [];
+}
+
+const FILE_ROW: PlaybookFileRowDto = {
+  fromStatusId: 1,
+  fromStatusName: 'To Do',
+  toStatusId: 2,
+  toStatusName: 'In Progress',
+  types: [],
+  shape: 'any',
+  prompt: 'Do the thing.',
+  model: 'sonnet',
+  effort: 'medium',
+  budget: null,
+  briefLimit: null,
+  deniedTools: [],
+  isCheck: false,
+};
+
 describe('PlaybookRow', () => {
   it('names the transition by its two ends', () => {
     const html = renderToStaticMarkup(
@@ -98,20 +125,32 @@ describe('PlaybookRow', () => {
     expect(html).toContain('bug');
   });
 
-  it('shows the model and effort as plain text', () => {
+  it('shows the model and effort as plain text, each in its own cell', () => {
     const html = renderToStaticMarkup(
       <PlaybookRow playbook={BASE} projects={ONE_PROJECT} statuses={STATUSES} onEdit={noop} onDelete={noop} />,
     );
-    expect(html).toContain('sonnet');
-    expect(html).toContain('medium');
+    expect(html).not.toContain('hatch-playbook-model-effort');
+    const rowCells = cells(html);
+    expect(rowCells.some((c) => c === '<td>sonnet</td>')).toBe(true);
+    expect(rowCells.some((c) => c === '<td>medium</td>')).toBe(true);
   });
 
-  it('draws no project info with a single project', () => {
+  it('draws no project info with a single project, and one <td> per header', () => {
     const html = renderToStaticMarkup(
       <PlaybookRow playbook={BASE} projects={ONE_PROJECT} statuses={STATUSES} onEdit={noop} onDelete={noop} />,
     );
     expect(html).not.toContain('All projects');
     expect(html).not.toContain('role="img"');
+    // Transition, Types, Model, Effort, Delete - no Project column.
+    expect(cells(html)).toHaveLength(5);
+  });
+
+  it('draws a Project cell, alongside the rest, with multiple projects', () => {
+    const html = renderToStaticMarkup(
+      <PlaybookRow playbook={BASE} projects={TWO_PROJECTS} statuses={STATUSES} onEdit={noop} onDelete={noop} />,
+    );
+    // Transition, Project, Types, Model, Effort, Delete.
+    expect(cells(html)).toHaveLength(6);
   });
 
   it('shows "board-wide" for a board-wide row, with multiple projects', () => {
@@ -223,5 +262,23 @@ describe('PlaybookRow', () => {
     expect(openButton).not.toBeNull();
     expect(openButton![0]).toContain('aria-label="Edit To Do to In Progress"');
     expect(html.match(/<button/g)?.length).toBe(2);
+
+    const deleteButton = /<button[^>]*>Delete<\/button>/.exec(html)![0];
+    expect(deleteButton).not.toContain('aria-label="Edit');
+    expect(html.match(/aria-label="Edit/g)?.length).toBe(1);
+  });
+
+  it('has the same cell count as the matching file row line, under a project filter', () => {
+    const rowHtml = renderToStaticMarkup(
+      <PlaybookRow playbook={BASE} projects={TWO_PROJECTS} statuses={STATUSES} onEdit={noop} onDelete={noop} />,
+    );
+    const fileHtml = renderToStaticMarkup(
+      <table>
+        <tbody>
+          <PlaybookFileRowLine row={FILE_ROW} statuses={STATUSES} label="HA's own" />
+        </tbody>
+      </table>,
+    );
+    expect(cells(fileHtml)).toHaveLength(cells(rowHtml).length);
   });
 });

@@ -3525,13 +3525,6 @@ input.hatch-inline-title-input {
   background: var(--primary-bg);
 }
 
-/* The trailing model/effort text steps down so the transition, project and
-   types read as the row's real subject. */
-.hatch-playbook-model-effort {
-  font-size: var(--t-label);
-  color: var(--muted);
-}
-
 /* A muted separator between a transition's two StatusPills, distinct from the
    bare arrow glyph Confirmations.tsx and BulkPage.tsx use elsewhere - this is
    a local rule for this row only. */
