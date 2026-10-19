@@ -506,6 +506,12 @@
 .hatch-column-horizon {
   color: var(--muted);
   font-size: var(--t-label);
+  text-decoration: none;
+}
+
+.hatch-column-horizon:hover,
+.hatch-column-horizon:focus-visible {
+  text-decoration: underline;
 }
 
 /* The column's colour as a mark beside its name. Small, because the column
