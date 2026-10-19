@@ -11,9 +11,11 @@ import type { Playbook, Project, Status } from '../types';
  * presentational, the `ProjectRow` shape - the page owns both pieces of
  * state Edit opens into.
  *
- * The whole informational area is itself the open control - there is no
- * separate Edit button - so Delete sits in its own trailing `<td>`, outside
- * the button's DOM subtree: a `<button>` cannot legally nest another one.
+ * One `<td>` per header, matching `PlaybookFileRowLine`'s shape. The open
+ * control is the button in the Transition cell - there is no separate Edit
+ * button - and the `<tr>` takes the same click as a convenience; Delete
+ * stays outside it, since a `<button>` cannot legally nest another one, and
+ * stops the click from reaching the row's own handler.
  */
 export function PlaybookRow({
   playbook,
@@ -35,8 +37,8 @@ export function PlaybookRow({
   const multipleProjects = hasMultipleProjects(projects);
 
   return (
-    <tr>
-      <td colSpan={multipleProjects ? 5 : 4}>
+    <tr onClick={onEdit}>
+      <td>
         <button
           type="button"
           className="hatch-playbook-row-open"
@@ -55,26 +57,33 @@ export function PlaybookRow({
               {toStatus ? <StatusPill status={toStatus} /> : <strong>{playbook.toStatusName}</strong>}
             </>
           )}
-
-          {multipleProjects && <Text tone="muted" as="span">{playbookLabel(playbook)}</Text>}
-
-          {playbook.types.length > 0 ? (
-            playbook.types.map((t) => <TypeBadge key={t} type={t} />)
-          ) : (
-            <Text tone="muted" as="span">any</Text>
-          )}
-
-          <span className="hatch-playbook-model-effort">
-            {playbook.model} {playbook.effort}
-          </span>
-
-          {isUncheckedEdit(playbook) && <Badge tone="danger">a check with no denied tools can edit</Badge>}
-          {isOverridden(playbook) && <Badge tone="muted">the operator&apos;s own wording</Badge>}
-          {shadowed && <Badge tone="muted">shadowed by the file</Badge>}
         </button>
+        {isUncheckedEdit(playbook) && <Badge tone="danger">a check with no denied tools can edit</Badge>}
+        {isOverridden(playbook) && <Badge tone="muted">the operator&apos;s own wording</Badge>}
+        {shadowed && <Badge tone="muted">shadowed by the file</Badge>}
       </td>
+      {multipleProjects && (
+        <td>
+          <Text tone="muted" as="span">{playbookLabel(playbook)}</Text>
+        </td>
+      )}
       <td>
-        <Button variant="danger" onClick={onDelete}>
+        {playbook.types.length > 0 ? (
+          playbook.types.map((t) => <TypeBadge key={t} type={t} />)
+        ) : (
+          <Text tone="muted" as="span">any</Text>
+        )}
+      </td>
+      <td>{playbook.model}</td>
+      <td>{playbook.effort}</td>
+      <td>
+        <Button
+          variant="danger"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+        >
           Delete
         </Button>
       </td>
