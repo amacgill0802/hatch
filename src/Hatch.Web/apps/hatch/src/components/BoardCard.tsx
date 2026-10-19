@@ -98,8 +98,9 @@ export function BoardCard({
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: card.key });
   // Called whether or not there is a band - a hook cannot sit behind one. Only
   // the listeners and the description are conditional, so with flow-viz off
-  // nothing is attached.
-  const tip = useCallout();
+  // nothing is attached. The key is what Callout.Group's onOpenChange reports
+  // as open, which is how BoardPage spotlights the board.
+  const tip = useCallout(card.key);
   const nested = depth > 0;
 
   return (
