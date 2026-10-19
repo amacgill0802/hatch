@@ -6,3 +6,11 @@ import type { Comment } from '../types';
  * caller's array is state somebody else still reads oldest-first.
  */
 export const newestFirst = (comments: Comment[]): Comment[] => [...comments].reverse();
+
+/**
+ * What the "newest first" glyph on a section title says, to a screen reader
+ * and on hover. Written here, beside the reversal it describes, so the wording
+ * is pinned once rather than at each of the four titles that carry the glyph.
+ */
+export const NEWEST_FIRST_LABEL = 'newest first';
+export const NEWEST_FIRST_TITLE = 'Newest first';

@@ -2164,6 +2164,23 @@ input.hatch-inline-title-input {
   margin: 0;
 }
 
+/* The title and its "newest first" glyph (components/NewestFirstGlyph.tsx).
+   The flex lives on this inner span, never on .hatch-section-title: that
+   class is a <summary> kept at its native list-item display so the browser's
+   triangle still draws, and it is shared with IssuePeek's <h4> and
+   BoardFilters' <summary>. The glyph rides the title's own font size. */
+.hatch-section-title-row {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+.hatch-newest-first-glyph {
+  width: 1em;
+  height: 1em;
+  flex: none;
+}
+
 /* .hatch-section-title also lands on BoardFilters' own <summary> (Filters)
    and on IssuePeek's bare <h4> - neither is this component's to change, so
    the pointer and the touch floor below are keyed off .hatch-issue-section's
