@@ -59,6 +59,15 @@ public sealed class CodexAdapterTests : IDisposable
     }
 
     [Fact]
+    public void OutputLastMessagePath_is_the_file_BuildHeadless_asked_for_and_null_without_hooks()
+    {
+        var home = Path.Combine(Path.GetTempPath(), "codex-home");
+
+        Assert.Equal(Path.Combine(home, "last-message.txt"), Adapter().OutputLastMessagePath(Request(hooks: home)));
+        Assert.Null(Adapter().OutputLastMessagePath(Request()));
+    }
+
+    [Fact]
     public void BuildHeadless_without_hooks_adds_no_output_file_and_sets_no_codex_home()
     {
         var start = Adapter().BuildHeadless(Request());

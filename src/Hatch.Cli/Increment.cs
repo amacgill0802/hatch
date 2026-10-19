@@ -914,6 +914,26 @@ public sealed class Increment(
             }
         }
 
+        // The CLI's own final answer, where this adapter asked it to write one.
+        // Preferred over what the stream said last: a process killed mid-render
+        // can leave the stream short of the model's true last word, and the file
+        // is written whole.
+        void ReadOutputLastMessage()
+        {
+            if (adapter.OutputLastMessagePath(request) is not { Length: > 0 } path || !File.Exists(path)) return;
+
+            try
+            {
+                var said = File.ReadAllText(path).Trim();
+                if (said.Length > 0) facts.LastAssistantText = said;
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                // Best-effort, the same as every other read of a file in this
+                // area: the stream's own last word stands.
+            }
+        }
+
         await MarkSaidAsync(work, ct);
 
         if (quiet)
@@ -935,7 +955,17 @@ public sealed class Increment(
                 // needed a line because its renderer read a pipe, and the text a
                 // session ends with is made of newlines that matter.
                 if (adapter.ReadClosing(output) is { Length: > 0 } closing) say.Line(closing);
-                foreach (var line in render.Read(output)) say.Line(line);
+
+                // One event per line, as the streamed path reads them: an agent
+                // whose quiet output is itself a stream has no single closing
+                // object, and a reader handed the whole blob would throw on the
+                // second event and draw nothing. For an agent that does answer
+                // with one object this is a single pass.
+                foreach (var raw in output.Split('\n'))
+                {
+                    if (raw.Trim().Length == 0) continue;
+                    foreach (var line in render.Read(raw)) say.Line(line);
+                }
             }
             else if (output.Length > 0)
             {
@@ -952,6 +982,7 @@ public sealed class Increment(
             if (facts.Result is { } quietEntry) facts.Result = quietEntry with { PromptChars = prompt.Length };
 
             ReadClamp();
+            ReadOutputLastMessage();
             return quietly;
         }
 
@@ -1022,6 +1053,7 @@ public sealed class Increment(
             };
 
         ReadClamp();
+        ReadOutputLastMessage();
         return streamed;
     }
 
