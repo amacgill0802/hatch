@@ -165,6 +165,18 @@ public sealed class IncrementReport
     public IReadOnlyList<string> Filed { get; set; } = [];
 
     /// <summary>
+    /// A plain increment's session wrote no work-log title - the no-fence
+    /// case the override in <see cref="Increment.RunAsync"/> catches.
+    /// </summary>
+    public bool NoWorkLog { get; set; }
+
+    /// <summary>
+    /// A plain increment's result event came back <c>is_error</c> - the other
+    /// case the override in <see cref="Increment.RunAsync"/> catches.
+    /// </summary>
+    public bool ResultErrored { get; set; }
+
+    /// <summary>
     /// The lease went while the session was running, so the session was stopped.
     /// Not a failure: it is the loop working correctly on a busy board, and
     /// three of them in a row must not end a night.
@@ -557,6 +569,25 @@ public sealed class Increment(
                 // limit has nothing finished to apply either.
                 if (checkTreeUnchanged is not null && claim.Lost is null && !report.UsageLimited && !report.Preempted && !report.HardLimited)
                     await JudgeCheckAsync(report, work, claim, checkTreeUnchanged, ct);
+
+                // A plain increment's own board-read verdict, above, does not
+                // know what the session actually said: a session that wrote
+                // no work-log title, or whose result event came back
+                // is_error, moved or filed something anyway only because the
+                // board read ran before anything looked at facts.Result. A
+                // conflict, build or check increment already has its own
+                // independent, git-verified refusal (JudgeAsync's
+                // still-conflicts branch, JudgeBuildAsync's still-failing
+                // branch, JudgeCheckAsync's applied-is-null branch) and must
+                // keep final say over its own verdict, so this is guarded off
+                // for all three.
+                if (conflict is null && build is null && checkTreeUnchanged is null
+                    && (facts.Result?.Title is null || facts.Result is { IsError: true }))
+                {
+                    report.NoWorkLog = facts.Result?.Title is null;
+                    report.ResultErrored = facts.Result is { IsError: true };
+                    (report.Moved, report.Stalled) = (false, true);
+                }
 
                 // Whatever the session asked for on its way out. This is the
                 // half of the loop that makes asking worth doing: an unattended
