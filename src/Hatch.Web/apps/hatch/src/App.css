@@ -5578,6 +5578,44 @@ button.hatch-option.chosen {
   fill: currentColor;
 }
 
+/* ---- Flow viz ----
+
+   The button beside the work queue control that bands every card with its
+   place in the queue - framed exactly like .hatch-queue-control above, and
+   pressed exactly like .hatch-leaderboard-preset.active below. */
+
+.hatch-flow-viz-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-1-5);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-ctl);
+  background: var(--card);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.hatch-flow-viz-control:hover {
+  filter: brightness(0.97);
+}
+
+.hatch-flow-viz-control:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.hatch-flow-viz-control.active {
+  border-color: var(--primary);
+  background: var(--primary-bg);
+  color: var(--primary-ink);
+}
+
+.hatch-flow-viz-glyph {
+  width: 18px;
+  height: 18px;
+}
+
 .hatch-queue-reading-field {
   margin-bottom: var(--sp-3);
 }
