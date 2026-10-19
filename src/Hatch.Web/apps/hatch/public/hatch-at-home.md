@@ -96,8 +96,10 @@ a Full board toggle, remembered per browser, brings the usual columns back.
 A card that reaches Done does not sit there forever: by default it leaves the
 board two days after it closes, so the column's count stays a true read of
 what just shipped rather than a growing pile of everything that ever has. The
-card is not gone — it closed, and still can be found — only off this one
-screen.
+card is not gone — it closed, and can still be found by searching: press `/`
+on the board and take the trailing **Search everything** row, or follow the
+column's own `last 2 days` note, which opens Search already filtered to what
+closed there.
 
 **Manage → Projects → New project** is therefore the first thing to do. A
 project is a key namespace rather than a container: give it a short key and

@@ -1,6 +1,8 @@
+import { Link } from 'react-router-dom';
 import { LockIcon } from '@hatch/ui';
 import { StatusDot } from './StatusPill';
 import { doneHorizonPhrase } from '../lib/doneHorizon';
+import { statusPath } from '../lib/search';
 import type { Status } from '../types';
 
 /** Why a protected column's lock mark says what it says - the same sentence
@@ -36,7 +38,13 @@ export function ColumnHead({
       <span className="hatch-column-name">{status.name}</span>
       <span className="hatch-column-count">{count}</span>
       {status.isTerminal && doneHorizonHours !== null && (
-        <span className="hatch-column-horizon">last {doneHorizonPhrase(doneHorizonHours)}</span>
+        <Link
+          className="hatch-column-horizon"
+          to={statusPath(status.id)}
+          title="Search everything that has closed here"
+        >
+          last {doneHorizonPhrase(doneHorizonHours)}
+        </Link>
       )}
       {status.isProtected && (
         <span className="hatch-column-lock" role="img" aria-label={LOCK_REASON} title={LOCK_REASON}>
