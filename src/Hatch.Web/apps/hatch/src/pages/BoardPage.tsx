@@ -18,6 +18,7 @@ import { BoardCard, CardPreview } from '../components/BoardCard';
 import { BoardFilters } from '../components/BoardFilters';
 import { CloseSubtreeDialog } from '../components/CloseSubtreeDialog';
 import { ColumnHead } from '../components/ColumnHead';
+import { FlowVizControl } from '../components/FlowVizControl';
 import { IssuePeek } from '../components/IssuePeek';
 import { NewIssueDialog } from '../components/NewIssueDialog';
 import { OmniBar } from '../components/OmniBar';
@@ -41,12 +42,16 @@ import {
 } from '../lib/filter';
 import type { CardFilter } from '../lib/filter';
 import { aimAt } from '../lib/aim';
+import { getFlowBoard } from '../lib/flowViz';
+import type { FlowBoard } from '../lib/flowViz';
 import { whereOnBoard } from '../lib/goTo';
 import { readBoardView, resolveBoardLayout, startsCollapsed, writeBoardView } from '../lib/phoneBoard';
 import type { BoardView } from '../lib/phoneBoard';
 import { columnDroppableId, place, sendTo, targetStatusId } from '../lib/place';
 import type { Placement } from '../lib/place';
 import { columnBlocked } from '../lib/protectedColumns';
+import { flowBand } from '../lib/queue';
+import type { QueueEntry } from '../types';
 import { askingCount } from '../lib/questions';
 import { isWaiting } from '../lib/schedule';
 import { lineage } from '../lib/lineage';
@@ -62,7 +67,7 @@ import { overridden, wipRefusal } from '../lib/wipOverride';
 import { meterText, preview, runs, tightest } from '../lib/wip';
 import type { Tightness } from '../lib/wip';
 import { WipBands } from '../components/WipBands';
-import type { AssigneeDirectory, Board, IssueCard, Project, Status, Wip } from '../types';
+import type { AssigneeDirectory, IssueCard, Project, Status, Wip } from '../types';
 
 /** The URL's whole vocabulary here: which project, by key - the same param
     PlanPage's picker uses. */
@@ -103,6 +108,13 @@ export function BoardPage() {
   const layout = resolveBoardLayout(isPhone, view);
   const stacked = layout === 'stacked';
 
+  // Off on every open, and not remembered - a press is for this look at the
+  // board, not a standing preference. Never on at phone width: the stacked
+  // layout's own PhoneColumn never gets a rows map, so a band would have
+  // nowhere to land.
+  const [flowViz, setFlowViz] = useState(false);
+  const flowing = flowViz && !stacked;
+
   // The card under the cursor and the column it is over, kept only for the
   // duration of a drag: one paints the overlay, the other lights up the column
   // the drop would land in. Above the loader, which pauses its refresh for both.
@@ -114,13 +126,20 @@ export function BoardPage() {
      is still out cannot lift the guard early. */
   const [moving, setMoving] = useState(0);
 
+  // A changed `load` re-runs useLoaded's effect, so pressing FlowVizControl
+  // reads at once rather than waiting for the next 30s tick - see
+  // lib/flowViz.ts. Board and queue land under one ledger this way, so the
+  // drag/move pause below holds both.
   const {
     data: board,
     setData: setBoard,
     error,
     setError,
     reload,
-  } = useLoaded<Board>(getBoard, { everyMs: POLL_MS, paused: dragging !== null || moving > 0 });
+  } = useLoaded<FlowBoard>(flowing ? getFlowBoard : getBoard, {
+    everyMs: POLL_MS,
+    paused: dragging !== null || moving > 0,
+  });
   const { projects, byKey: projectsByKey } = useProjects();
   const showProjectMark = hasMultipleProjects(projects);
   /* Who is signed in, read once for the whole board rather than once per card
@@ -273,6 +292,14 @@ export function BoardPage() {
      shelving something, and they are still a click away by key or from their
      parent's Filed under list. */
   const columns = useMemo(() => boardColumns(board?.statuses ?? []), [board?.statuses]);
+
+  /* Keyed by `row.issue.key`, for Column's BoardCard calls to band a card by
+     a lookup rather than a scan - null while flow-viz is off, or before its
+     queue has landed. */
+  const rows = useMemo(
+    () => (flowing && board?.queue ? new Map(board.queue.map((row) => [row.issue.key, row])) : null),
+    [flowing, board?.queue],
+  );
 
   /* How full the WIP section is, and which of the drawn columns are in it -
      read from board.wip and nothing else, so a column flagged isWip with no
@@ -522,6 +549,12 @@ export function BoardPage() {
   // refresh. Keyed by key alone below, so the description is not fetched again.
   const peeked = peeking && (board.issues.find((i) => i.key === peeking.key) ?? peeking);
 
+  // useLoaded clears `error` on any board that lands, so a failed queue read
+  // (the board itself still landing fine) has to be read off the answer's
+  // own `queueError` instead - and only while flow-viz is on, so a stale
+  // queueError left over from before a press turned it off is not shown.
+  const boardError = error ?? (flowing ? board.queueError ?? null : null);
+
   // Marks the card and peeks it - or, where the card is not on the board to be
   // marked, peeks it and leaves the filter, the folds and the scroll alone.
   const onTake = (card: IssueCard) => {
@@ -592,6 +625,7 @@ export function BoardPage() {
         trailing={
           <>
             <QueueControl cards={board.issues} onTake={onTake} />
+            {!stacked && <FlowVizControl on={flowViz} onToggle={() => setFlowViz((v) => !v)} />}
             {isPhone ? (
               <button
                 type="button"
@@ -613,7 +647,7 @@ export function BoardPage() {
         }
       />
 
-      {error && <p className="text-danger">{error}</p>}
+      {boardError && <p className="text-danger">{boardError}</p>}
 
       {columns.length === 0 ? (
         <EmptyState message="This board has no columns yet." />
@@ -680,6 +714,7 @@ export function BoardPage() {
                 projectsByKey={projectsByKey}
                 showProjectMark={showProjectMark}
                 doneHorizonHours={board.doneHorizonHours ?? null}
+                rows={rows}
               />
             ))}
           </div>
@@ -786,6 +821,7 @@ function Column({
   projectsByKey,
   showProjectMark,
   doneHorizonHours,
+  rows,
 }: {
   status: Status;
   cards: LineageCard[];
@@ -814,6 +850,9 @@ function Column({
   showProjectMark: boolean;
   /** The board's done-fold horizon, or null where the fold is off. */
   doneHorizonHours: number | null;
+  /** Flow-viz's own queue, keyed by issue key - null while it is off. See
+      lib/queue.ts's `flowBand`. */
+  rows: Map<string, QueueEntry> | null;
 }) {
   const [showWaiting, setShowWaiting] = useState(false);
 
@@ -872,6 +911,7 @@ function Column({
                 found={found === card.key}
                 onPeek={onPeek}
                 project={project}
+                band={rows ? flowBand(rows.get(card.key), card) : undefined}
               />
             );
           })}
