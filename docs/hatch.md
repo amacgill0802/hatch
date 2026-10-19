@@ -2212,7 +2212,7 @@ rows matched — the match is an `EXISTS`, not a join.
 
 **Ranking with `q` is `ts_rank` over the issue's own vector only**: a comment
 or work-log match decides whether an issue is found, not where it sorts.
-Ties: open ahead of closed, then newest-closed, then newest-created. Without
+Ties: closed ahead of open, then newest-closed, then newest-created. Without
 `q` — or with one that reduces to no terms, where `SearchQuery.ToTsQuery`
 returns null — the list is newest-created first.
 
