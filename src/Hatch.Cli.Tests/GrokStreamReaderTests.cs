@@ -1,0 +1,212 @@
+using System.Text.Json;
+
+namespace Hatch.Cli.Tests;
+
+/// <summary>
+/// Grok Build's own <c>streaming-json</c> and single-object <c>json</c>, read
+/// back into the same <see cref="RunFacts"/> either way.
+/// </summary>
+public sealed class GrokStreamReaderTests
+{
+    private static (RunFacts Facts, GrokStreamReader Reader) New()
+    {
+        var facts = new RunFacts();
+        return (facts, new GrokStreamReader("/tmp/checkout", facts));
+    }
+
+    [Fact]
+    public void TheSessionId_IsMintedBeforeAnyLine_AndReplacedByEnd()
+    {
+        var (facts, reader) = New();
+
+        var minted = facts.SessionId;
+        Assert.False(string.IsNullOrEmpty(minted));
+        Assert.True(Guid.TryParse(minted, out _));
+
+        reader.Read(Fixtures.GrokEnd(sessionId: "abc123"));
+
+        Assert.Equal("abc123", facts.SessionId);
+        Assert.NotEqual(minted, facts.SessionId);
+    }
+
+    [Fact]
+    public void Usage_DrivesTheFourTokenKinds_DedupedByMessageId_AndExcludesReasoning()
+    {
+        var (_, reader) = New();
+
+        reader.Read(Fixtures.GrokUsage(
+            messageId: "resp_1", inputTokens: 100, outputTokens: 50, cacheReadTokens: 10, cacheCreationTokens: 5, reasoningTokens: 999));
+        reader.Read(Fixtures.GrokUsage(
+            messageId: "resp_1", inputTokens: 100, outputTokens: 50, cacheReadTokens: 10, cacheCreationTokens: 5, reasoningTokens: 999));
+
+        Assert.Equal(165, reader.TokensSoFar); // 100+50+10+5, never the 999 reasoning tokens
+        Assert.Equal(1, reader.Requests);
+        Assert.Equal(115, reader.PeakContextTokens); // 100+5+10, output excluded
+    }
+
+    [Fact]
+    public void Usage_CountsEveryLine_WhenMessageIdIsAbsent()
+    {
+        var (_, reader) = New();
+
+        reader.Read(Fixtures.GrokUsage(messageId: null, inputTokens: 10, outputTokens: 10));
+        reader.Read(Fixtures.GrokUsage(messageId: null, inputTokens: 10, outputTokens: 10));
+
+        Assert.Equal(2, reader.Requests);
+        Assert.Equal(40, reader.TokensSoFar);
+    }
+
+    [Fact]
+    public void TheFinalMessage_IsReadFromTextAfterTheLastToolCall_NotAnEarlierQuotedFence()
+    {
+        var (facts, reader) = New();
+
+        reader.Read(Fixtures.GrokText("```work-log\nAn earlier quoted title\n\nIgnored.\n```"));
+        reader.Read(Fixtures.GrokToolCall());
+        reader.Read(Fixtures.GrokToolUpdate());
+        reader.Read(Fixtures.GrokText("```work-log\nThe real title\n\nThe real summary.\n```"));
+        reader.Read(Fixtures.GrokEnd());
+
+        Assert.Equal("The real title", facts.Result!.Title);
+        Assert.Equal("The real summary.", facts.Result.Summary);
+    }
+
+    [Fact]
+    public void CostUsd_IsNullWithNoCostReported()
+    {
+        var (facts, reader) = New();
+
+        reader.Read(Fixtures.GrokEnd());
+
+        Assert.Null(facts.CostUsd);
+        Assert.Null(facts.Result!.CostUsd);
+    }
+
+    [Fact]
+    public void CostUsd_IsExactFromTicks_AndModelsFollowTheirOwnCostUsd()
+    {
+        var (facts, reader) = New();
+
+        var modelUsage = new Dictionary<string, object>
+        {
+            ["grok-4.6"] = new
+            {
+                inputTokens = 7210,
+                outputTokens = 1893,
+                cacheReadInputTokens = 41000,
+                cacheCreationInputTokens = 0,
+                modelCalls = 7,
+                costUSD = 0.01268905m,
+            },
+        };
+
+        reader.Read(Fixtures.GrokEnd(modelUsage: modelUsage, totalCostUsdTicks: 126890500, totalCostUsd: 0.01268905m));
+
+        Assert.Equal(0.01268905m, facts.CostUsd);
+        Assert.Equal(0.01268905m, facts.Result!.CostUsd);
+
+        var model = Assert.Single(facts.Result.Models!);
+        Assert.Equal(0.01268905m, model.CostUsd);
+    }
+
+    [Fact]
+    public void WithNoModelUsage_OneRowKeyedGrok_CarriesTheTopLevelUsagesCounts()
+    {
+        var (facts, reader) = New();
+
+        var usage = new
+        {
+            input_tokens = 500,
+            output_tokens = 100,
+            cache_read_input_tokens = 20,
+            cache_creation_input_tokens = 5,
+        };
+
+        reader.Read(Fixtures.GrokEnd(usage: usage, totalCostUsd: 0.02m));
+
+        var model = Assert.Single(facts.Result!.Models!);
+        Assert.Equal("grok", model.Model);
+        Assert.Equal(500, model.InputTokens);
+        Assert.Equal(100, model.OutputTokens);
+        Assert.Equal(5, model.CacheCreationTokens);
+        Assert.Equal(20, model.CacheReadTokens);
+        Assert.Equal(0.02m, model.CostUsd);
+    }
+
+    [Fact]
+    public void AnError_LandsItsTextOnBothFields_AndResultStaysNullWithNoEnd()
+    {
+        var (facts, reader) = New();
+
+        reader.Read(Fixtures.GrokError("rate limited"));
+
+        Assert.Equal("rate limited", facts.ResultText);
+        Assert.Equal("rate limited", facts.LastAssistantText);
+        Assert.Null(facts.Result);
+    }
+
+    [Fact]
+    public void TheQuietJsonObject_ReadsToTheSameFactsAsTheStream()
+    {
+        var modelUsage = new Dictionary<string, object>
+        {
+            ["grok-4.6"] = new
+            {
+                inputTokens = 7210,
+                outputTokens = 1893,
+                cacheReadInputTokens = 41000,
+                cacheCreationInputTokens = 0,
+                modelCalls = 7,
+                costUSD = 0.01268905m,
+            },
+        };
+        const string fence = "```work-log\nA title\n\nA summary.\n```";
+
+        var (streamFacts, streamReader) = New();
+        streamReader.Read(Fixtures.GrokUsage(inputTokens: 7210, outputTokens: 1893, cacheReadTokens: 41000, cacheCreationTokens: 0));
+        streamReader.Read(Fixtures.GrokText(fence));
+        streamReader.Read(Fixtures.GrokEnd(modelUsage: modelUsage, totalCostUsdTicks: 126890500, totalCostUsd: 0.01268905m));
+
+        var (jsonFacts, jsonReader) = New();
+        jsonReader.Read(Fixtures.GrokJson(
+            text: fence, inputTokens: 7210, outputTokens: 1893, cacheReadTokens: 41000, cacheCreationTokens: 0,
+            modelUsage: modelUsage, totalCostUsdTicks: 126890500, totalCostUsd: 0.01268905m));
+
+        Assert.Equal("abc123", streamFacts.SessionId);
+        Assert.Equal("abc123", jsonFacts.SessionId);
+        Assert.Equal(streamFacts.CostUsd, jsonFacts.CostUsd);
+        Assert.Equal(streamReader.TokensSoFar, jsonReader.TokensSoFar);
+        Assert.Equal(streamReader.Requests, jsonReader.Requests);
+        Assert.Equal(streamReader.PeakContextTokens, jsonReader.PeakContextTokens);
+        Assert.Equal(streamFacts.Result!.Title, jsonFacts.Result!.Title);
+        Assert.Equal(streamFacts.Result.Summary, jsonFacts.Result.Summary);
+        Assert.Equal(streamFacts.Result.CostUsd, jsonFacts.Result.CostUsd);
+
+        var streamModel = Assert.Single(streamFacts.Result.Models!);
+        var jsonModel = Assert.Single(jsonFacts.Result.Models!);
+        Assert.Equal(streamModel.CostUsd, jsonModel.CostUsd);
+    }
+
+    [Fact]
+    public void AnUnknownType_AndANonJsonLine_DoNotThrow()
+    {
+        var (_, reader) = New();
+
+        var ex1 = Record.Exception(() => reader.Read(JsonSerializer.Serialize(new { type = "thought", data = "thinking" })).ToList());
+        var ex2 = Record.Exception(() => reader.Read(JsonSerializer.Serialize(new { type = "some_future_type" })).ToList());
+        var ex3 = Record.Exception(() => reader.Read("not json at all").ToList());
+
+        Assert.Null(ex1);
+        Assert.Null(ex2);
+        Assert.Null(ex3);
+    }
+
+    [Fact]
+    public void Usage_IsAlwaysEmpty_AndUsageReadAt_IsAlwaysNull()
+    {
+        var (_, reader) = New();
+
+        Assert.Empty(reader.Usage);
+        Assert.Null(reader.UsageReadAt);
+    }
+}

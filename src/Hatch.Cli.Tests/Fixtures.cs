@@ -454,4 +454,95 @@ public static class Fixtures
 
     public static string CodexError(string message) =>
         JsonSerializer.Serialize(new { type = "error", message });
+
+    // ---- Grok Build's own events ----
+
+    public static string GrokText(string data) =>
+        JsonSerializer.Serialize(new { type = "text", data });
+
+    public static string GrokToolCall(string toolCallId = "call_1") =>
+        JsonSerializer.Serialize(new
+        {
+            type = "tool_call",
+            toolCallId,
+            title = "Read",
+            kind = "read",
+            status = "in_progress",
+            toolName = "read_file",
+            rawInput = new { path = "src/main.rs" },
+            content = Array.Empty<object>(),
+            locations = Array.Empty<object>(),
+        });
+
+    public static string GrokToolUpdate(string toolCallId = "call_1", string status = "completed") =>
+        JsonSerializer.Serialize(new
+        {
+            type = "tool_call_update",
+            toolCallId,
+            status,
+            content = Array.Empty<object>(),
+            rawOutput = new { lines = 42 },
+            locations = Array.Empty<object>(),
+        });
+
+    public static string GrokUsage(
+        string? messageId = "resp_1", long inputTokens = 812, long outputTokens = 45,
+        long cacheReadTokens = 0, long cacheCreationTokens = 0, long reasoningTokens = 0, string stopReason = "end_turn") =>
+        JsonSerializer.Serialize(new
+        {
+            type = "usage",
+            messageId,
+            stopReason,
+            usage = new
+            {
+                input_tokens = inputTokens,
+                output_tokens = outputTokens,
+                cache_read_input_tokens = cacheReadTokens,
+                cache_creation_input_tokens = cacheCreationTokens,
+                reasoning_tokens = reasoningTokens,
+            },
+            signature = "sig",
+        });
+
+    public static string GrokEnd(
+        string sessionId = "abc123", string requestId = "xyz789", int numTurns = 7, string stopReason = "end_turn",
+        object? usage = null, object? modelUsage = null, decimal? totalCostUsd = null, long? totalCostUsdTicks = null) =>
+        JsonSerializer.Serialize(new
+        {
+            type = "end",
+            stopReason,
+            sessionId,
+            requestId,
+            num_turns = numTurns,
+            usage,
+            modelUsage,
+            total_cost_usd = totalCostUsd,
+            total_cost_usd_ticks = totalCostUsdTicks,
+        });
+
+    public static string GrokError(string message) =>
+        JsonSerializer.Serialize(new { type = "error", message });
+
+    public static string GrokJson(
+        string? text = null, string sessionId = "abc123", string requestId = "xyz789", int numTurns = 7, string stopReason = "end_turn",
+        long inputTokens = 7210, long outputTokens = 1893, long cacheReadTokens = 41000, long cacheCreationTokens = 0,
+        object? modelUsage = null, decimal? totalCostUsd = null, long? totalCostUsdTicks = null) =>
+        JsonSerializer.Serialize(new
+        {
+            text,
+            stopReason,
+            sessionId,
+            requestId,
+            num_turns = numTurns,
+            usage = new
+            {
+                input_tokens = inputTokens,
+                cache_read_input_tokens = cacheReadTokens,
+                cache_creation_input_tokens = cacheCreationTokens,
+                output_tokens = outputTokens,
+            },
+            modelUsage,
+            total_cost_usd = totalCostUsd,
+            total_cost_usd_ticks = totalCostUsdTicks,
+        });
 }
