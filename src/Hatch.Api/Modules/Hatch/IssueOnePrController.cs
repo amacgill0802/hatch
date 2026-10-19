@@ -54,7 +54,7 @@ public class IssueOnePrController(
     public async Task<ActionResult<IssueDto>> PutIssueOnePr(string key, OnePrRequest request, CancellationToken ct)
     {
         if (!TryParse(request.Value, out var value))
-            return BadRequest($"\"{request.Value}\" is not a one-PR setting - {On}, {Off} or {Inherit}");
+            return BadRequest(UnknownValue(request.Value));
 
         if (!IssueKey.TryParse(key, out var projectKey, out var number)) return NotFound();
 
@@ -62,7 +62,7 @@ public class IssueOnePrController(
         if (issue is null) return NotFound();
 
         if (issue.Type != "story")
-            return BadRequest($"only a story shares one pull request across its tasks - {key} is a {issue.Type}");
+            return BadRequest(NotAStory($"{key} is a {issue.Type}"));
 
         if (value != issue.OnePullRequest)
         {
@@ -89,7 +89,7 @@ public class IssueOnePrController(
         return await IssueProjection.ToDtoAsync(db, actors, issue, claims, time.GetUtcNow(), ct);
     }
 
-    private static bool TryParse(string? text, out bool? value)
+    internal static bool TryParse(string? text, out bool? value)
     {
         value = null;
         switch (text?.Trim().ToLowerInvariant())
@@ -101,5 +101,19 @@ public class IssueOnePrController(
         }
     }
 
-    private static string Name(bool? value) => value switch { true => On, false => Off, null => Inherit };
+    internal static string Name(bool? value) => value switch { true => On, false => Off, null => Inherit };
+
+    /// <summary>
+    /// The refusal for a value that is none of the three, shared with the
+    /// create endpoint so the two cannot drift.
+    /// </summary>
+    internal static string UnknownValue(string? value) =>
+        $"\"{value}\" is not a one-PR setting - {On}, {Off} or {Inherit}";
+
+    /// <summary>
+    /// The refusal for an issue that is not a story; <paramref name="what"/>
+    /// names it - by key where one exists, "this" where it is still being filed.
+    /// </summary>
+    internal static string NotAStory(string what) =>
+        $"only a story shares one pull request across its tasks - {what}";
 }

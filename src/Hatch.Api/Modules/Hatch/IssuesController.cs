@@ -251,6 +251,12 @@ public class IssuesController(
         if (!ReadMoment(request.ReadyAt, "readyAt", out var readyAt, out var momentError)) return BadRequest(momentError);
         if (!ReadMoment(request.DueAt, "dueAt", out var dueAt, out momentError)) return BadRequest(momentError);
 
+        bool? onePr = null;
+        if (request.OnePr is { } onePrText && !IssueOnePrController.TryParse(onePrText, out onePr))
+            return BadRequest(IssueOnePrController.UnknownValue(onePrText));
+        if (request.OnePr is not null && request.Type != "story")
+            return BadRequest(IssueOnePrController.NotAStory($"this is a {request.Type}"));
+
         EfHatchStatus? status;
         if (statusId is { } chosen)
         {
@@ -333,6 +339,7 @@ public class IssuesController(
                 DueAt = dueAt?.At,
                 DueAtHasTime = dueAt?.HasTime ?? false,
                 PreApproval = preApproval,
+                OnePullRequest = onePr,
                 Priority = priority,
                 CreatedBy = actor,
                 CreatedAt = now,
