@@ -1375,11 +1375,11 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
                 case Pick.Skipped:
                     idle.Clear();
-                    line.Line = "every issue an agent could take is pinned to another agent's model";
+                    line.Line = "every issue an agent could take is one this agent cannot take";
                     runtime.Readout.SetIdle(line.Line, now.AddSeconds(interval));
                     await SayQuietlyAsync(busy, now, interval, once,
                         digest: string.Join('\n', picked.Skipped!),
-                        still: "hatch: every issue an agent could take is still pinned to another agent's model",
+                        still: "hatch: every issue an agent could take is still one this agent cannot take",
                         inFull: () =>
                         {
                             runtime.Say.Lines(Picker.SkippedReport(picked.Skipped!));

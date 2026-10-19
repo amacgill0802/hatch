@@ -60,7 +60,7 @@ public sealed record Runtime(
 
     public int OffsetMinutes => Board.OffsetMinutes(Clock.GetLocalNow());
 
-    public Picker Picker() => new(Board, RunnerName, Say, Checkouts, Root, Settings.BaseBranch, Settings.Workspace, MakeClone, Settings.Agent, Families);
+    public Picker Picker() => new(Board, RunnerName, Say, Checkouts, Root, Settings.BaseBranch, Settings.Workspace, MakeClone, Settings.Agent, Families, Adapter);
 
     public Idle Idle(bool mine = false) => new(Board, Say, Checkouts, Settings.Workspace is not null, mine);
 

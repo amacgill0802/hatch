@@ -119,6 +119,25 @@ public sealed class FakeAdapter : IAgentAdapter
         return true;
     }
 
+    /// <summary>
+    /// Set to make <see cref="CanDeny"/> refuse a row carrying at least one
+    /// denied-tools rule, with this sentence; null, or a row with no rules at
+    /// all, takes it.
+    /// </summary>
+    public string? CanDenyRefusal { get; set; }
+
+    public bool CanDeny(IReadOnlyList<string> rules, out string refusal)
+    {
+        if (rules.Count > 0 && CanDenyRefusal is { } why)
+        {
+            refusal = why;
+            return false;
+        }
+
+        refusal = "";
+        return true;
+    }
+
     public bool PromptOnStdin { get; set; } = true;
 
     public bool CanHook { get; set; } = true;
