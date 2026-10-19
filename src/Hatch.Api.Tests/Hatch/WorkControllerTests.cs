@@ -2891,14 +2891,14 @@ public class WorkControllerTests
 
         if (agedOut)
         {
-            // Outside Runners.DropBefore's horizon (90s * 10 = 900s): the row
+            // Outside Runners.DropBefore's horizon (two hours): the row
             // exists, and reads exactly as if it did not.
             h.Db.Runners.Add(new EfHatchRunner
             {
                 Name = "host:/checkout",
                 Kind = EfHatchRunner.LoopKind,
-                FirstSeenAt = Now - TimeSpan.FromMinutes(30),
-                LastSeenAt = Now - TimeSpan.FromMinutes(20),
+                FirstSeenAt = Now - TimeSpan.FromHours(4),
+                LastSeenAt = Now - TimeSpan.FromHours(3),
                 State = EfHatchRunner.Running,
             });
             await h.Db.SaveChangesAsync();

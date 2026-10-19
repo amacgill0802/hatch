@@ -522,7 +522,7 @@ public class RunnersControllerTests
     // ---- Aging ----
 
     [Fact]
-    public async Task ARunnerThatStoppedAnswering_IsStillDrawnUntilTenHorizonsHaveGone()
+    public async Task ARunnerThatStoppedAnswering_IsStillDrawnUntilTwoHoursHaveGone()
     {
         var h = await NewAsync();
         await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
@@ -535,7 +535,7 @@ public class RunnersControllerTests
         Assert.Equal(Horizon, gone.GoneAfterSeconds);
 
         // And then not, dropped by the WHERE on the read with nothing swept.
-        h.Time.Advance(TimeSpan.FromSeconds(Horizon * 7 + 1));
+        h.Time.Advance(TimeSpan.FromHours(2) + TimeSpan.FromSeconds(1) - TimeSpan.FromSeconds(Horizon * 3));
         Assert.Empty(await h.ListAsync());
     }
 
@@ -546,7 +546,7 @@ public class RunnersControllerTests
         await h.BeatAsync(Runner, new RunnerHeartbeatRequest(MaxRuns: 5));
         await h.PatchAsync(Runner, new RunnerPatchRequest(MaxRuns: "40"));
 
-        h.Time.Advance(TimeSpan.FromSeconds(Horizon * 20));
+        h.Time.Advance(TimeSpan.FromHours(2) + TimeSpan.FromSeconds(1));
         Assert.Empty(await h.ListAsync());
 
         // The row was never deleted, only aged out of the read - so a checkout

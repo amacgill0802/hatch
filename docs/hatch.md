@@ -6811,10 +6811,12 @@ lease, only quiet on its own row.
 **Two horizons, and only one of them is a setting.** A row is *idle* while it is
 being heard from, *gone* once its last heartbeat is older than
 `Hatch:RunnerGoneAfterSeconds` (90 by default), and dropped from the read
-entirely at ten times that — a quarter of an hour, which is not itself
-configurable. The two are one judgement seen twice, "not answering" and "not
-coming back", and an installation able to set them apart could set the second
-shorter than the first and have rows vanish before they were ever drawn as gone.
+entirely two hours after its last heartbeat (or at the gone horizon, if that is
+longer), which is not itself configurable. The queue view and the Runners page
+draw the same read. The two are one judgement seen twice, "not answering" and
+"not coming back", and an installation able to set them apart could set the
+second shorter than the first and have rows vanish before they were ever drawn
+as gone.
 Nothing sweeps: all three are arithmetic against the last heartbeat at the
 moment somebody asks, the same lazy expiry the claim uses, so there is no
 timeout to tune and no background job to notice has stopped. The row itself is

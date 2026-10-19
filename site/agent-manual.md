@@ -961,7 +961,7 @@ this is a `--mine` loop. The answer carries the state (`running`, `paused`,
 `stopping`) and the bounds the page holds, which replace the loop's own. A
 heartbeat that does not answer is weather: the loop keeps running on what it
 had. A row is idle while heard from, gone after ninety seconds of silence by
-default, and dropped from the read after ten times that. Nothing on the
+default, and dropped from the read after two hours. Nothing on the
 server starts or stops a process. The page's controls are person-only; a key
 can read and heartbeat, never write, because an agent that could raise its
 own `--max-spend` could raise its own budget. `--mine` is shown on the row
