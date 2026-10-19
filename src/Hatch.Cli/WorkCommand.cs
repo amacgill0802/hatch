@@ -102,7 +102,8 @@ public sealed class WorkCommand(Runtime runtime)
         // rebuilds the board when actually given. Harness hands every test a
         // FakeSessions; rebuilding unconditionally would silently swap it for
         // a real ClaudeSessionRunner on every run this command is tested with.
-        if (agent is not null) runtime = runtime with { Sessions = agentSessions };
+        if (agent is not null)
+            runtime = runtime with { Sessions = agentSessions, Settings = runtime.Settings with { Agent = agentId } };
 
         if (repoFlags.Count > 0 || workspaceFlag is not null)
         {
@@ -215,6 +216,8 @@ public sealed class WorkCommand(Runtime runtime)
             runtime.Say.Line($"# {Picker.HopWord(work.HopKind, work.HopUnder)}: carried across with no session");
             return 0;
         }
+
+        if (RefuseModel(work, model)) return 2;
 
         var chosen = Checkouts.Choose(work.Repositories, runtime.Checkouts, runtime.Root, runtime.Settings.BaseBranch);
         if (chosen is null)
@@ -368,6 +371,8 @@ public sealed class WorkCommand(Runtime runtime)
                     runtime.Say.Line($"hatch: {key}  {named.FromStatus.Name} -> {named.ToStatus?.Name}  {Picker.HopReason(named.HopKind, named.HopUnder)}");
                     return 0;
                 }
+
+                if (RefuseModel(named, model)) return 2;
 
                 // Without a clone, so that the ordinary case - already matched, or
                 // never going to match at all - refuses exactly as it always has,
@@ -770,6 +775,20 @@ public sealed class WorkCommand(Runtime runtime)
             runtime.Say.Complain($"  {runtime.Board.Client.Origin}/issues/{work.Issue.Key}");
         }
 
+        return true;
+    }
+
+    /// <summary>
+    /// Whether this row is pinned to another agent's model - the flag, when
+    /// given, is the whole answer to "what model", since it beats the
+    /// playbook the same way it does everywhere else named is resolved.
+    /// </summary>
+    private bool RefuseModel(WorkDto work, string? model)
+    {
+        if (Picker.WrongAgent(model ?? work.Playbook?.Model, runtime.Settings.Agent, runtime.Families) is not { } why)
+            return false;
+
+        runtime.Say.Complain($"hatch: {work.Issue.Key} - {why}");
         return true;
     }
 }
