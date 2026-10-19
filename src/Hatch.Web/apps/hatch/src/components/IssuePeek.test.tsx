@@ -11,6 +11,21 @@ import type { IssueCard, Status } from '../types';
 // fix as NewIssueDialog.test.tsx.
 vi.mock('./MarkdownEditor', () => ({ MarkdownEditor: () => null }));
 
+// Records the props the peek hands Modal, which is what its Escape listener
+// and its X both call. The real Modal still renders, so the markup tests are
+// unaffected. Hoisted because vi.mock is.
+const recorded = vi.hoisted(() => ({ props: null as null | { onClose: () => void } }));
+vi.mock('@hatch/ui', async (importOriginal) => {
+  const ui = await importOriginal<typeof import('@hatch/ui')>();
+  return {
+    ...ui,
+    Modal: (p: Parameters<typeof ui.Modal>[0]) => {
+      recorded.props = p;
+      return ui.Modal(p);
+    },
+  };
+});
+
 /* No DOM here, so this checks the two branches useStandalone() drives and not
    layout: that's the operator's browser. */
 const noop = () => undefined;
@@ -65,7 +80,7 @@ const card = (over: Partial<IssueCard> = {}): IssueCard => ({
   ...over,
 });
 
-const render = () =>
+const render = (onClose: () => void = noop) =>
   renderToStaticMarkup(
     <MemoryRouter>
       <IssuePeek
@@ -76,7 +91,7 @@ const render = () =>
         onExpedited={noop}
         onMove={() => Promise.resolve()}
         onDelete={() => Promise.resolve()}
-        onClose={noop}
+        onClose={onClose}
       />
     </MemoryRouter>,
   );
@@ -119,5 +134,34 @@ describe('IssuePeek', () => {
 
     expect(html).not.toContain('New tab');
     expect(html).toContain('Open the issue');
+  });
+
+  it('drops the footer Close button but keeps the X', () => {
+    vi.stubGlobal('window', {
+      matchMedia: () => ({ matches: false, addEventListener: noop, removeEventListener: noop }),
+      navigator: {},
+      location: { pathname: '/apps/hatch/' },
+    });
+
+    const html = render();
+
+    expect(html).not.toContain('>Close<');
+    expect(html).toContain('aria-label="Close"');
+    expect(html).toContain('>Delete<');
+    expect(html).toContain('Open the issue');
+  });
+
+  it('hands Modal its own onClose, which Escape and the X both call', () => {
+    vi.stubGlobal('window', {
+      matchMedia: () => ({ matches: false, addEventListener: noop, removeEventListener: noop }),
+      navigator: {},
+      location: { pathname: '/apps/hatch/' },
+    });
+    const onClose = vi.fn();
+
+    render(onClose);
+    recorded.props?.onClose();
+
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
