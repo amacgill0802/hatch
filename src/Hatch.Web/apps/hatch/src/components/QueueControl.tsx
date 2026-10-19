@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQueue } from '../lib/useQueue';
+import { useRunners } from '../lib/useRunners';
 import { QueueModal } from './QueueModal';
 import type { IssueCard } from '../types';
 
@@ -14,8 +15,9 @@ import type { IssueCard } from '../types';
  * is a request for nothing.
  */
 export function QueueControl({ cards, onTake }: { cards: readonly IssueCard[]; onTake: (card: IssueCard) => void }) {
-  const { status, queue, error, runner, runners, load, choose } = useQueue();
+  const { status, queue, error, runner, load, choose } = useQueue();
   const [open, setOpen] = useState(false);
+  const { runners } = useRunners(open);
 
   return (
     <>

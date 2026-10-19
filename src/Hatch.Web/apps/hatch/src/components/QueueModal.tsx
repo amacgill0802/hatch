@@ -1,4 +1,5 @@
-import { Button, EmptyState, Field, Modal, Text } from '@hatch/ui';
+import { Link } from 'react-router-dom';
+import { Badge, Button, EmptyState, Field, Modal, Text } from '@hatch/ui';
 import {
   anyAboveNormal,
   anyClaimed,
@@ -9,6 +10,7 @@ import {
   queueWords,
   trainDriverWords,
 } from '../lib/queue';
+import { runnerStrip } from '../lib/runners';
 import { ClaimBadge } from './ClaimBadge';
 import { Choice } from './Choice';
 import { TypeBadge } from './TypeBadge';
@@ -35,6 +37,7 @@ export function QueueModal({
   onRefresh,
   cards,
   onTake,
+  now = new Date(),
 }: {
   open: boolean;
   onClose: () => void;
@@ -42,16 +45,19 @@ export function QueueModal({
   queue: QueueEntry[];
   error: string | null;
   runner: string | null;
-  runners: Runner[];
+  /** Null until the first answer; the strip draws nothing for it. */
+  runners: Runner[] | null;
   onChoose: (runner: string | null) => void;
   onRefresh: () => Promise<void>;
   cards: readonly IssueCard[];
   onTake: (card: IssueCard) => void;
+  now?: Date;
 }) {
   const showMarker = anyAboveNormal(queue);
   const showClaim = anyClaimed(queue);
   const tally = queueTally(queue);
-  const trains = mergeTrains(queue, runners);
+  const list = runners ?? [];
+  const trains = mergeTrains(queue, list);
 
   return (
     <Modal
@@ -81,11 +87,34 @@ export function QueueModal({
       >
         <Choice
           value={runner ?? ''}
-          options={runners.map((r) => r.name)}
+          options={list.map((r) => r.name)}
           placeholder="Board-wide"
           onChange={(v) => onChoose(v || null)}
         />
       </Field>
+
+      {runners !== null && runners.length === 0 && (
+        <Text tone="muted">No runner has been heard from lately.</Text>
+      )}
+
+      {runners !== null && runners.length > 0 && (
+        <ul className="hatch-queue-runners" aria-label="Runners">
+          {runnerStrip(runners, now).map((row) => (
+            <li key={row.name} className={'hatch-queue-runner' + (row.gone ? ' hatch-queue-runner--gone' : '')}>
+              <strong className="hatch-queue-runner-name">{row.name}</strong>
+              {row.where && <Text tone="muted">{row.where}</Text>}
+              <Badge tone={row.tone}>{row.words}</Badge>
+              {row.claimKey && (
+                <Link className="hatch-card-key" to={`/issues/${row.claimKey}`} onClick={onClose}>
+                  {row.claimKey}
+                </Link>
+              )}
+              {row.line && <span className="hatch-queue-runner-line">{row.line}</span>}
+              {row.gone && <Text tone="muted">heard from {row.ago}</Text>}
+            </li>
+          ))}
+        </ul>
+      )}
 
       {(status === 'idle' || status === 'loading') && <Text tone="muted">Reading the queue…</Text>}
 
