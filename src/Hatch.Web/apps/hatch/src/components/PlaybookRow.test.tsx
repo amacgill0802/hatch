@@ -215,23 +215,40 @@ describe('PlaybookRow', () => {
     expect(notCheckHtml).not.toContain('hatch-badge--danger');
   });
 
-  it('shows the shadowed badge only when passed shadowed', () => {
+  it('shows the note badge only when passed a note', () => {
     const html = renderToStaticMarkup(
       <PlaybookRow playbook={BASE} projects={ONE_PROJECT} statuses={STATUSES} onEdit={noop} onDelete={noop} />,
     );
     expect(html).not.toContain('shadowed by the file');
 
-    const shadowedHtml = renderToStaticMarkup(
+    const notedHtml = renderToStaticMarkup(
       <PlaybookRow
         playbook={BASE}
         projects={ONE_PROJECT}
         statuses={STATUSES}
-        shadowed
+        note="shadowed by the file"
         onEdit={noop}
         onDelete={noop}
       />,
     );
-    expect(shadowedHtml).toContain('shadowed by the file');
+    expect(notedHtml).toContain('shadowed by the file');
+  });
+
+  it('adds the dimmed class to the row only when passed dimmed', () => {
+    const html = renderToStaticMarkup(
+      <PlaybookRow playbook={BASE} projects={ONE_PROJECT} statuses={STATUSES} onEdit={noop} onDelete={noop} />,
+    );
+    expect(html).not.toContain('hatch-playbook-row--dimmed');
+
+    const falseHtml = renderToStaticMarkup(
+      <PlaybookRow playbook={BASE} projects={ONE_PROJECT} statuses={STATUSES} dimmed={false} onEdit={noop} onDelete={noop} />,
+    );
+    expect(falseHtml).not.toContain('hatch-playbook-row--dimmed');
+
+    const dimmedHtml = renderToStaticMarkup(
+      <PlaybookRow playbook={BASE} projects={ONE_PROJECT} statuses={STATUSES} dimmed onEdit={noop} onDelete={noop} />,
+    );
+    expect(dimmedHtml).toContain('hatch-playbook-row--dimmed');
   });
 
   it("shows the operator's-own-wording badge only for a prompt that differs from a prescribed one", () => {

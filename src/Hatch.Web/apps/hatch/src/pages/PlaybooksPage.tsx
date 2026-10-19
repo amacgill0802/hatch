@@ -131,7 +131,14 @@ export function PlaybooksPage() {
                   playbook={playbook}
                   projects={projects}
                   statuses={statuses ?? []}
-                  shadowed={activeFile && playbook.projectKey === null ? coverageOf(playbook, activeFile.rows) === 'overridden' : false}
+                  note={
+                    activeFile && playbook.projectKey === null && coverageOf(playbook, activeFile.rows) === 'overridden'
+                      ? 'overridden by the file'
+                      : null
+                  }
+                  dimmed={Boolean(
+                    activeFile && playbook.projectKey === null && coverageOf(playbook, activeFile.rows) === 'overridden',
+                  )}
                   onEdit={() => setEditing(playbook)}
                   onDelete={() => void act(() => deletePlaybook(playbook.id))}
                 />

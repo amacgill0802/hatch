@@ -3534,6 +3534,12 @@ input.hatch-inline-title-input {
   padding: 0 var(--sp-1);
 }
 
+/* Set aside: muted rather than removed - the same idea .hatch-card.paused
+   uses for a card, applied to a table row. */
+.hatch-playbook-row--dimmed {
+  opacity: 0.6;
+}
+
 /* One card's header in the "Files on the trunk" section - the ClaimPanel
    head's own flex-wrap, gap and baseline rule, reused rather than redefined. */
 .hatch-playbook-file-head {
