@@ -153,11 +153,11 @@ public sealed class SessionHooks : IDisposable, IAgentHooks
         json.WriteEndArray();
     }
 
-    private static string Quote(string value) => $"\"{value.Replace("\"", "\\\"")}\"";
+    internal static string Quote(string value) => $"\"{value.Replace("\"", "\\\"")}\"";
 
     public void Dispose() => TryDelete(Directory);
 
-    private static void TryDelete(string directory)
+    internal static void TryDelete(string directory)
     {
         try
         {
