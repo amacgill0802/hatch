@@ -51,6 +51,8 @@ import { columnDroppableId, place, sendTo, targetStatusId } from '../lib/place';
 import type { Placement } from '../lib/place';
 import { columnBlocked } from '../lib/protectedColumns';
 import { flowBand, flowSentence } from '../lib/queue';
+import { spotlight } from '../lib/spotlight';
+import type { Spot } from '../lib/spotlight';
 import type { QueueEntry } from '../types';
 import { askingCount } from '../lib/questions';
 import { isWaiting } from '../lib/schedule';
@@ -126,6 +128,10 @@ export function BoardPage() {
      draw it back. A count and not a flag, so a second drop made while the first
      is still out cannot lift the guard early. */
   const [moving, setMoving] = useState(0);
+
+  // The key Callout.Group reports as open, null when none - a pointer over a
+  // band or a card holding keyboard focus, whichever last changed it.
+  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
 
   // A changed `load` re-runs useLoaded's effect, so pressing FlowVizControl
   // reads at once rather than waiting for the next 30s tick - see
@@ -300,6 +306,15 @@ export function BoardPage() {
   const rows = useMemo(
     () => (flowing && board?.queue ? new Map(board.queue.map((row) => [row.issue.key, row])) : null),
     [flowing, board?.queue],
+  );
+
+  // Null while flow-viz is off or a drag is underway, else the key
+  // Callout.Group reports open - the group already reports null while
+  // suspended during a drag, this is belt and braces.
+  const hovered = flowing && dragging === null ? hoveredKey : null;
+  const spots = useMemo(
+    () => spotlight(hovered, board?.issues ?? [], board?.queue ?? []),
+    [hovered, board?.issues, board?.queue],
   );
 
   /* How full the WIP section is, and which of the drawn columns are in it -
@@ -697,7 +712,7 @@ export function BoardPage() {
           onDragCancel={cancel}
           onDragEnd={(e) => void onDragEnd(e)}
         >
-          <Callout.Group suspended={dragUnderway}>
+          <Callout.Group suspended={dragUnderway} onOpenChange={setHoveredKey}>
             <div className={`hatch-board${zone.length ? ' hatch-board--wip' : ''}`}>
               <WipBands runs={zone} section={section} loads={loads} />
               {columns.map((status) => (
@@ -717,6 +732,7 @@ export function BoardPage() {
                   showProjectMark={showProjectMark}
                   doneHorizonHours={board.doneHorizonHours ?? null}
                   rows={rows}
+                  spots={spots}
                 />
               ))}
             </div>
@@ -825,6 +841,7 @@ function Column({
   showProjectMark,
   doneHorizonHours,
   rows,
+  spots,
 }: {
   status: Status;
   cards: LineageCard[];
@@ -856,6 +873,9 @@ function Column({
   /** Flow-viz's own queue, keyed by issue key - null while it is off. See
       lib/queue.ts's `flowBand`. */
   rows: Map<string, QueueEntry> | null;
+  /** What the hovered band's spotlight makes of each card, by key - empty
+      when none is hovered. See lib/spotlight.ts. */
+  spots: Map<string, Spot>;
 }) {
   const [showWaiting, setShowWaiting] = useState(false);
 
@@ -916,6 +936,7 @@ function Column({
                 project={project}
                 band={rows ? flowBand(rows.get(card.key), card) : undefined}
                 sentence={rows ? flowSentence(rows.get(card.key), card) : undefined}
+                spot={spots.get(card.key)}
               />
             );
           })}
