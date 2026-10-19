@@ -28,6 +28,27 @@ public interface IAgentAdapter
     /// <summary>The attached spawn - stdio left to whoever is at the keyboard.</summary>
     ProcessStartInfo BuildAttached(SessionRequest request);
 
+    /// <summary>
+    /// Whether the unattended spawn reads its prompt on stdin. False where the
+    /// adapter delivers it itself, as a file or an argument - the runner then
+    /// writes nothing and closes stdin at once.
+    /// </summary>
+    bool PromptOnStdin => true;
+
+    /// <summary>
+    /// Called once per spawn after the process is gone - success, failure or
+    /// cancellation - so an adapter can delete what <see cref="BuildHeadless"/>
+    /// wrote. Must not throw.
+    /// </summary>
+    void Release(SessionRequest request) { }
+
+    /// <summary>
+    /// Whether this agent has a door for a hooks file outside the checkout at
+    /// all. False is not a failure to say anything about; it is distinct from
+    /// <see cref="WriteHooks"/> returning null because a write failed.
+    /// </summary>
+    bool CanHook => true;
+
     /// <summary>The reader that turns this agent's own stream into lines and the facts a caller needs out of it.</summary>
     IAgentStreamReader CreateReader(string root, RunFacts facts);
 
