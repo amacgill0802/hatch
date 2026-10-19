@@ -1370,6 +1370,20 @@ public sealed class GoToWorkCommand(Runtime runtime)
                         });
                     return Pass.Waited;
 
+                case Pick.Skipped:
+                    idle.Clear();
+                    line.Line = "every issue an agent could take is pinned to another agent's model";
+                    runtime.Readout.SetIdle(line.Line, now.AddSeconds(interval));
+                    await SayQuietlyAsync(busy, now, interval, once,
+                        digest: string.Join('\n', picked.Skipped!),
+                        still: "hatch: every issue an agent could take is still pinned to another agent's model",
+                        inFull: () =>
+                        {
+                            runtime.Say.Lines(Picker.SkippedReport(picked.Skipped!));
+                            return Task.CompletedTask;
+                        });
+                    return Pass.Waited;
+
                 case Pick.Unreadable:
                     // The client already said what went wrong, in a sentence. This
                     // says what is going to happen about it.
@@ -1431,6 +1445,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
             foreach (var held in picked.Busy)
                 runtime.Say.Line($"hatch:   another runner had{held}");
+
+            foreach (var s in picked.Skipped ?? []) runtime.Say.Line($"hatch:   skipped{s}");
 
             // Here rather than at the top of the pass, and the difference is
             // only ever visible on an idle board: a reset before the board is
