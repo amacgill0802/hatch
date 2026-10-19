@@ -87,9 +87,12 @@ if (!Settings.TryLoad(checkoutEnv, environment, out var settings, out var missin
 // is a document the session parses. `inbox` prints JSON or nothing.
 if (command == "inbox")
 {
+    if (!Agents.Resolve(settings.Agent, settings.ClaudeBin, say.Complain, out _, out var inboxAdapter, out var inboxRefusal))
+        return 0;
+
     var inboxRunnerName = await ResolveRunnerAsync(settings.Base, settings.Key, settings.Runner, root ?? here, CancellationToken.None);
     using var hooked = new HatchClient(settings, inboxRunnerName);
-    return await new InboxCommand(new Board(hooked), say, Console.In, TimeProvider.System, new ClaudeHookOutputWriter())
+    return await new InboxCommand(new Board(hooked), say, Console.In, TimeProvider.System, inboxAdapter.HookOutput)
         .RunAsync(rest, CancellationToken.None);
 }
 

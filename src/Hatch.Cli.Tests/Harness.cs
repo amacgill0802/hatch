@@ -129,7 +129,10 @@ public sealed class FakeAdapter : IAgentAdapter
 
     public string ResumeCommand(string sessionId) => $"fake-agent --resume {sessionId}";
 
-    public IAgentHooks? WriteHooks(string temp, string key, string hatch, string? rtk) => SessionHooks.Write(temp, key, hatch, rtk);
+    public IAgentHooks? WrittenHooks { get; private set; }
+
+    public IAgentHooks? WriteHooks(string temp, string key, string hatch, string? rtk) =>
+        WrittenHooks = SessionHooks.Write(temp, key, hatch, rtk);
 
     public UsageLimit.Recognised? Limit { get; set; }
 
