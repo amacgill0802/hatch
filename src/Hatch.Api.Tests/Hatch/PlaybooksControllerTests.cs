@@ -633,6 +633,75 @@ public class PlaybooksControllerTests
         Assert.Equal("the prescribed text", read.DefaultPrompt);
     }
 
+    // ---- Prompt: patch ----
+
+    [Fact]
+    public async Task ANullPrompt_LeavesAnOverrideAlone()
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync();
+        await h.SetDefaultPromptAsync(row.Id);
+
+        var patched = await h.SetAsync(row.Id);
+
+        Assert.Equal("do it", patched.Prompt);
+        Assert.Equal("do it", (await h.Db.Playbooks.SingleAsync(p => p.Id == row.Id)).Prompt);
+    }
+
+    [Fact]
+    public async Task AnEmptyPrompt_ClearsTheOverride_AndReadsBackTheDefault()
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync();
+        await h.SetDefaultPromptAsync(row.Id);
+
+        var cleared = await h.SetAsync(row.Id, prompt: "");
+
+        Assert.Equal("the prescribed text", cleared.Prompt);
+        Assert.Null((await h.Db.Playbooks.SingleAsync(p => p.Id == row.Id)).Prompt);
+    }
+
+    [Fact]
+    public async Task Whitespace_ClearsTheOverride_TheSameAsEmpty()
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync();
+        await h.SetDefaultPromptAsync(row.Id);
+
+        var cleared = await h.SetAsync(row.Id, prompt: "   ");
+
+        Assert.Equal("the prescribed text", cleared.Prompt);
+        Assert.Null((await h.Db.Playbooks.SingleAsync(p => p.Id == row.Id)).Prompt);
+    }
+
+    [Fact]
+    public async Task AnEmptyPrompt_OnARowWithNoDefault_IsRefused_AndWritesNothing()
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync();
+
+        var refusal = await h.Playbooks.PatchPlaybook(
+            row.Id, new PlaybookPatchRequest(null, null, null, "", null, null), default);
+
+        Assert.Equal(
+            "a playbook needs a prompt - it is the whole instruction the agent gets",
+            Reason(refusal.Result));
+        Assert.Equal("do it", (await h.ReadAsync(row.Id)).Prompt);
+    }
+
+    [Fact]
+    public async Task APromptEqualToTheDefault_ComesBackAsNoOverride()
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync();
+        await h.SetDefaultPromptAsync(row.Id);
+
+        var patched = await h.SetAsync(row.Id, prompt: "the prescribed text");
+
+        Assert.Equal("the prescribed text", patched.Prompt);
+        Assert.Null((await h.Db.Playbooks.SingleAsync(p => p.Id == row.Id)).Prompt);
+    }
+
     // ---- Harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 9, 2, 12, 0, 0, TimeSpan.Zero);
@@ -655,10 +724,17 @@ public class PlaybooksControllerTests
 
         public async Task<PlaybookDto> SetAsync(
             int id, string? budget = null, string? briefLimit = null, string? projectId = null, IReadOnlyList<string>? deniedTools = null,
-            bool? isCheck = null) =>
+            bool? isCheck = null, string? prompt = null) =>
             Value(await Playbooks.PatchPlaybook(
-                id, new PlaybookPatchRequest(null, null, null, null, null, null, budget, briefLimit,
+                id, new PlaybookPatchRequest(null, null, null, prompt, null, null, budget, briefLimit,
                     ProjectId: projectId, DeniedTools: deniedTools, IsCheck: isCheck), default));
+
+        /// <summary>There is no API to set a prescribed text, so a test sets it on the row.</summary>
+        public async Task SetDefaultPromptAsync(int id)
+        {
+            (await Db.Playbooks.SingleAsync(p => p.Id == id)).DefaultPrompt = "the prescribed text";
+            await Db.SaveChangesAsync();
+        }
 
         public async Task<PlaybookDto> ReadAsync(int id) =>
             Value(await Playbooks.GetPlaybooks(default)).Single(p => p.Id == id);
