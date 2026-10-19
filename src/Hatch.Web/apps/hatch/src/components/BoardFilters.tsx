@@ -34,6 +34,7 @@ export function BoardFilters({
   showing,
   total,
   collapsed = false,
+  leading,
   trailing,
 }: {
   filter: CardFilter;
@@ -53,6 +54,10 @@ export function BoardFilters({
       phone user reaches for first, and the rest is one press away rather
       than a row that wraps four or five lines deep. */
   collapsed?: boolean;
+  /** Placed right after the search box, on whichever line it lands on - the
+      phone row (BoardPage, AC1): a compact New issue beside the search box
+      it was passed in next to. */
+  leading?: ReactNode;
   /** Placed at the right end of the row, on whichever line it wraps to; the row does not learn what it is. */
   trailing?: ReactNode;
 }) {
@@ -136,6 +141,8 @@ export function BoardFilters({
         aria-label="Search the board"
         onChange={(e) => onChange({ ...filter, query: e.target.value })}
       />
+
+      {leading}
 
       {collapsed ? (
         <details className="hatch-board-filters-more">

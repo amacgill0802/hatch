@@ -564,12 +564,6 @@ export function BoardPage() {
           visible title the operator asked to lose. */}
       <h1 className="hatch-visually-hidden">Board</h1>
 
-      {isPhone && (
-        <Button variant="primary" className="hatch-board-filing" onClick={() => setFiling(true)}>
-          New issue
-        </Button>
-      )}
-
       <BoardFilters
         filter={filter}
         onChange={changeFilter}
@@ -579,6 +573,22 @@ export function BoardPage() {
         showing={visible.length}
         total={board.issues.length}
         collapsed={isPhone}
+        leading={
+          isPhone && (
+            <Button
+              variant="primary"
+              className="hatch-board-filing"
+              aria-label="New issue"
+              onClick={() => setFiling(true)}
+            >
+              <svg className="hatch-board-filing-glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <rect x="11" y="4" width="2" height="16" rx="1" />
+                <rect x="4" y="11" width="16" height="2" rx="1" />
+              </svg>
+              New
+            </Button>
+          )
+        }
         trailing={
           <>
             <QueueControl cards={board.issues} onTake={onTake} />
