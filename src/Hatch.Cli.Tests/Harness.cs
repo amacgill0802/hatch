@@ -158,7 +158,19 @@ public sealed class FakeAdapter : IAgentAdapter
 
     public UsageLimit.Recognised? Limit { get; set; }
 
-    public UsageLimit.Recognised? RecogniseLimit(string? said, DateTimeOffset endedAt, TimeZoneInfo? runnerZone = null) => Limit;
+    /// <summary>What <see cref="RecogniseLimit"/> was last asked about - the run's last words, as the increment settled on them.</summary>
+    public string? LimitAskedAbout { get; private set; }
+
+    public UsageLimit.Recognised? RecogniseLimit(string? said, DateTimeOffset endedAt, TimeZoneInfo? runnerZone = null)
+    {
+        LimitAskedAbout = said;
+        return Limit;
+    }
+
+    /// <summary>Where <see cref="OutputLastMessagePath"/> answers from - null unless a test sets it.</summary>
+    public string? OutputLastMessageFile { get; set; }
+
+    public string? OutputLastMessagePath(SessionRequest request) => OutputLastMessageFile;
 }
 
 /// <summary>

@@ -62,7 +62,7 @@ public sealed class CodexAdapter(string? configured = null) : IAgentAdapter
         {
             start.Environment["CODEX_HOME"] = codexHome;
             start.ArgumentList.Add("-o");
-            start.ArgumentList.Add(Path.Combine(codexHome, "last-message.txt"));
+            start.ArgumentList.Add(LastMessageIn(codexHome));
         }
 
         start.RedirectStandardInput = true;
@@ -70,6 +70,11 @@ public sealed class CodexAdapter(string? configured = null) : IAgentAdapter
 
         return start;
     }
+
+    public string? OutputLastMessagePath(SessionRequest request) =>
+        request.HookSettings is { Length: > 0 } codexHome ? LastMessageIn(codexHome) : null;
+
+    private static string LastMessageIn(string codexHome) => Path.Combine(codexHome, "last-message.txt");
 
     public ProcessStartInfo BuildAttached(SessionRequest request)
     {

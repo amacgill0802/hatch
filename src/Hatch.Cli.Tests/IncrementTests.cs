@@ -1612,6 +1612,82 @@ public sealed class IncrementTests
         await claim.ReleaseAsync();
     }
 
+    [Fact]
+    public async Task A_quiet_run_whose_output_is_a_stream_reads_every_line_and_keeps_the_later_facts()
+    {
+        using var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        // The leading line is only there to make this read as JSON; the fake
+        // reader draws nothing for it, the way a real stream has plenty of
+        // events that draw nothing. Handed over whole, the blob starts with no
+        // FAKE-RESULT and the fake reader answers with nothing at all.
+        h.Sessions.Behaviour = (_, _, _) => Task.FromResult(new SessionResult(0,
+            "{\"type\":\"ignored\"}\n" +
+            "FAKE-RESULT fake-session-1|First|first detail|3|1.0|10000\n" +
+            "\n" +
+            "FAKE-RESULT fake-session-2|Second|second detail|5|2.0|20000"));
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        var report = await (h.Runtime with { Adapter = new FakeAdapter() }).Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: true, claim, default);
+
+        Assert.Equal("fake-session-2", report.SessionId);
+        Assert.Contains(h.Say.Said, l => l.Contains("done in 3 turns", StringComparison.Ordinal));
+        Assert.Contains(h.Say.Said, l => l.Contains("done in 5 turns", StringComparison.Ordinal));
+
+        await claim.ReleaseAsync();
+    }
+
+    [Fact]
+    public async Task An_output_last_message_file_wins_over_the_streams_last_text_on_a_crash()
+    {
+        using var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        var lastMessage = Path.Combine(h.Temp, "last-message.txt");
+        File.WriteAllText(lastMessage, "the CLI's own final answer\n");
+
+        h.Sessions.Behaviour = (_, _, _) => Task.FromResult(new SessionResult(1, "stream cut off mid-sent"));
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        var adapter = new FakeAdapter { OutputLastMessageFile = lastMessage };
+        await (h.Runtime with { Adapter = adapter }).Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: true, claim, default);
+
+        Assert.Equal("the CLI's own final answer", adapter.LimitAskedAbout);
+
+        await claim.ReleaseAsync();
+    }
+
+    [Fact]
+    public async Task A_missing_output_last_message_file_leaves_the_streams_last_text_standing()
+    {
+        using var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        h.Sessions.Behaviour = (_, _, _) => Task.FromResult(new SessionResult(1, "stream cut off mid-sent"));
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        var adapter = new FakeAdapter { OutputLastMessageFile = Path.Combine(h.Temp, "never-written.txt") };
+        await (h.Runtime with { Adapter = adapter }).Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: true, claim, default);
+
+        Assert.Equal("stream cut off mid-sent", adapter.LimitAskedAbout);
+
+        await claim.ReleaseAsync();
+    }
+
     // ---- The keyboard's k (HA-133): a skip is not an interrupt ----
 
     [Fact]
