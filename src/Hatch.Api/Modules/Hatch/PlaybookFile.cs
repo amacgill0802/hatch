@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using Hatch.Contracts;
 using YamlDotNet.Core;
 using YamlDotNet.RepresentationModel;
 
@@ -36,7 +37,7 @@ public static class PlaybookFile
         ["from", "to", "types", "shape", "prompt", "model", "effort", "budget", "briefLimit", "deniedTools", "isCheck"];
 
     public static (IReadOnlyList<PlaybookCreateRequest>? Rows, string? Problem) Parse(
-        byte[] content, IReadOnlyList<EfHatchStatus> statuses)
+        byte[] content, IReadOnlyList<EfHatchStatus> statuses, ModelFamilies? families = null)
     {
         if (content.Length > MaxFileBytes)
             return (null, $"is larger than {MaxFileBytes / 1024} KB");
@@ -88,7 +89,7 @@ public static class PlaybookFile
             if (node is not YamlMappingNode entry)
                 return (null, FailEntry(position, "a playbook is a mapping of fields - not a list or a scalar", node.Start));
 
-            var (row, problem, problemAt) = ParseEntry(entry, statuses);
+            var (row, problem, problemAt) = ParseEntry(entry, statuses, families);
             if (problem is not null) return (null, FailEntry(position, problem, problemAt));
 
             var key = (row!.FromStatusId, row.ToStatusId, EfHatchPlaybook.NormalizeTypes(row.Types), row.Shape ?? EfHatchPlaybook.DefaultShape);
@@ -102,7 +103,7 @@ public static class PlaybookFile
     }
 
     private static (PlaybookCreateRequest? Row, string? Problem, Mark? At) ParseEntry(
-        YamlMappingNode entry, IReadOnlyList<EfHatchStatus> statuses)
+        YamlMappingNode entry, IReadOnlyList<EfHatchStatus> statuses, ModelFamilies? families = null)
     {
         foreach (var (keyNode, _) in entry.Children)
         {
@@ -139,7 +140,7 @@ public static class PlaybookFile
         var modelNode = Scalar(entry, "model");
         var model = modelNode?.Value;
         var effectiveModel = model?.Trim() is { Length: > 0 } m ? m : EfHatchPlaybook.DefaultModel;
-        if (InvalidModel(effectiveModel) is { } modelError)
+        if (InvalidModel(effectiveModel, families) is { } modelError)
             return (null, modelError, modelNode?.Start ?? entry.Start);
 
         var effortNode = Scalar(entry, "effort");
@@ -273,11 +274,16 @@ public static class PlaybookFile
     /// three things to keep in step. Per field, so a request naming only an
     /// effort is not judged on a model it never sent.
     /// </summary>
-    internal static string? InvalidModel(string model) =>
-        EfHatchPlaybook.IsValidModel(model)
-            ? null
-            : $"a model is one of {string.Join(", ", EfHatchPlaybook.ModelAliases)}, " +
-              $"or a pinned name like claude-opus-5 - not \"{model}\"";
+    internal static string? InvalidModel(string model, ModelFamilies? families = null)
+    {
+        if (EfHatchPlaybook.IsValidModel(model, families)) return null;
+
+        var examples = string.Join("; ",
+            (families ?? ModelFamilies.Default).Rows.Select(r => $"{r.Example} for {r.Agent}"));
+
+        return $"a model is one of {string.Join(", ", EfHatchPlaybook.ModelAliases)}, " +
+               $"or a pinned id of a supported agent ({examples}) - not \"{model}\"";
+    }
 
     /// <summary>The same, for the thinking budget.</summary>
     internal static string? InvalidEffort(string effort) =>

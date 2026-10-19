@@ -2,6 +2,7 @@ using System.Text.Json;
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Services.Auth;
+using Hatch.Contracts;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -33,7 +34,8 @@ namespace Hatch.Api.Modules.Hatch;
 [ApiController]
 [Route("api/hatch/issues")]
 public class IssuePlaybookController(
-    HatchContext db, IActorDirectory actors, IssueClaims claims, ICallerIdentity caller, TimeProvider time) : ControllerBase
+    HatchContext db, IActorDirectory actors, IssueClaims claims, ICallerIdentity caller, TimeProvider time,
+    ModelFamilies? families = null) : ControllerBase
 {
     /// <summary>
     /// Set, change or clear either override. Null leaves a field alone and
@@ -65,7 +67,7 @@ public class IssuePlaybookController(
         // field it was sent for. The sentences are PlaybookFile's own - an
         // issue accepts exactly what a playbook accepts, because it is the
         // same rule called twice.
-        if (model is not null && PlaybookFile.InvalidModel(model) is { } modelError)
+        if (model is not null && PlaybookFile.InvalidModel(model, families) is { } modelError)
             return BadRequest(modelError);
 
         if (effort is not null && PlaybookFile.InvalidEffort(effort) is { } effortError)

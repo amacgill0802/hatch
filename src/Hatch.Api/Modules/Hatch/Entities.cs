@@ -2000,13 +2000,10 @@ public class EfHatchPlaybook
     /// <summary>
     /// The model aliases the CLI resolves to whatever is current. Aliases
     /// rather than pinned ids because a playbook says "the big one" and means
-    /// it a year from now; a full <c>claude-…</c> name is accepted too, for an
-    /// operator who has a reason to pin.
+    /// it a year from now; a pinned id is accepted too, for an operator who
+    /// has a reason to pin.
     /// </summary>
     public static readonly string[] ModelAliases = ["haiku", "sonnet", "opus", "fable"];
-
-    /// <summary>A pinned model id, for the operator who wants exactly one.</summary>
-    private const string FullModelPattern = "^claude-[a-z0-9][a-z0-9.-]{0,48}$";
 
     public const string AnyShape = "any";
     public const string LeafShape = "leaf";
@@ -2159,10 +2156,9 @@ public class EfHatchPlaybook
     public static bool IsValidEffort(string? effort) =>
         effort is not null && Efforts.Contains(effort);
 
-    public static bool IsValidModel(string? model) =>
+    public static bool IsValidModel(string? model, ModelFamilies? families = null) =>
         model is not null &&
-        (ModelAliases.Contains(model) ||
-         Regex.IsMatch(model, FullModelPattern, RegexOptions.None, TimeSpan.FromSeconds(1)));
+        (ModelAliases.Contains(model) || (families ?? ModelFamilies.Default).AgentOf(model) is not null);
 
     public static bool IsValidShape(string? shape) =>
         shape is not null && Shapes.Contains(shape);

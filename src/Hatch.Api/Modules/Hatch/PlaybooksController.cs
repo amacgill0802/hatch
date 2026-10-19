@@ -1,6 +1,7 @@
 using System.Globalization;
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
+using Hatch.Contracts;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -27,7 +28,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// </remarks>
 [ApiController]
 [Route("api/hatch/playbooks")]
-public class PlaybooksController(HatchContext db, TimeProvider time) : ControllerBase
+public class PlaybooksController(HatchContext db, TimeProvider time, ModelFamilies? families = null) : ControllerBase
 {
     /// <summary>Every row, in board order - the order the page draws them in.</summary>
     [HttpGet]
@@ -82,7 +83,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
 
         var model = request.Model?.Trim() ?? EfHatchPlaybook.DefaultModel;
         var effort = request.Effort?.Trim() ?? EfHatchPlaybook.DefaultEffort;
-        if (InvalidDispatch(model, effort) is { } dispatchError) return BadRequest(dispatchError);
+        if (InvalidDispatch(model, effort, families) is { } dispatchError) return BadRequest(dispatchError);
 
         int? budget = null;
         if (request.Budget is not null)
@@ -170,7 +171,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
 
         var model = request.Model?.Trim() ?? playbook.Model;
         var effort = request.Effort?.Trim() ?? playbook.Effort;
-        if (InvalidDispatch(model, effort) is { } dispatchError) return BadRequest(dispatchError);
+        if (InvalidDispatch(model, effort, families) is { } dispatchError) return BadRequest(dispatchError);
 
         var budget = playbook.Budget;
         if (request.Budget is not null)
@@ -261,8 +262,8 @@ public class PlaybooksController(HatchContext db, TimeProvider time) : Controlle
             : null;
     }
 
-    private static string? InvalidDispatch(string model, string effort) =>
-        PlaybookFile.InvalidModel(model) ?? PlaybookFile.InvalidEffort(effort);
+    private static string? InvalidDispatch(string model, string effort, ModelFamilies? families = null) =>
+        PlaybookFile.InvalidModel(model, families) ?? PlaybookFile.InvalidEffort(effort);
 
     /// <summary>The same, for the project this row names - a whole number that still has to name a project, which the caller checks.</summary>
     private static (int? Value, string? Error) ParseProjectId(string projectId)
