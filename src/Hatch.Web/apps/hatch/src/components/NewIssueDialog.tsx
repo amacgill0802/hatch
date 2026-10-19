@@ -3,11 +3,13 @@ import { Button, EmptyState, Field, Modal } from '@hatch/ui';
 import { createIssue } from '../api/client';
 import { resolveDefaultProject, readRememberedProject, writeRememberedProject } from '../lib/defaultProject';
 import { message } from '../lib/errors';
+import { onePrToFile } from '../lib/onePr';
 import { parentCandidates, parentEmptyMessage, parentHint } from '../lib/parents';
 import { useIssueConfirmations } from '../lib/useIssueConfirmations';
 import { IssuePicker } from './IssuePicker';
 import { MarkdownEditor } from './MarkdownEditor';
 import { MomentField } from './MomentField';
+import { OnePrSteps, type OnePrSetting } from './OnePrControl';
 import { ProjectChooser } from './ProjectChooser';
 import { ISSUE_TYPES } from '../types';
 import type { Issue, IssueCard, IssueType, Project } from '../types';
@@ -39,6 +41,7 @@ export function NewIssueDialog({
 }) {
   const [projectId, setProjectId] = useState<number | null>(null);
   const [type, setType] = useState<IssueType>('task');
+  const [onePr, setOnePr] = useState<OnePrSetting>('inherit');
   const [parentKey, setParentKey] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -71,7 +74,16 @@ export function NewIssueDialog({
 
     setSaving(true);
     try {
-      const created = await createIssue({ projectId: chosen, type, parentKey: parent, title, description, readyAt, dueAt });
+      const created = await createIssue({
+        projectId: chosen,
+        type,
+        parentKey: parent,
+        title,
+        description,
+        readyAt,
+        dueAt,
+        onePr: onePrToFile(type, onePr),
+      });
       // Only here, on the way out of the success path: a filing the server
       // refused goes to the catch below and raises nothing, and the dialog goes
       // on showing the refusal as it always has.
@@ -79,6 +91,7 @@ export function NewIssueDialog({
       if (projectKey) writeRememberedProject(projectKey);
       setProjectId(null);
       setParentKey(null);
+      setOnePr('inherit');
       setTitle('');
       setDescription('');
       setReadyAt('');
@@ -103,7 +116,10 @@ export function NewIssueDialog({
             <ProjectChooser legend="Project" projects={projects} value={chosen} onChange={setProjectId} />
 
             <Field label="Type">
-              <select value={type} onChange={(e) => setType(e.target.value as IssueType)}>
+              <select value={type} onChange={(e) => {
+                  setType(e.target.value as IssueType);
+                  setOnePr('inherit');
+                }}>
                 {ISSUE_TYPES.map((t) => (
                   <option key={t} value={t}>
                     {t}
@@ -111,6 +127,21 @@ export function NewIssueDialog({
                 ))}
               </select>
             </Field>
+
+            {type === 'story' && (
+              <Field
+                label="One pull request"
+                as="div"
+                hint="Whether this story's tasks share its branch and open one pull request, merged once, instead of one each."
+              >
+                <OnePrSteps
+                  value={onePr}
+                  label="Set the new story's one pull request setting"
+                  busy={saving}
+                  onChange={setOnePr}
+                />
+              </Field>
+            )}
 
             {/* `as="div"` for the reason on the issue page's Parent field: the
                 popup would otherwise join the control's accessible name. */}

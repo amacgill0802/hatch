@@ -883,6 +883,8 @@ export interface IssueCreateRequest {
   parentKey?: string | null;
   readyAt?: string | null;
   dueAt?: string | null;
+  /** A story only; left out for any other type, which the server refuses it on. */
+  onePr?: 'on' | 'off' | 'inherit' | null;
 }
 
 /** Null leaves a field alone. An empty `parentKey`, `readyAt`, `dueAt` or

@@ -28,6 +28,45 @@ const CHOICES: OnePrChoice[] = [
 const settingOf = (own: boolean | null): OnePrSetting => (own === null ? 'inherit' : own ? 'on' : 'off');
 
 /**
+ * The three buttons alone - project default, on, off - with `value` marked and
+ * disabled. The issue page draws them under `OnePrControl`; the New Issue form
+ * draws them bare, there being no story yet to say anything about.
+ */
+export function OnePrSteps({
+  value,
+  label,
+  busy = false,
+  onChange,
+}: {
+  value: OnePrSetting;
+  /** The group's accessible name. */
+  label: string;
+  busy?: boolean;
+  onChange: (setting: OnePrSetting) => void;
+}) {
+  return (
+    <div className="hatch-one-pr-steps" role="group" aria-label={label} aria-busy={busy}>
+      {CHOICES.map((choice) => {
+        const here = choice.name === value;
+        return (
+          <button
+            key={choice.name}
+            type="button"
+            className={`hatch-one-pr-step${here ? ' here' : ''}`}
+            title={choice.title}
+            aria-pressed={here}
+            disabled={here || busy}
+            onClick={() => onChange(choice.name)}
+          >
+            {choice.word}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
  * *Do this story's tasks share its branch and one pull request?* A group of
  * three buttons - project default, on, off - with the story's own setting
  * marked, and a line beneath saying what is in effect and where it comes from.
@@ -53,28 +92,14 @@ export function OnePrControl({
   busy?: boolean;
   onChange: (setting: OnePrSetting) => void;
 }) {
-  const current = settingOf(issue.onePrOwn);
-
   return (
     <div className="hatch-one-pr">
-      <div className="hatch-one-pr-steps" role="group" aria-label={`Set ${issue.key}'s one pull request setting`} aria-busy={busy}>
-        {CHOICES.map((choice) => {
-          const here = choice.name === current;
-          return (
-            <button
-              key={choice.name}
-              type="button"
-              className={`hatch-one-pr-step${here ? ' here' : ''}`}
-              title={choice.title}
-              aria-pressed={here}
-              disabled={here || busy}
-              onClick={() => onChange(choice.name)}
-            >
-              {choice.word}
-            </button>
-          );
-        })}
-      </div>
+      <OnePrSteps
+        value={settingOf(issue.onePrOwn)}
+        label={`Set ${issue.key}'s one pull request setting`}
+        busy={busy}
+        onChange={onChange}
+      />
       <span className={`hatch-one-pr-said${issue.onePr ? ' on' : ''}`}>{onePrSaid(issue)}</span>
     </div>
   );
