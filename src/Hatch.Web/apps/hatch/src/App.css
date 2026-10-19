@@ -1090,6 +1090,32 @@
   min-width: 12rem;
 }
 
+/* The Search page's own row: the box takes its own line, full width, and the
+   facets wrap under it - overriding .hatch-board-search's flex-basis above. */
+.hatch-search-filters .hatch-search-box {
+  flex: 1 1 100%;
+}
+
+/* A date range is a .hatch-facet label wrapping two bare <input type="date">,
+   so the facet's own border and background carry the look and the inputs
+   draw nothing of their own - base.css's input rules are what this undoes. */
+.hatch-search-range input[type='date'] {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+  width: auto;
+  height: 100%;
+  font: inherit;
+  color: inherit;
+}
+
+@media (max-width: 40rem) {
+  .hatch-search-filters > * {
+    width: 100%;
+  }
+}
+
 /* The Types panel. Rows are padded like a menu item. */
 .hatch-types-panel {
   display: flex;

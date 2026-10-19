@@ -2,12 +2,25 @@ import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Button, Card, EmptyState, PageHeader, Table } from '@hatch/ui';
 import { getSearch, getStatuses } from '../api/client';
+import { Facet } from '../components/Facet';
 import { StatusPill } from '../components/StatusPill';
 import { TypeBadge } from '../components/TypeBadge';
 import { message } from '../lib/errors';
+import { facetClass } from '../lib/facet';
 import { createLedger } from '../lib/refresh';
-import { countLine, hasMore, matchedWords, readSearch, searchRequest, writeSearch } from '../lib/search';
+import {
+  EMPTY_SEARCH,
+  countLine,
+  hasMore,
+  isSearching,
+  matchedWords,
+  readSearch,
+  searchRequest,
+  writeSearch,
+} from '../lib/search';
 import { useLoaded } from '../lib/useLoaded';
+import { hasMultipleProjects, useProjects } from '../lib/useProjects';
+import { ISSUE_TYPES } from '../types';
 import type { SearchHit, Status } from '../types';
 
 /** How long the box waits after the last keystroke before it writes `q`. */
@@ -15,17 +28,18 @@ const DEBOUNCE_MS = 300;
 
 /**
  * Every issue, by its words and by when it was made or closed - a search box
- * over a table of hits. The box's own state is the URL's `q` and nowhere
- * else, so Back undoes a search and pasting the link reproduces it.
- *
- * The filter row (Project/Type/Column facets, date ranges) is a sibling task
- * on top of this page.
+ * over a table of hits, with a filter row beside it (Project, Type, Column,
+ * Created and Closed ranges). Every field - the box's `q` included - is the
+ * URL's and nowhere else, so Back undoes a change and pasting the link
+ * reproduces it.
  */
 export function SearchPage() {
   const [params, setParams] = useSearchParams();
   const filters = readSearch(params);
 
   const { data: statuses } = useLoaded<Status[]>(getStatuses);
+  const { projects } = useProjects();
+  const columns = [...(statuses ?? [])].sort((a, b) => a.sortOrder - b.sortOrder);
 
   const [draft, setDraft] = useState(filters.q);
   const [lastQ, setLastQ] = useState(filters.q);
@@ -105,10 +119,8 @@ export function SearchPage() {
     <div className="hatch-page">
       <PageHeader title="Search" description="Every issue, by its words and by when it was made or closed." />
 
-      <div className="hatch-board-filters">
-        {/* type="search" on purpose; base.css says why. hatch-search-box is
-            unstyled for now - the filter-row task renames this div to also
-            carry hatch-search-filters and adds its facets inside it. */}
+      <div className="hatch-board-filters hatch-search-filters">
+        {/* type="search" on purpose; base.css says why. */}
         <input
           type="search"
           className={`hatch-board-search hatch-search-box${draft.trim() !== '' ? ' hatch-board-search--lit' : ''}`}
@@ -117,6 +129,78 @@ export function SearchPage() {
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
         />
+
+        {hasMultipleProjects(projects) && (
+          <Facet
+            label="Project"
+            lit={filters.projectId !== ''}
+            value={filters.projectId}
+            options={[
+              { value: '', text: 'All projects' },
+              ...projects.map((project) => ({ value: String(project.id), text: `${project.key} — ${project.name}` })),
+            ]}
+            onChange={(projectId) => setParams(writeSearch({ ...filters, projectId }))}
+          />
+        )}
+
+        <Facet
+          label="Type"
+          lit={filters.type !== ''}
+          value={filters.type}
+          options={[{ value: '', text: 'Any type' }, ...ISSUE_TYPES.map((type) => ({ value: type, text: type }))]}
+          onChange={(type) => setParams(writeSearch({ ...filters, type }))}
+        />
+
+        <Facet
+          label="Column"
+          lit={filters.statusId !== ''}
+          value={filters.statusId}
+          options={[
+            { value: '', text: 'Any column' },
+            ...columns.map((status) => ({ value: String(status.id), text: status.name })),
+          ]}
+          onChange={(statusId) => setParams(writeSearch({ ...filters, statusId }))}
+        />
+
+        <label className={`${facetClass(filters.createdFrom !== '' || filters.createdTo !== '')} hatch-search-range`}>
+          <span className="hatch-facet__label">Created</span>
+          <input
+            type="date"
+            aria-label="Created from"
+            value={filters.createdFrom}
+            onChange={(e) => setParams(writeSearch({ ...filters, createdFrom: e.target.value }))}
+          />
+          <span aria-hidden="true">–</span>
+          <input
+            type="date"
+            aria-label="Created to"
+            value={filters.createdTo}
+            onChange={(e) => setParams(writeSearch({ ...filters, createdTo: e.target.value }))}
+          />
+        </label>
+
+        <label className={`${facetClass(filters.closedFrom !== '' || filters.closedTo !== '')} hatch-search-range`}>
+          <span className="hatch-facet__label">Closed</span>
+          <input
+            type="date"
+            aria-label="Closed from"
+            value={filters.closedFrom}
+            onChange={(e) => setParams(writeSearch({ ...filters, closedFrom: e.target.value }))}
+          />
+          <span aria-hidden="true">–</span>
+          <input
+            type="date"
+            aria-label="Closed to"
+            value={filters.closedTo}
+            onChange={(e) => setParams(writeSearch({ ...filters, closedTo: e.target.value }))}
+          />
+        </label>
+
+        {isSearching(filters) && (
+          <button type="button" className="hatch-filter-clear" onClick={() => setParams(writeSearch(EMPTY_SEARCH))}>
+            Reset
+          </button>
+        )}
       </div>
 
       {loading && <p className="text-muted">Searching…</p>}
