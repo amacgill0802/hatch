@@ -9,6 +9,7 @@ import { TypeGlyph } from './TypeGlyph';
 import { projectLogoUrl } from '../lib/projectLogo';
 import { isPlainClick } from '../lib/pointer';
 import type { FlowBandKind } from '../lib/queue';
+import type { Spot } from '../lib/spotlight';
 import { truncate } from '../lib/text';
 import type { IssueCard, Project } from '../types';
 
@@ -42,6 +43,9 @@ interface BoardCardProps {
   band?: { kind: FlowBandKind; words: string } | null;
   /** What the callout over the band says - `flowSentence`, null/absent for none. */
   sentence?: string | null;
+  /** HA-973's paint for HA-972's spotlight - absent from CardPreview on
+      purpose: the card under the cursor during a drag never wears one. */
+  spot?: Spot;
 }
 
 /** Owed an answer, and drawn as such wherever the card is drawn. */
@@ -89,6 +93,7 @@ export function BoardCard({
   depth = 0,
   band = null,
   sentence = null,
+  spot,
 }: CardProps & BoardCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: card.key });
   // Called whether or not there is a band - a hook cannot sit behind one. Only
@@ -101,7 +106,7 @@ export function BoardCard({
     <Link
       ref={setNodeRef}
       to={`/issues/${card.key}`}
-      className={`hatch-card${isDragging ? ' dragging' : ''}${waiting ? ' waiting' : ''}${askingClass(card)}${priorityClass(card)}${found ? ' found' : ''}${nested ? ' nested' : ''}`}
+      className={`hatch-card${isDragging ? ' dragging' : ''}${waiting ? ' waiting' : ''}${askingClass(card)}${priorityClass(card)}${found ? ' found' : ''}${nested ? ' nested' : ''}${spot ? ` hatch-spot-${spot}` : ''}`}
       // How the board finds the element again: the console's take scrolls to it and focuses it.
       data-issue-key={card.key}
       style={{
