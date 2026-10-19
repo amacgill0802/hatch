@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { MemoryRouter } from 'react-router-dom';
 import { QueueModal } from './QueueModal';
 import type { QueueStatus } from '../lib/useQueue';
 import type { Issue, IssueCard, IssueClaim, QueueEntry, Runner, Status } from '../types';
@@ -154,23 +155,27 @@ const render = (
   cards: readonly IssueCard[] = [],
   onTake: (card: IssueCard) => void = () => {},
   runnerChoice: string | null = null,
-  runners: Runner[] = [],
+  runners: Runner[] | null = [],
   onChoose: (runner: string | null) => void = () => {},
+  now?: Date,
 ) =>
   renderToStaticMarkup(
-    <QueueModal
-      open
-      onClose={() => {}}
-      status={status}
-      queue={queue}
-      error={error}
-      runner={runnerChoice}
-      runners={runners}
-      onChoose={onChoose}
-      onRefresh={async () => {}}
-      cards={cards}
-      onTake={onTake}
-    />,
+    <MemoryRouter>
+      <QueueModal
+        open
+        onClose={() => {}}
+        status={status}
+        queue={queue}
+        error={error}
+        runner={runnerChoice}
+        runners={runners}
+        onChoose={onChoose}
+        onRefresh={async () => {}}
+        cards={cards}
+        onTake={onTake}
+        now={now}
+      />
+    </MemoryRouter>,
   );
 
 describe('QueueModal', () => {
@@ -363,5 +368,61 @@ describe('QueueModal', () => {
     const html = render('ready', [entry()]);
 
     expect(html).not.toContain('hatch-queue-trains');
+  });
+});
+
+describe('QueueModal runner strip', () => {
+  const now = new Date('2026-09-09T12:00:00Z');
+  const strip = (runners: Runner[] | null, queue: QueueEntry[] = []) =>
+    render('ready', queue, null, [], () => {}, null, runners, () => {}, now);
+
+  it('draws the strip before the queue rows', () => {
+    const html = strip([runner({ lastSeenAt: '2026-09-09T11:59:50Z' })], [entry()]);
+
+    expect(html).toContain('hatch-queue-runners');
+    expect(html.indexOf('hatch-queue-runners')).toBeLessThan(html.indexOf('hatch-queue-rows'));
+  });
+
+  it('draws a working runner with its issue link, its line and no gone class', () => {
+    const html = strip([
+      runner({ claimKey: 'AER-1', line: 'running make test-api', lastSeenAt: '2026-09-09T11:59:50Z' }),
+    ]);
+
+    expect(html).toContain('href="/issues/AER-1"');
+    expect(html).toContain('running make test-api');
+    expect(html).toContain('Working');
+    expect(html).not.toContain('hatch-queue-runner--gone');
+  });
+
+  it('mutes a gone runner, says when it was heard from and draws no link', () => {
+    const html = strip([
+      runner({ claimKey: 'AER-1', line: 'running make test-api', lastSeenAt: '2026-09-09T09:00:00Z', goneAfterSeconds: 90 }),
+    ]);
+
+    expect(html).toContain('hatch-queue-runner--gone');
+    expect(html).toContain('Gone');
+    expect(html).toContain('3 hours ago');
+    expect(html).not.toContain('href="/issues/');
+  });
+
+  it("keeps the array's order", () => {
+    const html = strip([runner({ name: 'Jeff Winger' }), runner({ name: 'Britta Perry' })]);
+
+    expect(html.indexOf('Britta Perry')).toBeGreaterThan(html.indexOf('Jeff Winger'));
+    expect(html.lastIndexOf('Jeff Winger')).toBeLessThan(html.lastIndexOf('Britta Perry'));
+  });
+
+  it('says so, in one sentence and no list, when the list is empty', () => {
+    const html = strip([]);
+
+    expect(html).toContain('No runner has been heard from lately.');
+    expect(html).not.toContain('hatch-queue-runners');
+  });
+
+  it('draws nothing while the list has not arrived', () => {
+    const html = strip(null);
+
+    expect(html).not.toContain('No runner has been heard from lately.');
+    expect(html).not.toContain('hatch-queue-runners');
   });
 });

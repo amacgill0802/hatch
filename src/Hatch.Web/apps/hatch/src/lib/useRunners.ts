@@ -35,8 +35,12 @@ export interface RunnersState {
  * page for one - and the board polls for the same reason. The runners page asks
  * more often (20 s to the board's 30 s) because it is a control surface
  * somebody presses, not a view they glance at.
+ *
+ * `enabled` is for `QueueControl`, which is mounted on the board all the time:
+ * its modal must not poll while closed, so turning this false clears the timer
+ * and the listener and turning it true reads at once.
  */
-export function useRunners(): RunnersState {
+export function useRunners(enabled = true): RunnersState {
   const [runners, setRunners] = useState<Runner[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -50,6 +54,8 @@ export function useRunners(): RunnersState {
   }, []);
 
   useEffect(() => {
+    if (!enabled) return;
+
     void load();
 
     const timer = setInterval(() => void load(), POLL_MS);
@@ -62,7 +68,7 @@ export function useRunners(): RunnersState {
       clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [load]);
+  }, [load, enabled]);
 
   return { runners, error, reload: load };
 }
