@@ -467,6 +467,10 @@ public sealed class WorkCommand(Runtime runtime)
                         runtime.Say.Lines(Picker.BusyReport(under, picked.Busy));
                         return 2;
 
+                    case Pick.Skipped:
+                        runtime.Say.Lines(Picker.SkippedReport(picked.Skipped!));
+                        return 2;
+
                     case Pick.Unreadable:
                         return 1;
 

@@ -590,6 +590,25 @@ public sealed class WorkCommandTests
     }
 
     [Fact]
+    public async Task With_no_key_a_board_whose_clear_rows_are_all_pinned_elsewhere_is_skipped()
+    {
+        using var h = new Harness();
+        var families = new ModelFamilies([
+            ModelFamilies.Default.Rows[0], new ModelFamily("fake-agent", "^fake-[a-z0-9-]+$", "fake-1")]);
+
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1", model: "fake-1") });
+
+        var code = await new WorkCommand(h.Runtime with { Families = families }).RunAsync([], default);
+
+        Assert.Equal(2, code);
+        Assert.Empty(h.Sessions.Spawned);
+        Assert.Empty(h.Wire.Calls.Where(c => c.Method == "POST" && c.Path.EndsWith("/claim", StringComparison.Ordinal)));
+        Assert.Contains(h.Say.Said, l => l.Contains("skipped - pinned to a model another agent runs", StringComparison.Ordinal));
+        Assert.Contains(h.Say.Said, l => l.Contains(
+            "AER-1  pinned to fake-1, a fake-agent model - this runner's agent is claude", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task A_key_and_an_epic_together_is_a_refusal()
     {
         using var h = new Harness();
