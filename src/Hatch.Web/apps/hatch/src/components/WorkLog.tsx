@@ -1,6 +1,7 @@
 import { Badge } from '@hatch/ui';
 import { Command } from './Command';
 import { IssueSection } from './IssueSection';
+import { NewestFirstTitle } from './NewestFirstGlyph';
 import {
   compactTokens,
   costPhrase,
@@ -38,7 +39,7 @@ export function WorkLog({ log, error }: { log: WorkLogData | null; error: string
   // to read should not blank because a meter could not be fetched.
   if (error) {
     return (
-      <IssueSection id="work-log" title="Work log">
+      <IssueSection id="work-log" title={<NewestFirstTitle>Work log</NewestFirstTitle>}>
         <p className="text-muted">{error}</p>
       </IssueSection>
     );
@@ -51,7 +52,7 @@ export function WorkLog({ log, error }: { log: WorkLogData | null; error: string
   const errors = errorPhrase(log.totals);
 
   return (
-    <IssueSection id="work-log" title="Work log" count={log.entries.length}>
+    <IssueSection id="work-log" title={<NewestFirstTitle>Work log</NewestFirstTitle>} count={log.entries.length}>
       {/* Tokens are the headline and the dollars are secondary, because on a
           subscription the dollars are notional list price rather than money
           that left an account. */}

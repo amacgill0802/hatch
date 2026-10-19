@@ -42,6 +42,7 @@ import { IssueSection } from '../components/IssueSection';
 import { IssueSubheader } from '../components/IssueSubheader';
 import { MarkdownEditor } from '../components/MarkdownEditor';
 import { MessageState } from '../components/MessageState';
+import { NewestFirstTitle } from '../components/NewestFirstGlyph';
 import { StatusMeter } from '../components/StatusMeter';
 import { StatusPill } from '../components/StatusPill';
 import { StatusSteps } from '../components/StatusSteps';
@@ -1627,7 +1628,7 @@ function Comments({
   }
 
   return (
-    <IssueSection id="comments" title="Comments" count={comments.length}>
+    <IssueSection id="comments" title={<NewestFirstTitle>Comments</NewestFirstTitle>} count={comments.length}>
       <div className="hatch-comment-box">
         <MarkdownEditor
           value={body}
@@ -1742,7 +1743,7 @@ function PullRequestField({ url, onSave }: { url: string | null; onSave: (url: s
 
 function EventTrail({ events }: { events: IssueEvent[] }) {
   return (
-    <IssueSection id="history" title="History" count={events.length} defaultOpen={false}>
+    <IssueSection id="history" title={<NewestFirstTitle>History</NewestFirstTitle>} count={events.length} defaultOpen={false}>
       <ul className="hatch-events">
         {events.map((event) => (
           <li key={event.id} className="hatch-event">
