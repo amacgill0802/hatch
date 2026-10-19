@@ -43,6 +43,22 @@ public class SearchControllerDatabaseTests
         Assert.Equal([inTitle.Key, inDescription.Key], result.Hits.Select(x => x.Card.Key));
     }
 
+    [SkippableFact]
+    public async Task AClosedIssue_OutranksAnOpenOneAmongEquals_EvenFiledFirst()
+    {
+        await using var h = await NewAsync();
+
+        // Filed first, so the later Id - which the final tie-break favors - would
+        // put the open one ahead if closed-before-open did not win first.
+        var closed = await h.FileAsync("gasket", closedAt: Now);
+        var open = await h.FileAsync("gasket");
+
+        var result = await h.SearchAsync("gasket");
+
+        Assert.Equal(2, result.Total);
+        Assert.Equal([closed.Key, open.Key], result.Hits.Select(x => x.Card.Key));
+    }
+
     // ---- Why it was found ----
 
     [SkippableFact]
@@ -208,7 +224,7 @@ public class SearchControllerDatabaseTests
 
         /// <summary>An issue, placed directly - the create path is not under test here.</summary>
         public async Task<(long Id, string Key)> FileAsync(
-            string title, string description = "", int? statusId = null)
+            string title, string description = "", int? statusId = null, DateTimeOffset? closedAt = null)
         {
             var number = next++;
             var db = Connect();
@@ -225,6 +241,7 @@ public class SearchControllerDatabaseTests
                 CreatedBy = "operator",
                 CreatedAt = Now,
                 UpdatedAt = Now,
+                ClosedAt = closedAt,
             };
 
             db.Issues.Add(issue);

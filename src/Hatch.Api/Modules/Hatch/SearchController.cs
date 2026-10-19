@@ -35,8 +35,8 @@ public class SearchController(
     /// </summary>
     /// <remarks>
     /// Every parameter is optional and they combine with AND. With words
-    /// (<paramref name="q"/>) the best match comes first, open issues ahead of
-    /// closed ones among equals; without, newest first. A <paramref name="q"/>
+    /// (<paramref name="q"/>) the best match comes first, closed issues ahead of
+    /// open ones among equals; without, newest first. A <paramref name="q"/>
     /// that reduces to no terms is no <paramref name="q"/> at all, because an
     /// empty search box means the whole list rather than none of it.
     /// </remarks>
@@ -112,8 +112,8 @@ public class SearchController(
 
         var ordered = tsquery is not null
             ? query.OrderByDescending(i => i.SearchVector.Rank(EF.Functions.ToTsQuery(SearchQuery.Config, tsquery)))
-                // Postgres sorts nulls first on a descending key; this puts the
-                // open issues first among equals, and the closed ones newest-closed first.
+                // The bool key is false before true, so this puts the closed
+                // issues first among equals, and among those, newest-closed first.
                 .ThenBy(i => i.ClosedAt == null)
                 .ThenByDescending(i => i.ClosedAt)
                 .ThenByDescending(i => i.CreatedAt)
