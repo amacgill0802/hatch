@@ -184,8 +184,14 @@ starts. The issue page's work log names it on every row - *playbooks from
 own table row*, or *playbooks from the board-wide table* - with a copyable
 `git show <sha>:.hatch/playbooks.yaml` beside the resume command on a
 file-sourced row. The Playbooks page itself labels every row *board-wide*,
-*<KEY>'s own*, or *.hatch/playbooks.yaml on <trunk> at <sha>*, and a
-board-wide row the file shadows carries a "shadowed by the file" badge.
+*<KEY>'s own*, or *.hatch/playbooks.yaml on <trunk> at <sha>*. A project
+filter sets aside, behind a "Show N overridden" toggle, every board-wide row
+a project's own layer takes over entirely - "overridden by <KEY>'s own" for
+a table project, "overridden by the file" for a repo-sourced one - and, for
+a repo-sourced project, that project's own leftover table rows, marked "not
+read while <KEY> reads its file" since the dispatcher never loads them. A row
+only partly overridden stays in the table, worded with what it still runs
+for.
 
 ## What the agent picks up
 
