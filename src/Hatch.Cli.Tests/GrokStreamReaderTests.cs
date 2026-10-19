@@ -192,11 +192,9 @@ public sealed class GrokStreamReaderTests
     {
         var (_, reader) = New();
 
-        var ex1 = Record.Exception(() => reader.Read(JsonSerializer.Serialize(new { type = "thought", data = "thinking" })).ToList());
         var ex2 = Record.Exception(() => reader.Read(JsonSerializer.Serialize(new { type = "some_future_type" })).ToList());
         var ex3 = Record.Exception(() => reader.Read("not json at all").ToList());
 
-        Assert.Null(ex1);
         Assert.Null(ex2);
         Assert.Null(ex3);
     }
@@ -208,5 +206,75 @@ public sealed class GrokStreamReaderTests
 
         Assert.Empty(reader.Usage);
         Assert.Null(reader.UsageReadAt);
+    }
+
+    [Fact]
+    public void TheBanner_IsTheFirstThingOut_OfTheVeryFirstReadCall()
+    {
+        var (facts, reader) = New();
+
+        var lines = reader.Read(Fixtures.GrokUsage()).ToList();
+
+        Assert.Equal($"hatch: session {facts.SessionId}", lines[0]);
+        Assert.Equal($"hatch:   join it with  grok --resume {facts.SessionId}", lines[1]);
+    }
+
+    [Fact]
+    public void AToolCall_DrawsOneLine_OffItsRawInput()
+    {
+        var (_, reader) = New();
+        reader.Read(Fixtures.GrokUsage()); // skip the banner
+
+        var lines = reader.Read(Fixtures.GrokToolCall()).ToList();
+
+        Assert.Contains("  ⏺ read_file  src/main.rs", lines);
+    }
+
+    [Fact]
+    public void AFailedToolCallUpdate_DrawsItsRawOutput()
+    {
+        var (_, reader) = New();
+        reader.Read(Fixtures.GrokUsage()); // skip the banner
+
+        var lines = reader.Read(Fixtures.GrokToolUpdate(status: "failed")).ToList();
+
+        Assert.Contains("  ✗ {\"lines\":42}", lines);
+    }
+
+    [Fact]
+    public void ASucceededToolCallUpdate_DrawsNothing()
+    {
+        var (_, reader) = New();
+        reader.Read(Fixtures.GrokUsage()); // skip the banner
+
+        var lines = reader.Read(Fixtures.GrokToolUpdate(status: "completed")).ToList();
+
+        Assert.Empty(lines);
+    }
+
+    [Fact]
+    public void Text_BufferedAcrossAToolCall_FlushesIntact()
+    {
+        var (_, reader) = New();
+        reader.Read(Fixtures.GrokUsage()); // skip the banner
+
+        reader.Read(Fixtures.GrokText("Hello "));
+        reader.Read(Fixtures.GrokText("world"));
+        var lines = reader.Read(Fixtures.GrokToolCall()).ToList();
+
+        Assert.Equal(["", "Hello world", "  ⏺ read_file  src/main.rs"], lines);
+    }
+
+    [Fact]
+    public void Thought_FiresExactlyAt3000AccumulatedChars_AndNotBefore()
+    {
+        var (_, reader) = New();
+        reader.Read(Fixtures.GrokUsage()); // skip the banner
+
+        var short2999 = reader.Read(Fixtures.GrokThought(new string('x', 2999))).ToList();
+        Assert.Empty(short2999);
+
+        var at3000 = reader.Read(Fixtures.GrokThought("x")).ToList();
+        Assert.Equal(["  ✻ thinking…"], at3000);
     }
 }

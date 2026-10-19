@@ -460,6 +460,9 @@ public static class Fixtures
     public static string GrokText(string data) =>
         JsonSerializer.Serialize(new { type = "text", data });
 
+    public static string GrokThought(string data) =>
+        JsonSerializer.Serialize(new { type = "thought", data });
+
     public static string GrokToolCall(string toolCallId = "call_1") =>
         JsonSerializer.Serialize(new
         {
