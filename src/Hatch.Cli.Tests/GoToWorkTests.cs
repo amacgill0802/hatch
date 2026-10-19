@@ -559,6 +559,46 @@ public sealed class GoToWorkTests
         Assert.Contains(h.Say.Said, l => l.Contains("--once, and the pass is done", StringComparison.Ordinal));
     }
 
+    /// <summary>Claude's family and one more, so a row can be pinned to an agent the runner is not.</summary>
+    private static readonly ModelFamilies TwoAgents = new([
+        ModelFamilies.Default.Rows[0], new ModelFamily("fake-agent", "^fake-[a-z0-9-]+$", "fake-1")]);
+
+    [Fact]
+    public async Task A_board_whose_only_clear_row_is_pinned_to_another_agent_waits_and_says_why()
+    {
+        using var h = new Harness();
+        var runtime = h.Runtime with { Families = TwoAgents };
+
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1", model: "fake-1") });
+
+        await new GoToWorkCommand(runtime).RunAsync(["--once"], default);
+
+        Assert.Contains(h.Say.Said, l => l.Contains("skipped - pinned to a model another agent runs", StringComparison.Ordinal));
+        Assert.Contains(h.Say.Said, l => l.Contains(
+            "AER-1  pinned to fake-1, a fake-agent model - this runner's agent is claude", StringComparison.Ordinal));
+        Assert.DoesNotContain(h.Wire.Calls, c => c.Path.EndsWith("/claim", StringComparison.Ordinal));
+        Assert.Empty(h.Sessions.Spawned);
+        Assert.Empty(h.Workspace.Prepared);
+        Assert.DoesNotContain(h.Say.Said, l => l.Contains("nothing on the board", StringComparison.Ordinal));
+        Assert.Contains(h.Say.Said, l => l.Contains("--once, and the pass is done", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_claimed_row_behind_a_skipped_one_prints_what_it_skipped_on_the_way()
+    {
+        using var h = new Harness();
+        var runtime = h.Runtime with { Families = TwoAgents };
+        OneTicket(h, "AER-2");
+        h.Wire.Replace("GET", Queue, HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(
+            new[] { Fixtures.Row("AER-1", model: "fake-1"), Fixtures.Row("AER-2") },
+            Fixtures.Json));
+
+        await new GoToWorkCommand(runtime).RunAsync(["--once"], default);
+
+        Assert.Contains(h.Say.Said, l => l.Contains(
+            "hatch:   skipped  AER-1  pinned to", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task An_empty_board_reads_like_an_empty_board()
     {
