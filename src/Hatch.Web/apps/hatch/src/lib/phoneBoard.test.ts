@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   BOARD_VIEW_STORAGE_KEY,
   columnSections,
+  pinnedBoard,
   readBoardView,
   resolveBoardLayout,
   startsCollapsed,
@@ -111,5 +112,14 @@ describe('resolveBoardLayout', () => {
   it('echoes the stored view on the phone', () => {
     expect(resolveBoardLayout(true, 'stacked')).toBe('stacked');
     expect(resolveBoardLayout(true, 'full')).toBe('full');
+  });
+});
+
+describe('pinnedBoard', () => {
+  it('pins only when the phone and standalone hold together', () => {
+    expect(pinnedBoard(true, true)).toBe(true);
+    expect(pinnedBoard(true, false)).toBe(false);
+    expect(pinnedBoard(false, true)).toBe(false);
+    expect(pinnedBoard(false, false)).toBe(false);
   });
 });

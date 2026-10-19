@@ -25,6 +25,15 @@ html, body, #root {
     height: auto;
     min-height: 100%;
   }
+
+  /* The board page, pinned (standalone at phone width): a fixed-height shell
+     again, so .hatch-board and .hatch-column-cards scroll as they do on the
+     desk. :has() outranks the plain selectors above whatever the source order. */
+  html:has(.hatch-board-page--pinned),
+  body:has(.hatch-board-page--pinned),
+  #root:has(.hatch-board-page--pinned) {
+    height: 100dvh;
+  }
 }
 
 .text-muted {
