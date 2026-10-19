@@ -22,7 +22,6 @@ import {
   matchesProjectFilter,
   playbookLabel,
   projectLabel,
-  shadowedByFile,
   transitionLabel,
 } from './playbooks';
 import type { CoverageRow } from './playbooks';
@@ -134,46 +133,6 @@ describe('fileRowLabel', () => {
     expect(fileRowLabel({ trunk: 'main', sha: 'abcdef0123456789' })).toBe(
       '.hatch/playbooks.yaml on main at abcdef0',
     );
-  });
-});
-
-describe('shadowedByFile', () => {
-  const boardRow = { fromStatusId: 3, toStatusId: 4, shape: 'any' as const, types: ['bug', 'task'] as IssueType[] };
-
-  it('is shadowed by a file row with the same ends, shape and types in a different order', () => {
-    const fileRows = [
-      { fromStatusId: 3, toStatusId: 4, shape: 'any' as const, types: ['task', 'bug'] as IssueType[] },
-    ];
-
-    expect(shadowedByFile(boardRow, fileRows)).toBe(true);
-  });
-
-  it('is not shadowed by a different toStatusId', () => {
-    const fileRows = [
-      { fromStatusId: 3, toStatusId: 5, shape: 'any' as const, types: ['bug', 'task'] as IssueType[] },
-    ];
-
-    expect(shadowedByFile(boardRow, fileRows)).toBe(false);
-  });
-
-  it('is not shadowed by an extra type', () => {
-    const fileRows = [
-      { fromStatusId: 3, toStatusId: 4, shape: 'any' as const, types: ['bug', 'task', 'epic'] as IssueType[] },
-    ];
-
-    expect(shadowedByFile(boardRow, fileRows)).toBe(false);
-  });
-
-  it('is not shadowed by a different shape', () => {
-    const fileRows = [
-      { fromStatusId: 3, toStatusId: 4, shape: 'leaf' as const, types: ['bug', 'task'] as IssueType[] },
-    ];
-
-    expect(shadowedByFile(boardRow, fileRows)).toBe(false);
-  });
-
-  it('is not shadowed when there are no file rows', () => {
-    expect(shadowedByFile(boardRow, [])).toBe(false);
   });
 });
 
