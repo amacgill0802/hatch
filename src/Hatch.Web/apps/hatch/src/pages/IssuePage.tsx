@@ -71,6 +71,7 @@ import { renderMarkdown } from '../lib/markdown';
 import { waitingChild } from '../lib/next';
 import { projectLogoUrl } from '../lib/projectLogo';
 import { openQuestions } from '../lib/questions';
+import { newestFirst } from '../lib/thread';
 import { useCloseSubtree } from '../lib/useCloseSubtree';
 import { useIssueConfirmations } from '../lib/useIssueConfirmations';
 import { useMoveProject } from '../lib/useMoveProject';
@@ -1627,14 +1628,29 @@ function Comments({
 
   return (
     <IssueSection id="comments" title="Comments" count={comments.length}>
+      <div className="hatch-comment-box">
+        <MarkdownEditor
+          value={body}
+          onChange={setBody}
+          rows={3}
+          className="hatch-grows"
+          deferred
+          ariaLabel="Comment"
+          placeholder="Markdown, like everything else."
+        />
+        <Button variant="primary" loading={saving} disabled={!body.trim()} onClick={() => void submit()}>
+          Comment
+        </Button>
+      </div>
+
       {comments.length === 0 && <p className="text-muted">Nothing said yet.</p>}
 
       <ul className="hatch-comments">
-        {comments.map((comment) => (
+        {newestFirst(comments).map((comment) => (
           <li key={comment.id} className={`hatch-comment${comment.kind ? ` hatch-comment-${comment.kind}` : ''}`}>
             <div className="hatch-comment-head">
               <strong>{comment.author}</strong>
-              {/* The thread still shows everything in the order it was said -
+              {/* The thread still shows everything, newest first -
                   the card above is for acting, this is for reading back what
                   was decided and when. */}
               {comment.kind === 'question' && <Badge>asked</Badge>}
@@ -1652,21 +1668,6 @@ function Comments({
           </li>
         ))}
       </ul>
-
-      <div className="hatch-comment-box">
-        <MarkdownEditor
-          value={body}
-          onChange={setBody}
-          rows={3}
-          className="hatch-grows"
-          deferred
-          ariaLabel="Comment"
-          placeholder="Markdown, like everything else."
-        />
-        <Button variant="primary" loading={saving} disabled={!body.trim()} onClick={() => void submit()}>
-          Comment
-        </Button>
-      </div>
     </IssueSection>
   );
 }
