@@ -128,6 +128,7 @@ public class DispatchTests
 
         var expected = $"{h.ProjectKey} is repo-sourced but is bound to no repository - bind one on the Projects page";
         Assert.Equal(expected, RowFor(scan, inTodo).Blocked);
+        Assert.Equal(BlockedKinds.Other, RowFor(scan, inTodo).BlockedKind);
         Assert.Equal(expected, RowFor(scan, inProgress).Blocked);
 
         // The other project names no setting at all, and reads its board-wide
@@ -152,6 +153,7 @@ public class DispatchTests
         var expected = $"{h.ProjectKey} names no base branch and more than one .hatch/playbooks.yaml trunk exists " +
                        $"for {repo.Canonical} - set the base branch on the Projects page";
         Assert.Equal(expected, RowFor(scan, inTodo).Blocked);
+        Assert.Equal(BlockedKinds.Other, RowFor(scan, inTodo).BlockedKind);
         Assert.Equal(expected, RowFor(scan, inProgress).Blocked);
     }
 
@@ -170,6 +172,7 @@ public class DispatchTests
 
         var expected = $"no runner has read .hatch/playbooks.yaml on main of {repo.Remote} yet";
         Assert.Equal(expected, RowFor(scan, inTodo).Blocked);
+        Assert.Equal(BlockedKinds.Other, RowFor(scan, inTodo).BlockedKind);
         Assert.Equal(expected, RowFor(scan, inProgress).Blocked);
     }
 
@@ -188,6 +191,7 @@ public class DispatchTests
 
         var expected = $".hatch/playbooks.yaml is missing on main at {file.Sha}";
         Assert.Equal(expected, RowFor(scan, inTodo).Blocked);
+        Assert.Equal(BlockedKinds.Other, RowFor(scan, inTodo).BlockedKind);
         Assert.Equal(expected, RowFor(scan, inProgress).Blocked);
     }
 
@@ -206,6 +210,7 @@ public class DispatchTests
 
         var expected = "entry 1: \"from\" is not a column - fix it on the trunk";
         Assert.Equal(expected, RowFor(scan, inTodo).Blocked);
+        Assert.Equal(BlockedKinds.Other, RowFor(scan, inTodo).BlockedKind);
         Assert.Equal(expected, RowFor(scan, inProgress).Blocked);
     }
 
@@ -244,6 +249,7 @@ public class DispatchTests
         Assert.Equal(
             "no playbook covers \"in progress\" to \"review\" for a story - add one to .hatch/playbooks.yaml on main, or a board-wide one on the Playbooks page",
             RowFor(scan, issue).Blocked);
+        Assert.Equal(BlockedKinds.Other, RowFor(scan, issue).BlockedKind);
     }
 
     // ---- Helpers ----

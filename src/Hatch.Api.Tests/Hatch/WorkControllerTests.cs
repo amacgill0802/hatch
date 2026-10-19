@@ -187,6 +187,7 @@ public class WorkControllerTests
         // so this is the whole of what an operator reading a queue is told.
         var folded = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(hers));
         Assert.Equal("assigned to Ada - an unattended pass leaves a person's work alone", folded.Blocked);
+        Assert.Equal(BlockedKinds.Person, folded.BlockedKind);
     }
 
     [Fact]
@@ -323,10 +324,12 @@ public class WorkControllerTests
         await h.AssignAsync(hers, personId: ada.Id);
 
         var folded = Value(await h.Work.GetQueue(0, null, null, null, null, true, default));
-        Assert.Equal("assigned to Ada, not to you", folded.Single(e => e.Issue.Key == Key(hers)).Blocked);
-        Assert.Equal(
-            "assigned to nobody - a --mine pass takes only your own",
-            folded.Single(e => e.Issue.Key == Key(nobodys)).Blocked);
+        var theirs = folded.Single(e => e.Issue.Key == Key(hers));
+        Assert.Equal("assigned to Ada, not to you", theirs.Blocked);
+        Assert.Equal(BlockedKinds.Other, theirs.BlockedKind);
+        var unassigned = folded.Single(e => e.Issue.Key == Key(nobodys));
+        Assert.Equal("assigned to nobody - a --mine pass takes only your own", unassigned.Blocked);
+        Assert.Equal(BlockedKinds.Other, unassigned.BlockedKind);
     }
 
     [Fact]
@@ -821,6 +824,10 @@ public class WorkControllerTests
         Assert.Equal(
             "2 of its 4 children are not done - an epic is verified once its stories are",
             Value(await h.Work.GetWork(Key(epic), null, default)).Blocked);
+
+        var row = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(epic));
+        Assert.Equal("2 of its 4 children are not done - an epic is verified once its stories are", row.Blocked);
+        Assert.Equal(BlockedKinds.Family, row.BlockedKind);
     }
 
     [Fact]
@@ -1164,7 +1171,9 @@ public class WorkControllerTests
         var sentence = $"its brief is {1001.ToString("N0", CultureInfo.InvariantCulture)} characters, " +
                         $"and this move is spawned on at most {1000.ToString("N0", CultureInfo.InvariantCulture)} - cut it into tasks first";
         Assert.Equal(sentence, Value(await h.Work.GetWork(Key(issue), null, default)).Blocked);
-        Assert.Equal(sentence, Only(await h.Work.GetQueue(0, null, default)).Blocked);
+        var row = Only(await h.Work.GetQueue(0, null, default));
+        Assert.Equal(sentence, row.Blocked);
+        Assert.Equal(BlockedKinds.Other, row.BlockedKind);
     }
 
     [Fact]
@@ -1410,7 +1419,11 @@ public class WorkControllerTests
         Assert.False(work.Hop);
         Assert.Null(work.SentBack);
 
-        var before = (await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id)).Events.Count;
+        var row = Only(await h.Work.GetQueue(0, null, default));
+        Assert.Equal(work.Blocked, row.Blocked);
+        Assert.Equal(BlockedKinds.Person, row.BlockedKind);
+
+        var before =(await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id)).Events.Count;
         var result = await h.Work.HopWork(Key(issue), null, null, null, default);
         Assert.Equal(StatusCodes.Status409Conflict, ((ObjectResult)result.Result!).StatusCode);
         Assert.Equal(before, (await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id)).Events.Count);
@@ -3172,6 +3185,7 @@ public class WorkControllerTests
         var row = Only(await h.Work.GetQueue(0, null, default));
         Assert.Contains("51%", row.Blocked);
         Assert.Contains("60%", row.Blocked);
+        Assert.Equal(BlockedKinds.Other, row.BlockedKind);
     }
 
     [Fact]
@@ -3273,6 +3287,7 @@ public class WorkControllerTests
         var row = Only(await h.Work.GetQueue(0, null, default));
         Assert.Contains("61%", row.Blocked);
         Assert.Contains("60%", row.Blocked);
+        Assert.Equal(BlockedKinds.Other, row.BlockedKind);
     }
 
     [Fact]
@@ -3461,9 +3476,10 @@ public class WorkControllerTests
         var next = await h.FileAsync("story", "unrelated", h.Todo, rank: 2048);
         await h.HoldAsync(held);
 
-        var blocked = Value(await h.Work.GetQueue(0, null, default))
-            .Single(e => e.Issue.Key == Key(held)).Blocked;
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(held));
+        var blocked = entry.Blocked;
         Assert.Equal("held - a person told the loop to leave this alone until they say otherwise", blocked);
+        Assert.Equal(BlockedKinds.Person, entry.BlockedKind);
 
         Assert.Equal(
             blocked, Value(await h.Work.GetWork(Key(held), null, default)).Blocked);
@@ -3508,6 +3524,7 @@ public class WorkControllerTests
         Assert.Contains(
             "this board never resumes a marked ticket unattended",
             Value(await h.Work.GetWork(Key(issue), null, default)).Blocked);
+        Assert.Equal(BlockedKinds.Person, Only(await h.Work.GetQueue(0, null, default)).BlockedKind);
     }
 
     [Fact]
@@ -3522,6 +3539,20 @@ public class WorkControllerTests
         var row = Only(await h.Work.GetQueue(0, null, default));
         Assert.Null(row.Blocked);
         Assert.Equal("it stalled 18 minutes ago and resumes itself after 15 minutes", row.ClearNote);
+    }
+
+    [Fact]
+    public async Task Queue_AStalledRowInsideTheResumeWindow_IsFoldedAsOther()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "stalled a moment ago", h.Todo);
+        await h.StallAsync(issue, Now, "a half-finished merge");
+
+        h.Time.Advance(TimeSpan.FromMinutes(5));
+
+        var row = Only(await h.Work.GetQueue(0, null, default));
+        Assert.StartsWith("stalled 5 minutes ago", row.Blocked);
+        Assert.Equal(BlockedKinds.Other, row.BlockedKind);
     }
 
     [Fact]
@@ -3542,6 +3573,7 @@ public class WorkControllerTests
 
         var row = Only(await h.Work.GetQueue(0, null, default));
         Assert.Equal(blocked, row.Blocked);
+        Assert.Equal(BlockedKinds.Person, row.BlockedKind);
     }
 
     [Fact]
@@ -3714,7 +3746,9 @@ public class WorkControllerTests
         var h = await NewAsync();
         await h.FileAsync("story", "waiting on a renewal", h.Todo, readyAt: Now.AddDays(3));
 
-        Assert.Contains("not workable until", Only(await h.Work.GetQueue(0, null, default)).Blocked);
+        var row = Only(await h.Work.GetQueue(0, null, default));
+        Assert.Contains("not workable until", row.Blocked);
+        Assert.Equal(BlockedKinds.Other, row.BlockedKind);
     }
 
     [Fact]
@@ -3724,7 +3758,9 @@ public class WorkControllerTests
         var issue = await h.FileAsync("story", "waiting on a person", h.Todo);
         await h.AskAsync(issue, "how should retries be scoped?");
 
-        Assert.Contains("unanswered question", Only(await h.Work.GetQueue(0, null, default)).Blocked);
+        var row = Only(await h.Work.GetQueue(0, null, default));
+        Assert.Contains("unanswered question", row.Blocked);
+        Assert.Equal(BlockedKinds.Person, row.BlockedKind);
     }
 
     [Fact]
@@ -3785,9 +3821,9 @@ public class WorkControllerTests
         // the difference between "no work left" and "no instructions left" -
         // and a loop that could not tell them apart would report a finished
         // board every night.
-        Assert.Equal(
-            "no playbook covers \"inbox\" to \"todo\" for a story - add one on the Playbooks page",
-            Only(await h.Work.GetQueue(0, null, default)).Blocked);
+        var row = Only(await h.Work.GetQueue(0, null, default));
+        Assert.Equal("no playbook covers \"inbox\" to \"todo\" for a story - add one on the Playbooks page", row.Blocked);
+        Assert.Equal(BlockedKinds.Other, row.BlockedKind);
     }
 
     [Fact]
@@ -3818,9 +3854,9 @@ public class WorkControllerTests
         await h.Db.SaveChangesAsync();
         await h.FileAsync("story", "awaiting the operator", (await h.Db.Statuses.SingleAsync(s => s.Name == "between")).Id);
 
-        Assert.Equal(
-            "the next column is \"shipped\", and only the operator moves work there",
-            Only(await h.Work.GetQueue(0, null, default)).Blocked);
+        var row = Only(await h.Work.GetQueue(0, null, default));
+        Assert.Equal("the next column is \"shipped\", and only the operator moves work there", row.Blocked);
+        Assert.Equal(BlockedKinds.Person, row.BlockedKind);
     }
 
     [Fact]
@@ -4003,9 +4039,9 @@ public class WorkControllerTests
         await h.ExpressAsync(issue);
         await h.TickExpressSkipsAsync(between.Id);
 
-        Assert.Equal(
-            "the next column is \"shipped\", and only its approvers move work there",
-            Only(await h.Work.GetQueue(0, null, default)).Blocked);
+        var row = Only(await h.Work.GetQueue(0, null, default));
+        Assert.Equal("the next column is \"shipped\", and only its approvers move work there", row.Blocked);
+        Assert.Equal(BlockedKinds.Person, row.BlockedKind);
     }
 
     [Fact]
@@ -4323,6 +4359,7 @@ public class WorkControllerTests
         var entry = Only(await h.Work.GetQueue(0, null, default));
         Assert.Equal(
             "paused - a person set it aside, and nothing picks it up until they set it back", entry.Blocked);
+        Assert.Equal(BlockedKinds.Person, entry.BlockedKind);
         Assert.False(entry.Hop);
     }
 
@@ -5023,6 +5060,7 @@ public class WorkControllerTests
         var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(child));
         Assert.Equal(
             "paused - a person set it aside, and nothing picks it up until they set it back", entry.Blocked);
+        Assert.Equal(BlockedKinds.Person, entry.BlockedKind);
         Assert.False(entry.Hop);
     }
 
@@ -5039,6 +5077,7 @@ public class WorkControllerTests
         Assert.Equal(
             "its parent has not reached the implementation column, so nothing pulls it forward yet",
             entry.Blocked);
+        Assert.Equal(BlockedKinds.Family, entry.BlockedKind);
         Assert.False(entry.Hop);
     }
 
@@ -5086,6 +5125,7 @@ public class WorkControllerTests
         Assert.Equal(
             "a sibling is already in flight, so only one child is pulled through at a time",
             entry.Blocked);
+        Assert.Equal(BlockedKinds.Family, entry.BlockedKind);
         Assert.False(entry.Hop);
     }
 
@@ -5256,6 +5296,7 @@ public class WorkControllerTests
         var queue = await h.Work.GetQueue(0, null, default);
 
         Assert.Equal("its children are the work, and some are still open", Row(queue, building).Blocked);
+        Assert.Equal(BlockedKinds.Family, Row(queue, building).BlockedKind);
         Assert.Null(Row(queue, inQa).Blocked);
     }
 
@@ -5430,6 +5471,7 @@ public class WorkControllerTests
         var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(epic));
 
         Assert.Equal(FamilyGate.NothingUnder, entry.Blocked);
+        Assert.Equal(BlockedKinds.Family, entry.BlockedKind);
         Assert.False(entry.Hop);
     }
 
@@ -5478,6 +5520,7 @@ public class WorkControllerTests
         Assert.Equal(
             "a top-level epic is moved in by a person - its own column is the signal for everything under it",
             entry.Blocked);
+        Assert.Equal(BlockedKinds.Person, entry.BlockedKind);
         Assert.False(entry.Hop);
     }
 
@@ -5526,6 +5569,7 @@ public class WorkControllerTests
         var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(epic));
 
         Assert.Equal("its parent epic is not running, so nothing pulls it in", entry.Blocked);
+        Assert.Equal(BlockedKinds.Family, entry.BlockedKind);
         Assert.False(entry.Hop);
     }
 
@@ -5962,7 +6006,9 @@ public class WorkControllerTests
         var issue = await h.FileAsync("story", "merged already", h.Review);
         await h.VerdictAsync(issue, MergeVerdicts.None);
 
-        Assert.Equal("no branch on origin is named for it", Only(await h.Work.GetQueue(0, null, default)).Blocked);
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+        Assert.Equal("no branch on origin is named for it", entry.Blocked);
+        Assert.Equal(BlockedKinds.Other, entry.BlockedKind);
     }
 
     [Fact]
@@ -6178,6 +6224,7 @@ public class WorkControllerTests
         var entry = Only(await h.Work.GetQueue(0, null, default));
         Assert.Equal("no landing is recorded for it yet", entry.Blocked);
         Assert.Equal(WorkKinds.Pending, entry.Kind);
+        Assert.Equal(BlockedKinds.Other, entry.BlockedKind);
 
         var work = Value(await h.Work.GetWork(Key(issue), null, default));
         Assert.Equal("no landing is recorded for it yet", work.Blocked);
@@ -6531,9 +6578,31 @@ public class WorkControllerTests
         await h.VerdictAsync(issue, MergeVerdicts.Clean);
         await h.BuildAsync(issue, BuildVerdicts.Failed);
 
-        Assert.Equal(
-            "bound to https://example.com/o/r, and this runner has no checkout of it",
-            Only(await h.Work.GetQueue(0, null, remote: ["https://example.com/other.git"], standing: false, ct: default)).Blocked);
+        var entry = Only(await h.Work.GetQueue(0, null, remote: ["https://example.com/other.git"], standing: false, ct: default));
+        Assert.Equal("bound to https://example.com/o/r, and this runner has no checkout of it", entry.Blocked);
+        Assert.Equal(BlockedKinds.Other, entry.BlockedKind);
+    }
+
+    [Fact]
+    public void BlockedWithKind_TheThreeFoldsNoQueueRowReaches_AreTaggedByTheTable()
+    {
+        // ScanAsync skips a column with no target, so no queue row carries these.
+        // Each returns before it reads anything but the columns and the hop kind.
+        static (string? Sentence, string? Kind) Fold(EfHatchStatus from, EfHatchStatus? to) =>
+            Dispatch.BlockedWithKind(
+                null!, from, to, null, 0, 0, 0, null, null, default!, default!, default!, null, null, default!,
+                null!, null!, null, null!, null, null!);
+
+        var terminal = Fold(new EfHatchStatus { Name = "done", SortOrder = 10, IsTerminal = true }, null);
+        var deferred = Fold(new EfHatchStatus { Name = "shelved", SortOrder = 20, IsDeferred = true }, null);
+        var last = Fold(new EfHatchStatus { Name = "last", SortOrder = 30 }, null);
+
+        Assert.Equal("\"done\" is where work ends - there is nothing after it", terminal.Sentence);
+        Assert.Equal(BlockedKinds.Other, terminal.Kind);
+        Assert.Equal("\"shelved\" is deferred - a person puts it back on the board, not a pass", deferred.Sentence);
+        Assert.Equal(BlockedKinds.Person, deferred.Kind);
+        Assert.Equal("there is no column after \"last\", so there is nowhere for this to go", last.Sentence);
+        Assert.Equal(BlockedKinds.Other, last.Kind);
     }
 
     [Fact]
@@ -9476,6 +9545,7 @@ public class WorkControllerTests
         Assert.Equal(
             $"waiting on {Key(story)}'s pull request - its work is pushed to the story's branch, and the story opens the one pull request",
             entry.Blocked);
+        Assert.Equal(BlockedKinds.Family, entry.BlockedKind);
     }
 
     [Fact]

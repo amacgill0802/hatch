@@ -855,12 +855,9 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// <summary>
     /// <see cref="Blocked"/>'s own answer, plus which of <see cref="BlockedKinds"/>
     /// it is - null exactly where the sentence is. Every return point tags a
-    /// kind; only the five <see cref="BlockedKinds.Working"/>,
-    /// <see cref="BlockedKinds.Family"/> (a relative's claim), <see cref="BlockedKinds.Wip"/>,
-    /// <see cref="BlockedKinds.Dependency"/> and <see cref="BlockedKinds.Turn"/>
-    /// (the train clause) are named correctly here - every other site tags
-    /// <see cref="BlockedKinds.Other"/>, which HA-965 revises one fold at a
-    /// time against HA-937's table.
+    /// kind from HA-937's table: <see cref="BlockedKinds.Person"/> and
+    /// <see cref="BlockedKinds.Family"/> where a person or a relative holds the
+    /// row, <see cref="BlockedKinds.Other"/> only where the table says other.
     /// </summary>
     public static (string? Sentence, string? Kind) BlockedWithKind(
         EfHatchIssue issue,
@@ -899,7 +896,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         // moving. Nothing comes off the shelf on a pass's say-so: a deferred
         // ticket is waiting on a person deciding it is work again.
         if (from.IsDeferred)
-            return ($"\"{from.Name}\" is deferred - a person puts it back on the board, not a pass", BlockedKinds.Other);
+            return ($"\"{from.Name}\" is deferred - a person puts it back on the board, not a pass", BlockedKinds.Person);
 
         if (to is null)
             return ($"there is no column after \"{from.Name}\", so there is nowhere for this to go", BlockedKinds.Other);
@@ -910,7 +907,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         // column's conflict and build checks, both of which read a branch named
         // for this issue's own key and would find none.
         if (gate.WaitingOn(issue.Id, statuses) is { } storyKey)
-            return ($"waiting on {storyKey}'s pull request - its work is pushed to the story's branch, and the story opens the one pull request", BlockedKinds.Other);
+            return ($"waiting on {storyKey}'s pull request - its work is pushed to the story's branch, and the story opens the one pull request", BlockedKinds.Family);
 
         if (from.MergesPullRequest)
         {
@@ -940,17 +937,17 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             return (landed.Sentence, BlockedKinds.Other);
 
         if (to.IsTerminal && hopKind != HopKinds.Close)
-            return ($"the next column is \"{to.Name}\", and only the operator moves work there", BlockedKinds.Other);
+            return ($"the next column is \"{to.Name}\", and only the operator moves work there", BlockedKinds.Person);
 
         if (to.IsProtected && hopKind != HopKinds.Approve)
-            return ($"the next column is \"{to.Name}\", and only its approvers move work there", BlockedKinds.Other);
+            return ($"the next column is \"{to.Name}\", and only its approvers move work there", BlockedKinds.Person);
 
         var held = claimed.HeldWithKind(issue);
         if (held.Sentence is { } holder)
             return (holder, held.Kind);
 
         if (issue.Held)
-            return ("held - a person told the loop to leave this alone until they say otherwise", BlockedKinds.Other);
+            return ("held - a person told the loop to leave this alone until they say otherwise", BlockedKinds.Person);
 
         if (issue.StalledAt is { } stalledAt)
         {
@@ -958,20 +955,20 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             var why = issue.StalledWhy is { Length: > 0 } w ? $" ({w})" : "";
 
             if (resumeSeconds <= 0)
-                return ($"stalled{why} - this board never resumes a marked ticket unattended; a person moves it", BlockedKinds.Other);
+                return ($"stalled{why} - this board never resumes a marked ticket unattended; a person moves it", BlockedKinds.Person);
 
             if (claimed.Now - stalledAt < TimeSpan.FromSeconds(resumeSeconds))
                 return ($"stalled {Minutes((int)(claimed.Now - stalledAt).TotalSeconds)} ago{why} and resumes itself after {Minutes(resumeSeconds)}", BlockedKinds.Other);
 
             if (letGo >= claimed.Claims!.StallResumeLimit)
-                return ($"stalled {letGo} times in a row, at this board's limit of {claimed.Claims!.StallResumeLimit} - held for a person now, not resumed again", BlockedKinds.Other);
+                return ($"stalled {letGo} times in a row, at this board's limit of {claimed.Claims!.StallResumeLimit} - held for a person now, not resumed again", BlockedKinds.Person);
         }
 
         var (pausedLevel, pausedFrom) = gate.Effective(issue.Id);
         if (pausedLevel == PriorityLevels.Paused)
             return (pausedFrom is null
                 ? "paused - a person set it aside, and nothing picks it up until they set it back"
-                : $"paused from {pausedFrom} - a person set it aside, and nothing picks it up until they set it back", BlockedKinds.Other);
+                : $"paused from {pausedFrom} - a person set it aside, and nothing picks it up until they set it back", BlockedKinds.Person);
 
         if (loop is not null)
         {
@@ -1011,12 +1008,12 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                 // thing an agent should pick up, and one whose assignee no
                 // longer resolves is not assigned at all - the liveness rule
                 // reaching the dispatcher without a line of its own.
-                return ($"assigned to {assignee.Name} - an unattended pass leaves a person's work alone", BlockedKinds.Other);
+                return ($"assigned to {assignee.Name} - an unattended pass leaves a person's work alone", BlockedKinds.Person);
             }
         }
 
         if (waiting > 0)
-            return ($"{waiting} unanswered question{(waiting == 1 ? "" : "s")} - it is waiting on a person, not on an agent", BlockedKinds.Other);
+            return ($"{waiting} unanswered question{(waiting == 1 ? "" : "s")} - it is waiting on a person, not on an agent", BlockedKinds.Person);
 
         // A repository matters wherever a session is spawned, because every
         // session runs in the primary repository's checkout: every move but a
@@ -1044,7 +1041,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         // sentence and its own scope - this one is guarded off epics so the
         // two do not both speak for the same issue.
         if (issue.Type != "epic" && from.Id == implementation?.Id && family.OpenWorkChildren(issue.Id).Count > 0)
-            return ("its children are the work, and some are still open", BlockedKinds.Other);
+            return ("its children are the work, and some are still open", BlockedKinds.Family);
 
         // An epic is verified by its own stories, not merely cleared off one
         // column: it is held wherever it stands at or past the implementation
@@ -1056,7 +1053,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         if (issue.Type == "epic" && !conflicts && wip is not null
             && Columns.AtOrPastImplementation(statuses, from.Id)
             && family.EpicFold(issue.Id, statuses) is { } epicBlock)
-            return (epicBlock, BlockedKinds.Other);
+            return (epicBlock, BlockedKinds.Family);
 
         // A full section, or an epic at its own limit, needs other work to
         // leave, so it is said after a dependency, which needs other work to
@@ -1086,7 +1083,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             && issue.ParentId is { } holdParentId
             && !Columns.AtOrPastImplementation(statuses, from.Id)
             && !family.ParentStarted(holdParentId, statuses))
-            return ("its parent has not reached the implementation column, so nothing pulls it forward yet", BlockedKinds.Other);
+            return ("its parent has not reached the implementation column, so nothing pulls it forward yet", BlockedKinds.Family);
 
         // The hop answers condition 8 and nothing else: an express issue in a
         // column marked ExpressSkips needs no playbook, because the loop
@@ -1107,12 +1104,12 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             var epicParent = family.ParentOf(issue.Id);
 
             if (epicParent is null)
-                return ("a top-level epic is moved in by a person - its own column is the signal for everything under it", BlockedKinds.Other);
+                return ("a top-level epic is moved in by a person - its own column is the signal for everything under it", BlockedKinds.Person);
 
             if (epicParent is not { Type: "epic" } || !Columns.AtOrPastImplementation(statuses, epicParent.StatusId))
-                return ("its parent epic is not running, so nothing pulls it in", BlockedKinds.Other);
+                return ("its parent epic is not running, so nothing pulls it in", BlockedKinds.Family);
 
-            return (FamilyGate.NothingUnder, BlockedKinds.Other);
+            return (FamilyGate.NothingUnder, BlockedKinds.Family);
         }
 
         // A column that pulls its children is never "no playbook covers
@@ -1124,11 +1121,11 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         // column (e.g. plain Backlog) has nothing to pull, so it falls
         // through unchanged.
         if (from.ParentPulls && issue.ParentId is { } parentId && family.ParentStarted(parentId, statuses))
-            return ("a sibling is already in flight, so only one child is pulled through at a time", BlockedKinds.Other);
+            return ("a sibling is already in flight, so only one child is pulled through at a time", BlockedKinds.Family);
 
         if (SendBackEligible(issue, from, family, statuses, playbook) && sendBackStreak >= claimed.Claims!.StallResumeLimit)
             return ($"sent back {sendBackStreak} times in a row, at this board's limit of " +
-                   $"{claimed.Claims!.StallResumeLimit} - held for a person now, not sent back again", BlockedKinds.Other);
+                   $"{claimed.Claims!.StallResumeLimit} - held for a person now, not sent back again", BlockedKinds.Person);
 
         if (playbook?.BriefLimit is { } limit && family.Children(issue.Id).Count == 0 && issue.Description.Length > limit)
             return ($"its brief is {issue.Description.Length.ToString("N0", CultureInfo.InvariantCulture)} characters, " +
