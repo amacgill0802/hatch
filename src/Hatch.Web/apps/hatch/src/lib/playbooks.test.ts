@@ -1,9 +1,17 @@
+/* The coverage cases below mirror the dispatcher: Dispatch.Match and
+   EfHatchPlaybook.Covers, pinned on the server by
+   src/Hatch.Api.Tests/Hatch/DispatchTests.cs. A change to the rule on either
+   side is a change to both. */
+
 import { describe, expect, it } from 'vitest';
 import {
   briefLimitDraft,
   briefLimitRequest,
   budgetDraft,
   budgetRequest,
+  cellsLeft,
+  coverageCells,
+  coverageOf,
   deniedToolsDraft,
   deniedToolsRequest,
   fileRowLabel,
@@ -16,7 +24,8 @@ import {
   shadowedByFile,
   transitionLabel,
 } from './playbooks';
-import type { IssueType } from '../types';
+import type { CoverageRow } from './playbooks';
+import type { IssueType, Playbook, PlaybookFileRowDto, PlaybookShape } from '../types';
 
 const move = { fromStatusId: 3, toStatusId: 4, fromStatusName: 'In Progress', toStatusName: 'In Review' };
 const review = { fromStatusId: 4, toStatusId: 4, fromStatusName: 'In Review', toStatusName: 'In Review' };
@@ -164,6 +173,150 @@ describe('shadowedByFile', () => {
 
   it('is not shadowed when there are no file rows', () => {
     expect(shadowedByFile(boardRow, [])).toBe(false);
+  });
+});
+
+describe('coverage', () => {
+  const T = 1;
+  const U = 2;
+  const row = (
+    fromStatusId: number,
+    toStatusId: number,
+    types: IssueType[],
+    shape: PlaybookShape = 'any',
+  ): CoverageRow => ({ fromStatusId, toStatusId, types, shape });
+
+  describe('coverageCells', () => {
+    it('Covers: no types listed covers every type', () => {
+      expect(coverageCells(row(T, U, [], 'leaf')).map((c) => c.type)).toEqual(['epic', 'story', 'task', 'bug']);
+    });
+
+    it('Covers: shape any covers leaf and parent', () => {
+      expect(coverageCells(row(T, U, ['task'], 'any'))).toEqual([
+        { type: 'task', shape: 'leaf' },
+        { type: 'task', shape: 'parent' },
+      ]);
+    });
+
+    it('Covers: shape leaf covers only leaves', () => {
+      expect(coverageCells(row(T, U, ['task'], 'leaf'))).toEqual([{ type: 'task', shape: 'leaf' }]);
+    });
+
+    it('Covers: shape parent covers only parents', () => {
+      expect(coverageCells(row(T, U, ['task'], 'parent'))).toEqual([{ type: 'task', shape: 'parent' }]);
+    });
+
+    it('Covers: the order and repeats of the listed types play no part', () => {
+      expect(coverageCells(row(T, U, ['bug', 'task', 'bug'], 'leaf'))).toEqual(
+        coverageCells(row(T, U, ['task', 'bug'], 'leaf')),
+      );
+    });
+  });
+
+  describe('coverageOf', () => {
+    it('Match: an own row with no types overrides a board row naming one type', () => {
+      const board = row(T, U, ['task']);
+      const own = [row(T, U, [])];
+
+      expect(coverageOf(board, own)).toBe('overridden');
+      expect(cellsLeft(board, own)).toEqual([]);
+    });
+
+    it('Match: two own rows together cover what neither covers alone', () => {
+      const board = row(T, U, ['task', 'bug']);
+
+      expect(coverageOf(board, [row(T, U, ['task'])])).toBe('partly');
+      expect(coverageOf(board, [row(T, U, ['task']), row(T, U, ['bug'])])).toBe('overridden');
+    });
+
+    it('Covers: an own leaf row leaves the parent half of an any row standing', () => {
+      const board = row(T, U, ['story'], 'any');
+      const own = [row(T, U, ['story'], 'leaf')];
+
+      expect(coverageOf(board, own)).toBe('partly');
+      expect(cellsLeft(board, own)).toEqual([{ type: 'story', shape: 'parent' }]);
+    });
+
+    it('Match: an own row for a type the board row does not name leaves it live', () => {
+      const board = row(T, U, ['epic']);
+      const own = [row(T, U, ['task'])];
+
+      expect(coverageOf(board, own)).toBe('live');
+      expect(cellsLeft(board, own)).toEqual(coverageCells(board));
+    });
+
+    it('Match: a candidate must share the exact (from, to)', () => {
+      const board = row(T, U, ['task']);
+
+      expect(coverageOf(board, [row(U, T, [])])).toBe('live');
+      expect(coverageOf(board, [row(T, 3, [])])).toBe('live');
+      expect(coverageOf(board, [row(3, U, [])])).toBe('live');
+      expect(coverageOf(board, [row(T, T, []), row(U, U, [])])).toBe('live');
+    });
+
+    it('Match: with no own rows the board row is live', () => {
+      expect(coverageOf(row(T, U, ['task']), [])).toBe('live');
+    });
+
+    it('Match: the own layer beats the board layer on coverage alone', () => {
+      // A narrower own row still wins what it covers; a wider board row keeps the rest.
+      const board = row(T, U, [], 'any');
+      const own = [row(T, U, ['task'], 'leaf')];
+
+      expect(coverageOf(board, own)).toBe('partly');
+      expect(cellsLeft(board, own)).toHaveLength(7);
+      expect(coverageOf(row(T, U, ['task'], 'leaf'), [row(T, U, [], 'any')])).toBe('overridden');
+    });
+
+    it('Match: the review playbook is an ordinary transition with equal ends', () => {
+      const board = row(U, U, ['task']);
+
+      expect(coverageOf(board, [row(U, U, ['task'])])).toBe('overridden');
+      expect(coverageOf(board, [row(T, U, ['task'])])).toBe('live');
+    });
+  });
+
+  describe('the same answers from either wire shape', () => {
+    const fileRow = (r: CoverageRow): PlaybookFileRowDto => ({
+      ...r,
+      fromStatusName: 'From',
+      toStatusName: 'To',
+      prompt: 'Do the thing.',
+      model: 'opus',
+      effort: 'high',
+      budget: 1,
+      briefLimit: 2,
+      deniedTools: ['Bash'],
+      isCheck: false,
+    });
+    const playbook = (r: CoverageRow): Playbook => ({
+      ...fileRow(r),
+      id: 7,
+      defaultPrompt: null,
+      updatedAt: '2026-01-01T00:00:00Z',
+      projectId: 9,
+      projectKey: 'AB',
+      projectName: 'Alphabet',
+    });
+
+    const cases: [string, CoverageRow, CoverageRow[], 'overridden' | 'partly' | 'live'][] = [
+      ['overridden', row(T, U, ['task']), [row(T, U, [])], 'overridden'],
+      ['partly', row(T, U, ['story']), [row(T, U, ['story'], 'leaf')], 'partly'],
+      ['live', row(T, U, ['epic']), [row(T, U, ['task'])], 'live'],
+    ];
+
+    it.each(cases)('a %s row reads the same from a file row and from a playbook', (_name, board, own, expected) => {
+      expect(coverageOf(fileRow(board), own.map(fileRow))).toBe(expected);
+      expect(coverageOf(playbook(board), own.map(playbook))).toBe(expected);
+      expect(cellsLeft(fileRow(board), own.map(fileRow))).toEqual(cellsLeft(playbook(board), own.map(playbook)));
+    });
+
+    it('a review row reads the same from either shape', () => {
+      const board = row(U, U, ['task']);
+
+      expect(coverageOf(playbook(board), [fileRow(row(U, U, ['task']))])).toBe('overridden');
+      expect(coverageOf(playbook(board), [fileRow(row(T, U, ['task']))])).toBe('live');
+    });
   });
 });
 

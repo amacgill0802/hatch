@@ -1,6 +1,7 @@
 /* Reading a playbook row: which move it speaks for. */
 
-import type { Playbook, PlaybookFileDto, PlaybookFileRowDto } from '../types';
+import { ISSUE_TYPES } from '../types';
+import type { IssueType, Playbook, PlaybookFileDto, PlaybookFileRowDto } from '../types';
 
 /**
  * A row whose two ends are the same column is the review playbook: what an
@@ -99,6 +100,58 @@ export function shadowedByFile(
       sortedFileTypes.every((t, i) => t === sortedBoardTypes[i])
     );
   });
+}
+
+/** What coverage reads of a row: its ends, the types it names, its shape.
+    Both Playbook and PlaybookFileRowDto satisfy it. */
+export type CoverageRow = Pick<Playbook, 'fromStatusId' | 'toStatusId' | 'types' | 'shape'>;
+
+/** One kind of issue a playbook can be asked to speak for: a type, leaf or parent. */
+export interface CoverageCell {
+  type: IssueType;
+  shape: 'leaf' | 'parent';
+}
+
+/** How much of a board-wide row a project's own rows leave standing. */
+export type Coverage = 'overridden' | 'partly' | 'live';
+
+const cellKey = (c: CoverageCell): string => `${c.type}:${c.shape}`;
+
+/**
+ * The cells a row covers: its types (every type when none are listed) crossed
+ * with its shape (`any` covers leaf and parent). Types come out in ISSUE_TYPES
+ * order, whatever order the row lists them in.
+ *
+ * The three functions here mirror the dispatcher, not each other's idea of a
+ * match: `Dispatch.Match` keeps the candidates on the exact (from, to) that
+ * `EfHatchPlaybook.Covers` the issue, own layer first - see docs/hatch.md,
+ * "Playbooks". Between layers only coverage counts: specificity, age, prompt and
+ * model play no part. The review playbook (equal ends) is an ordinary
+ * transition and gets no special case.
+ */
+export function coverageCells(row: CoverageRow): CoverageCell[] {
+  const types = row.types.length === 0 ? ISSUE_TYPES : ISSUE_TYPES.filter((t) => row.types.includes(t));
+  const shapes: CoverageCell['shape'][] = row.shape === 'any' ? ['leaf', 'parent'] : [row.shape];
+  return types.flatMap((type) => shapes.map((shape) => ({ type, shape })));
+}
+
+/** The board-wide row's cells that none of the project's own rows on the same
+    transition cover - the moves it would still answer for that project. */
+export function cellsLeft(boardRow: CoverageRow, ownRows: CoverageRow[]): CoverageCell[] {
+  const taken = new Set(
+    ownRows
+      .filter((r) => r.fromStatusId === boardRow.fromStatusId && r.toStatusId === boardRow.toStatusId)
+      .flatMap(coverageCells)
+      .map(cellKey),
+  );
+  return coverageCells(boardRow).filter((c) => !taken.has(cellKey(c)));
+}
+
+/** Nothing left is `overridden`, all of it left is `live`, anything between is `partly`. */
+export function coverageOf(boardRow: CoverageRow, ownRows: CoverageRow[]): Coverage {
+  const left = cellsLeft(boardRow, ownRows).length;
+  if (left === 0) return 'overridden';
+  return left === coverageCells(boardRow).length ? 'live' : 'partly';
 }
 
 /** Whether the page's project filter keeps this row: every row when cleared, every
