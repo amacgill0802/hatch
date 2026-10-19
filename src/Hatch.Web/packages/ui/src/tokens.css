@@ -159,6 +159,33 @@
   --warn-bg: rgba(178, 106, 0, 0.08);
   --warn-ink: #8a5200;
 
+  /* The work-queue bands of the flow-viz: eight kinds, four of which already
+     have an accent - clear is --success, working --primary, wip --warn,
+     dependency --danger, each with --on-accent laid on it. The other four have
+     none, so they are declared here, each an opaque fill with its own ink:
+     --on-accent cannot serve them, since white on a light-theme yellow is
+     unreadable. Contrast is WCAG, ink on its fill:
+       --on-flow-turn    10.6:1 light, 15.0:1 dark   (yellow)
+       --on-flow-family   5.3:1 light,  9.2:1 dark   (teal)
+       --on-flow-person   8.2:1 light,  7.3:1 dark   (purple)
+       --on-flow-other   10.0:1 light,  5.0:1 dark   (maroon)
+     Dark is authored, not flipped: a lighter fill and a darker ink - except
+     maroon. A light dusty rose is within 1.1:1 of dark --danger in luminance,
+     so the two would differ only in saturation; a mid-tone berry with white
+     ink stays maroon, reads darker and bluer than the coral, and still clears
+     4.5:1. Turn is kept to lemon, away from --warn's orange, in dark; if it
+     reads too close to --warn, move it further from orange, not toward it.
+     These are fills with their own ink, not strokes: light yellow is 1.65:1
+     on --card, too faint to draw a border with. */
+  --flow-turn: #f2c500;
+  --on-flow-turn: #1a1a1a;
+  --flow-family: #00796b;
+  --on-flow-family: #ffffff;
+  --flow-person: #7b1fa2;
+  --on-flow-person: #ffffff;
+  --flow-other: #7f1d1d;
+  --on-flow-other: #ffffff;
+
   /* Ink laid ON an accent fill - a primary button's label, the app header.
      It flips with the theme rather than being `white` forever: the dark
      accents are light blues and corals, and white on them is a ~2.2:1 label
@@ -259,6 +286,15 @@
     --warn-bg: rgba(255, 183, 77, 0.14);
     --warn-ink: #ffd08a;
 
+    --flow-turn: #fff176;
+    --on-flow-turn: #1a1a1a;
+    --flow-family: #4dd0c4;
+    --on-flow-family: #1a1a1a;
+    --flow-person: #ce93d8;
+    --on-flow-person: #1a1a1a;
+    --flow-other: #a8566a;
+    --on-flow-other: #ffffff;
+
     --on-accent: #1a1a1a;
     --on-accent-wash: rgba(0, 0, 0, 0.18);
 
@@ -304,6 +340,15 @@
   --warn: #ffb74d;
   --warn-bg: rgba(255, 183, 77, 0.14);
   --warn-ink: #ffd08a;
+
+  --flow-turn: #fff176;
+  --on-flow-turn: #1a1a1a;
+  --flow-family: #4dd0c4;
+  --on-flow-family: #1a1a1a;
+  --flow-person: #ce93d8;
+  --on-flow-person: #1a1a1a;
+  --flow-other: #a8566a;
+  --on-flow-other: #ffffff;
 
   --on-accent: #1a1a1a;
   --on-accent-wash: rgba(0, 0, 0, 0.18);

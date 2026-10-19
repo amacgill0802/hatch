@@ -60,6 +60,25 @@ describe('tokens.css', () => {
     }
   });
 
+  /* Themed tokens: the dark half is authored, not inherited. A token left on
+     :root alone would draw the light shade on a dark card, and a light shade
+     pasted into the dark blocks would too - so the dark value must differ. */
+  it('declares the flow-viz tokens on :root and in both dark blocks, authored per theme', () => {
+    const tokens = ['turn', 'family', 'person', 'other'].flatMap((kind) => [`--flow-${kind}`, `--on-flow-${kind}`]);
+    for (const prop of tokens) {
+      expect(light, `${prop} is missing from :root`).toHaveProperty(prop);
+      expect(darkAttr, `${prop} is missing from [data-theme='dark']`).toHaveProperty(prop);
+      expect(darkMedia, `${prop} is missing under prefers-color-scheme`).toHaveProperty(prop);
+    }
+    for (const kind of ['turn', 'family', 'person', 'other']) {
+      const fill = `--flow-${kind}`;
+      for (const [name, block] of [['light', light], ['dark', darkAttr]] as const) {
+        expect(block[fill], `${fill} on ${name} must be an opaque 6-digit hex`).toMatch(/^#[0-9a-f]{6}$/i);
+      }
+      expect(darkAttr[fill], `${fill} in the dark blocks is the light shade`).not.toBe(light[fill]);
+    }
+  });
+
   it('carries the chrome tokens in both dark blocks', () => {
     expect(darkAttr).toHaveProperty('--chrome');
     expect(darkMedia).toHaveProperty('--chrome');
