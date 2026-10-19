@@ -1,0 +1,286 @@
+namespace Hatch.Cli.Tests;
+
+/// <summary>
+/// <see cref="GrokAdapter"/>'s own argv, reached directly through the
+/// <c>InternalsVisibleTo</c> grant the same way <see cref="ClaudeAdapterTests"/>
+/// reaches <see cref="ClaudeAdapter"/>'s. Everything but <c>CanDeny</c> and
+/// the deny-flag translation (HA-949) is pinned here.
+/// </summary>
+public sealed class GrokAdapterTests : IDisposable
+{
+    private readonly string _bin = Path.GetTempFileName();
+    private readonly List<string> _warnings = [];
+
+    public void Dispose() => File.Delete(_bin);
+
+    private GrokAdapter Adapter(IReadOnlyDictionary<string, string?>? tiers = null)
+    {
+        var adapter = new GrokAdapter(_bin, _warnings.Add, tiers);
+        Assert.True(adapter.CanSpawn(out _));
+        return adapter;
+    }
+
+    [Fact]
+    public void BuildHeadless_quiet_with_no_session_id()
+    {
+        var request = new SessionRequest("/root", "sonnet", "high", "prompt", Quiet: true);
+        var adapter = Adapter();
+
+        var args = adapter.BuildHeadless(request).ArgumentList;
+
+        Assert.Equal(
+            ["--effort", "high", "--cwd", "/root",
+                "--prompt-file", PromptFile(request), "--verbatim",
+                "--output-format", "json",
+                "--always-approve", "--trust", "--no-auto-update"],
+            args);
+
+        adapter.Release(request);
+    }
+
+    [Fact]
+    public void BuildHeadless_streamed_carries_the_session_id()
+    {
+        var request = new SessionRequest("/root", "sonnet", "high", "prompt", Quiet: false, SessionId: "11111111-1111-1111-1111-111111111111");
+        var adapter = Adapter();
+
+        var args = adapter.BuildHeadless(request).ArgumentList;
+
+        Assert.Equal(
+            ["--effort", "high", "--cwd", "/root",
+                "-s", "11111111-1111-1111-1111-111111111111",
+                "--prompt-file", PromptFile(request), "--verbatim",
+                "--output-format", "streaming-json",
+                "--always-approve", "--trust", "--no-auto-update"],
+            args);
+
+        adapter.Release(request);
+    }
+
+    [Fact]
+    public void BuildHeadless_redirects_standard_input_and_output()
+    {
+        var request = new SessionRequest("/root", "sonnet", "high", "prompt", Quiet: true);
+        var adapter = Adapter();
+
+        var start = adapter.BuildHeadless(request);
+
+        Assert.True(start.RedirectStandardInput);
+        Assert.True(start.RedirectStandardOutput);
+
+        adapter.Release(request);
+    }
+
+    [Fact]
+    public void BuildHeadless_writes_the_exact_prompt_to_the_prompt_file_and_release_deletes_it()
+    {
+        var request = new SessionRequest("/root", "sonnet", "high", "the exact prompt text", Quiet: true);
+        var adapter = Adapter();
+
+        adapter.BuildHeadless(request);
+
+        var file = PromptFile(request);
+        Assert.True(File.Exists(file));
+        Assert.Equal("the exact prompt text", File.ReadAllText(file));
+
+        adapter.Release(request);
+        Assert.False(File.Exists(file));
+    }
+
+    [Fact]
+    public void BuildAttached_is_the_base_argv_with_the_bare_prompt_appended_and_none_of_the_headless_only_flags()
+    {
+        var request = new SessionRequest("/root", "sonnet", "high", "say hello", Quiet: false, SessionId: "s-1");
+
+        var args = Adapter().BuildAttached(request).ArgumentList;
+
+        Assert.Equal(["--effort", "high", "--cwd", "/root", "say hello"], args);
+    }
+
+    [Fact]
+    public void A_pinned_model_passes_through_m()
+    {
+        var request = new SessionRequest("/root", "grok-4.6", "high", "prompt", Quiet: true);
+
+        var args = Adapter().BuildAttached(request).ArgumentList;
+
+        Assert.Equal(["-m", "grok-4.6", "--effort", "high", "--cwd", "/root", "prompt"], args);
+    }
+
+    [Theory]
+    [InlineData("haiku")]
+    [InlineData("opus")]
+    [InlineData("fable")]
+    [InlineData("sonnet")]
+    public void Every_tier_omits_m_when_shipped_null(string tier)
+    {
+        var request = new SessionRequest("/root", tier, "high", "prompt", Quiet: true);
+
+        var args = Adapter().BuildAttached(request).ArgumentList;
+
+        Assert.DoesNotContain("-m", args);
+    }
+
+    [Fact]
+    public void An_overridden_tier_passes_its_pinned_id_through_m()
+    {
+        var tiers = new Dictionary<string, string?> { ["haiku"] = "grok-4-fast", ["opus"] = "grok-4.6" };
+        var request = new SessionRequest("/root", "opus", "high", "prompt", Quiet: true);
+
+        var args = Adapter(tiers).BuildAttached(request).ArgumentList;
+
+        Assert.Equal(["-m", "grok-4.6", "--effort", "high", "--cwd", "/root", "prompt"], args);
+    }
+
+    [Fact]
+    public void An_arbitrary_model_string_not_in_the_tiers_table_passes_through_unchanged()
+    {
+        var request = new SessionRequest("/root", "some-other-model", "high", "prompt", Quiet: true);
+
+        var args = Adapter().BuildAttached(request).ArgumentList;
+
+        Assert.Equal(["-m", "some-other-model", "--effort", "high", "--cwd", "/root", "prompt"], args);
+    }
+
+    [Theory]
+    [InlineData("none")]
+    [InlineData("minimal")]
+    [InlineData("low")]
+    [InlineData("medium")]
+    [InlineData("high")]
+    [InlineData("xhigh")]
+    [InlineData("max")]
+    public void Effort_passes_straight_through(string effort)
+    {
+        var request = new SessionRequest("/root", "sonnet", effort, "prompt", Quiet: true);
+
+        var args = Adapter().BuildAttached(request).ArgumentList;
+
+        Assert.Contains("--effort", args);
+        Assert.Contains(effort, args);
+    }
+
+    [Fact]
+    public void Collapsing_more_than_one_tier_onto_the_default_warns_once_per_adapter()
+    {
+        var adapter = Adapter();
+
+        adapter.BuildAttached(new SessionRequest("/root", "haiku", "high", "p", Quiet: true));
+        adapter.BuildAttached(new SessionRequest("/root", "opus", "high", "p", Quiet: true));
+
+        Assert.Single(_warnings, w => w.Contains("haiku, opus and fable run on the CLI's default model here"));
+    }
+
+    [Fact]
+    public void An_override_table_that_leaves_only_one_tier_on_the_default_does_not_warn()
+    {
+        var tiers = new Dictionary<string, string?> { ["haiku"] = "grok-4-fast", ["opus"] = "grok-4.6" };
+        _ = Adapter(tiers);
+
+        Assert.DoesNotContain(_warnings, w => w.Contains("run on the CLI's default model here"));
+    }
+
+    [Fact]
+    public void PromptOnStdin_and_CanHook_are_false()
+    {
+        var adapter = Adapter();
+
+        Assert.False(adapter.PromptOnStdin);
+        Assert.False(adapter.CanHook);
+    }
+
+    [Fact]
+    public void WriteHooks_returns_null_and_warns_once_across_two_calls()
+    {
+        var adapter = Adapter();
+
+        Assert.Null(adapter.WriteHooks("/tmp", "AER-1", "/path/to/hatch", null));
+        Assert.Null(adapter.WriteHooks("/tmp", "AER-1", "/path/to/hatch", null));
+
+        Assert.Single(_warnings, w => w.Contains("grok has no hooks Hatch can lend a single session"));
+    }
+
+    [Fact]
+    public void AddDirs_warns_once_across_headless_and_attached()
+    {
+        var adapter = Adapter();
+        var request = new SessionRequest("/root", "sonnet", "high", "prompt", Quiet: true, AddDirs: ["/other"]);
+
+        adapter.BuildHeadless(request);
+        adapter.Release(request);
+        adapter.BuildAttached(request);
+
+        Assert.Single(_warnings, w => w.Contains("grok has no add-dir flag"));
+        Assert.DoesNotContain("--add-dir", adapter.BuildAttached(request).ArgumentList);
+    }
+
+    [Fact]
+    public void BuildHeadless_and_BuildAttached_redirect_stdio_only_on_the_headless_spawn()
+    {
+        var request = new SessionRequest("/root", "sonnet", "high", "prompt", Quiet: true);
+        var adapter = Adapter();
+
+        var attached = adapter.BuildAttached(request);
+        Assert.False(attached.RedirectStandardInput);
+        Assert.False(attached.RedirectStandardOutput);
+    }
+
+    [Fact]
+    public void CanSpawn_refuses_when_HATCH_GROK_BIN_is_not_there()
+    {
+        var adapter = new GrokAdapter(configured: "/does/not/exist");
+
+        Assert.False(adapter.CanSpawn(out var refusal));
+        Assert.Equal("hatch: HATCH_GROK_BIN is not there: /does/not/exist", refusal);
+    }
+
+    [Fact]
+    public void CanSpawn_names_the_variable_and_the_auth_env_when_nothing_is_on_path()
+    {
+        var path = Environment.GetEnvironmentVariable("PATH");
+        Environment.SetEnvironmentVariable("PATH", Path.Combine(Path.GetTempPath(), "no-such-dir"));
+        try
+        {
+            Assert.False(new GrokAdapter().CanSpawn(out var refusal));
+            Assert.Equal(
+                "hatch: no grok CLI on PATH.\n\n" +
+                "  Install it (https://docs.x.ai/build/overview), or point at one you have:\n" +
+                "      export HATCH_GROK_BIN=/path/to/grok\n\n" +
+                "  Headless auth is XAI_API_KEY or a cached `grok login` token.",
+                refusal);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("PATH", path);
+        }
+    }
+
+    [Fact]
+    public void ResumeCommand_is_grok_dash_r()
+    {
+        Assert.Equal("grok -r abc123", Adapter().ResumeCommand("abc123"));
+    }
+
+    [Fact]
+    public void Identity_and_probe()
+    {
+        var adapter = Adapter();
+
+        Assert.Equal("grok", adapter.Id);
+        Assert.Equal("Grok", adapter.DisplayName);
+        Assert.Null(adapter.Probe);
+    }
+
+    [Fact]
+    public void HookOutput_matches_claudes_own_writer_byte_for_byte()
+    {
+        var grok = Adapter().HookOutput;
+        var claude = new ClaudeAdapter(_bin).HookOutput;
+
+        Assert.Equal(claude.WriteStop("text"), grok.WriteStop("text"));
+        Assert.Equal(claude.WritePostToolUse("text"), grok.WritePostToolUse("text"));
+    }
+
+    private static string PromptFile(SessionRequest request) =>
+        Path.Combine(Path.GetTempPath(), $"hatch-grok-{request.SessionId ?? Guid.Empty.ToString()}.md");
+}
