@@ -88,6 +88,29 @@ public static partial class UsageLimit
     }
 
     /// <summary>
+    /// Whether <paramref name="said"/> - the Codex CLI's own result text or its
+    /// error - reports a usage limit. A sentence in <see cref="Recognise"/>'s
+    /// clock form is read by it; any other limit report is the one-hour
+    /// backstop, <see cref="Recognised.ResetKnown"/> false. Null for anything
+    /// else, including an ordinary error.
+    /// </summary>
+    public static Recognised? RecogniseCodex(string? said, DateTimeOffset endedAt, TimeZoneInfo? runnerZone = null)
+    {
+        if (string.IsNullOrWhiteSpace(said)) return null;
+
+        var claude = Recognise(said, endedAt, runnerZone);
+        if (claude is not null) return claude;
+
+        if (!CodexMention().IsMatch(said)) return null;
+
+        // No real Codex limit sentence has been seen yet. When HA-910's proof
+        // (or any run) sees one, its reset-time regex goes here, ahead of this
+        // backstop; until then every Codex limit report rests an hour.
+        var window = said.Contains("weekly", StringComparison.OrdinalIgnoreCase) ? "weekly" : "session";
+        return new Recognised(endedAt + UnknownWindow, ResetKnown: false, window);
+    }
+
+    /// <summary>
     /// 7:40pm, lowercase, the way a terminal or a ticket says a reset time.
     /// When the sentence itself named a zone (<paramref name="known"/>), that
     /// is read off <paramref name="at"/>'s own carried offset, so the same
@@ -189,6 +212,10 @@ public static partial class UsageLimit
     [GeneratedRegex(@"hit your\b.*\blimit\b|out of usage credits\b",
         RegexOptions.IgnoreCase | RegexOptions.Singleline)]
     private static partial Regex Mention();
+
+    [GeneratedRegex(@"usage[ _]limit|rate[ _]limit|usage_limit_reached|rate_limit_exceeded|hit your\b.*\blimit\b",
+        RegexOptions.IgnoreCase | RegexOptions.Singleline)]
+    private static partial Regex CodexMention();
 
     [GeneratedRegex(
         @"resets\s+(?:(?<month>[A-Za-z]{3,9})\.?\s+(?<day>\d{1,2})(?:,\s*(?<year>\d{4}))?" +

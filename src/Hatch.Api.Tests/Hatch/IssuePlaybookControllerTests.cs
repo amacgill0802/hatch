@@ -118,7 +118,7 @@ public class IssuePlaybookControllerTests
 
         Assert.Equal(
             "a model is one of haiku, sonnet, opus, fable, or a pinned id of a supported agent " +
-            "(claude-opus-5 for claude) - not \"nonsense-1\"",
+            "(claude-opus-5 for claude; gpt-6-astra for codex) - not \"nonsense-1\"",
             Reason(refusal.Result));
     }
 
@@ -156,7 +156,7 @@ public class IssuePlaybookControllerTests
         var h = await NewAsync();
         var issue = await h.FileAsync();
 
-        var refusal = await h.Playbook.PatchIssuePlaybook(issue.Key, new IssuePlaybookRequest("gpt-4", "max"), default);
+        var refusal = await h.Playbook.PatchIssuePlaybook(issue.Key, new IssuePlaybookRequest("nonsense-1", "max"), default);
         Assert.IsType<BadRequestObjectResult>(refusal.Result);
 
         // The order inside the verb is the guarantee: everything present is
