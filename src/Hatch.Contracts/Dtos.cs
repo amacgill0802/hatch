@@ -2950,6 +2950,11 @@ public static class RunnerStates
 /// about the process, drawn under its name rather than as the name, now that
 /// <see cref="Name"/> is a character and not a path.
 /// </param>
+/// <param name="Agent">
+/// The agent that spawned this process, <c>claude</c> today - a fact about
+/// the process, drawn beside <see cref="Where"/>. Null for a runner that has
+/// not reported one.
+/// </param>
 /// <param name="ExhaustedUntil">
 /// This runner's own Claude account ran out of usage, and this is when it
 /// expects to reset - null on an ordinary runner. A fact this runner reports
@@ -2979,6 +2984,7 @@ public record RunnerDto(
     bool? Mine,
     bool? Standing,
     string? Where,
+    string? Agent,
     DateTimeOffset? ExhaustedUntil = null,
     IReadOnlyList<string>? Drives = null);
 
@@ -3007,6 +3013,11 @@ public record RunnerDto(
 /// The machine and checkout this runner runs from, <c>host:/path</c> - a fact
 /// about the process, written on every beat like <see cref="Remotes"/>. Absent
 /// from an older client, which is never refused on that account alone.
+/// </param>
+/// <param name="Agent">
+/// The agent that spawned this process, <c>claude</c> today - a fact about
+/// the process, on the same terms as <see cref="Where"/>: absent leaves the
+/// row alone.
 /// </param>
 /// <param name="Exhausted">
 /// This runner's own account ran out of Claude usage - or, sent false, it is
@@ -3047,6 +3058,7 @@ public record RunnerHeartbeatRequest(
     bool? Mine = null,
     bool? Standing = null,
     string? Where = null,
+    string? Agent = null,
     bool? Exhausted = null,
     DateTimeOffset? ExhaustedUntil = null,
     IReadOnlyList<RunnerUsageWindowDto>? Usage = null,
