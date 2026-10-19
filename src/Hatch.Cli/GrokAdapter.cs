@@ -3,10 +3,7 @@ using System.Diagnostics;
 namespace Hatch.Cli;
 
 /// <summary>
-/// The grok CLI, behind <see cref="IAgentAdapter"/>. Everything but denied
-/// tools (HA-711 decision 5, HA-949) - <see cref="CanDeny"/> and the deny-flag
-/// translation this class's own <see cref="Base"/> would otherwise emit both
-/// stay at the interface default until that sibling task lands.
+/// The grok CLI, behind <see cref="IAgentAdapter"/>.
 /// </summary>
 /// <remarks>
 /// <para><b>No hooks</b> (HA-711 decision 6). Grok's hooks load only from
@@ -85,6 +82,21 @@ public sealed class GrokAdapter : IAgentAdapter
 
     public bool CanHook => false;
 
+    public bool CanDeny(IReadOnlyList<string> rules, out string refusal)
+    {
+        foreach (var rule in rules)
+        {
+            if (Classify(rule) == RuleKind.Refused)
+            {
+                refusal = Refusal(rule);
+                return false;
+            }
+        }
+
+        refusal = "";
+        return true;
+    }
+
     public bool CanSpawn(out string refusal)
     {
         if (_bin is not null)
@@ -125,8 +137,7 @@ public sealed class GrokAdapter : IAgentAdapter
         start.ArgumentList.Add(request.Quiet ? "json" : "streaming-json");
 
         // bypassPermissions's own justification applies here too - see
-        // ClaudeAdapter.BuildHeadless. Deny rules still apply under it, once
-        // the sibling task adds them.
+        // ClaudeAdapter.BuildHeadless. Deny rules still apply under it, below.
         start.ArgumentList.Add("--always-approve");
 
         // The vendor gates AGENTS.md, project skills and hooks behind folder
@@ -218,6 +229,30 @@ public sealed class GrokAdapter : IAgentAdapter
         start.ArgumentList.Add("--cwd");
         start.ArgumentList.Add(request.Root);
 
+        var disallowedAgent = false;
+        var deny = new List<string>();
+        foreach (var rule in request.DeniedTools)
+        {
+            switch (Classify(rule))
+            {
+                case RuleKind.Agent: disallowedAgent = true; break;
+                case RuleKind.Deny: deny.Add(rule); break;
+                default: throw new InvalidOperationException(Refusal(rule));
+            }
+        }
+
+        if (disallowedAgent)
+        {
+            start.ArgumentList.Add("--disallowed-tools");
+            start.ArgumentList.Add("Agent");
+        }
+
+        foreach (var rule in deny)
+        {
+            start.ArgumentList.Add("--deny");
+            start.ArgumentList.Add(rule);
+        }
+
         // Grok documents no --add-dir (`additionalDirectories` "parsed but not
         // supported"). Still reachable by their absolute paths - --always-approve
         // with no --sandbox restricts no path.
@@ -233,6 +268,31 @@ public sealed class GrokAdapter : IAgentAdapter
 
     /// <summary>The playbook's tier aliases onto this vendor's own ids; anything else, including a pinned id, passes through.</summary>
     private string? MapModel(string model) => _tiers.TryGetValue(model, out var mapped) ? mapped : model;
+
+    private enum RuleKind { Deny, Agent, Refused }
+
+    /// <summary>
+    /// A denied-tools rule onto what grok can do with it (HA-711 decision 5):
+    /// the bare literal <c>Agent</c> is grok's own <c>--disallowed-tools</c>
+    /// entry; a rule naming one of grok's <c>--deny</c> tools, with or without
+    /// a parenthesised pattern, passes straight through; everything else -
+    /// including <c>Agent(...)</c>, since the parenthesis takes it out of the
+    /// bare-literal case - has no equivalent and is refused.
+    /// </summary>
+    private static RuleKind Classify(string rule)
+    {
+        if (rule == "Agent") return RuleKind.Agent;
+
+        var paren = rule.IndexOf('(');
+        var name = paren < 0 ? rule : rule[..paren];
+
+        return name is "Bash" or "Read" or "Edit" or "Write" or "Grep" or "Glob" or "WebFetch" or "WebSearch"
+            ? RuleKind.Deny
+            : RuleKind.Refused;
+    }
+
+    private static string Refusal(string rule) =>
+        $"hatch: grok cannot honour the playbook's denied-tools rule \"{rule}\" - it has no equivalent, so this increment is not spawned under grok";
 
     /// <summary>
     /// Where <see cref="BuildHeadless"/> writes <see cref="SessionRequest.Prompt"/>
