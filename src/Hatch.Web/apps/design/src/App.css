@@ -758,3 +758,32 @@
   gap: var(--sp-4);
   min-height: 120px;
 }
+
+/* The four corner specimens anchor to the real viewport, not to a stage box -
+   proving placeCallout clamps against the window itself, which only a fixed
+   position (rather than a narrowed frame, as ModalPage's phone iframe uses)
+   can show. */
+.callout-corner {
+  position: fixed;
+  z-index: 1;
+}
+
+.callout-corner--top-left {
+  top: var(--sp-4);
+  left: var(--sp-4);
+}
+
+.callout-corner--top-right {
+  top: var(--sp-4);
+  right: var(--sp-4);
+}
+
+.callout-corner--bottom-left {
+  bottom: var(--sp-4);
+  left: var(--sp-4);
+}
+
+.callout-corner--bottom-right {
+  bottom: var(--sp-4);
+  right: var(--sp-4);
+}

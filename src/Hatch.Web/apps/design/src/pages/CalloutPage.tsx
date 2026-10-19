@@ -66,6 +66,24 @@ export function CalloutPage() {
           </div>
         </div>
       </GallerySection>
+
+      <GallerySection
+        title="Every corner of the viewport"
+        note="Each anchor is position: fixed to the real browser viewport, not to a stage box. Resize the window and every callout still lands wholly on screen, because placeCallout clamps against the viewport."
+      >
+        <Anchor heading="Top left" className="callout-corner callout-corner--top-left">
+          Clamped inside the top-left corner at any window size.
+        </Anchor>
+        <Anchor heading="Top right" className="callout-corner callout-corner--top-right">
+          Clamped inside the top-right corner at any window size.
+        </Anchor>
+        <Anchor heading="Bottom left" className="callout-corner callout-corner--bottom-left">
+          Clamped inside the bottom-left corner at any window size.
+        </Anchor>
+        <Anchor heading="Bottom right" className="callout-corner callout-corner--bottom-right">
+          Clamped inside the bottom-right corner at any window size.
+        </Anchor>
+      </GallerySection>
     </GalleryPage>
   );
 }
