@@ -6395,6 +6395,41 @@ button.hatch-option.chosen {
   }
 }
 
+/* HA-973: the spotlight. A hovered band dims every card it does not light
+   and rings the rest in the band's own colour - opacity and filter only for
+   the dim, since anything that reflows would move the band out from under
+   the pointer, and an outline alone for the rings, since it takes no layout
+   space either. Same specificity as .waiting and .paused, after both, so
+   the dim wins the tie; after .hatch-card.found, so each ring beats the
+   transparent resting outline. A lit card wears neither opacity nor filter. */
+.hatch-card.hatch-spot-dim {
+  opacity: 0.35;
+  filter: blur(2px);
+  transition: opacity var(--transition), filter var(--transition), outline-color var(--transition);
+}
+
+/* Each ring reads the same token its band's fill does - HA-967's pair for
+   turn and family, --danger for dependency - never a literal. */
+.hatch-card.hatch-spot-dependency {
+  outline: 2px solid var(--danger);
+  outline-offset: 2px;
+}
+
+.hatch-card.hatch-spot-turn {
+  outline: 2px solid var(--flow-turn);
+  outline-offset: 2px;
+}
+
+.hatch-card.hatch-spot-ancestor {
+  outline: 2px solid var(--flow-family);
+  outline-offset: 2px;
+}
+
+.hatch-card.hatch-spot-descendant {
+  outline: 2px dashed var(--flow-family);
+  outline-offset: 2px;
+}
+
 /* Every motion here answers a keypress, which the house's calm-motion rule
    permits, and every one is off when the system asks. The ring is still drawn. */
 @media (prefers-reduced-motion: reduce) {
@@ -6408,6 +6443,10 @@ button.hatch-option.chosen {
   }
 
   .hatch-card:where([data-issue-key]):not(:focus-visible) {
+    transition: none;
+  }
+
+  .hatch-card.hatch-spot-dim {
     transition: none;
   }
 }
