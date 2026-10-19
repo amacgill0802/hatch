@@ -28,6 +28,7 @@ const totals = (over: Partial<WorkLogTotals> = {}): WorkLogTotals => ({
 const session = (over: Partial<WorkLogSession> = {}): WorkLogSession => ({
   id: 1,
   sessionId: '3d1abf4f-aaaa-4000-8000-000000000001',
+  agent: 'claude',
   issueKey: 'AER-12',
   issueTitle: 'The leaderboard query',
   startedAt: '2026-09-07T02:40:00Z',

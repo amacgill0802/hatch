@@ -32,6 +32,7 @@ const totals = (over: Partial<WorkLogTotals> = {}): WorkLogTotals => ({
 const entry = (over: Partial<WorkLogEntry> = {}): WorkLogEntry => ({
   id: 1,
   sessionId: '3d1abf4f-aaaa-4000-8000-000000000001',
+  agent: 'claude',
   startedAt: '2026-09-07T02:40:00Z',
   endedAt: '2026-09-07T02:54:02Z',
   durationMs: 842_000,
@@ -126,7 +127,14 @@ describe('durationPhrase', () => {
 
 describe('resumeCommand', () => {
   it('is the whole command, so what is read is what is copied', () => {
-    expect(resumeCommand('abc-123')).toBe('claude --resume abc-123');
+    expect(resumeCommand('claude', 'abc-123')).toBe('claude --resume abc-123');
+    expect(resumeCommand('codex', 'abc-123')).toBe('codex exec resume abc-123');
+    expect(resumeCommand('grok', 'abc-123')).toBe('grok -r abc-123');
+  });
+
+  it('is null for an agent the table does not recognise, or none at all', () => {
+    expect(resumeCommand('cursor', 'abc-123')).toBeNull();
+    expect(resumeCommand(null, 'abc-123')).toBeNull();
   });
 });
 
