@@ -217,4 +217,29 @@ public sealed class UsageLimitTests
     {
         Assert.Null(UsageLimit.RecogniseCodex(said, EndedAt));
     }
+
+    [Theory]
+    [InlineData("You’ve reached your free Grok Build usage limit for now. Get SuperGrok for much higher limits, or try again later: https://example.invalid")]
+    [InlineData("Grok Build usage limit reached")]
+    [InlineData("You hit your free usage limit.")]
+    public void Grok_limit_reports_rest_the_backstop_hour(string said)
+    {
+        var hit = UsageLimit.RecogniseGrok(said, EndedAt);
+
+        Assert.NotNull(hit);
+        Assert.False(hit!.Value.ResetKnown);
+        Assert.Equal(EndedAt + UsageLimit.UnknownWindow, hit.Value.ResetAt);
+        Assert.Equal("session", hit.Value.Window);
+    }
+
+    [Theory]
+    [InlineData("API error (status 429 Too Many Requests): rate limit exceeded")]
+    [InlineData("stream disconnected")]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData(null)]
+    public void Grok_throttling_ordinary_errors_and_nothing_said_are_not_a_limit(string? said)
+    {
+        Assert.Null(UsageLimit.RecogniseGrok(said, EndedAt));
+    }
 }
