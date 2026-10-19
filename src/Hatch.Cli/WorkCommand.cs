@@ -745,7 +745,7 @@ public sealed class WorkCommand(Runtime runtime)
 
         return await runtime.Sessions.AttachAsync(
             new SessionRequest(chosen.Root, model, effort, Prompt.Compose(work, chosen.Repositories, branches, conflict, build), Quiet: false, chosen.AddDirs,
-                DeniedTools: work.Playbook?.DeniedTools ?? []),
+                DeniedTools: work.Playbook?.DeniedTools ?? [], RunnerName: runtime.RunnerName),
             ct);
     }
 

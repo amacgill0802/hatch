@@ -17,6 +17,10 @@ namespace Hatch.Cli;
 /// run</c>, where the executable is <c>dotnet</c> - there is nothing to point
 /// at and nothing is changed, because inventing a path to a binary that may not
 /// exist would be worse than leaving <c>PATH</c> alone.</para>
+///
+/// <para>The session's calls also have to name the runner that dispatched it,
+/// or an installation with its wall off answers them as the local person - see
+/// <see cref="AsRunner"/>.</para>
 /// </remarks>
 public static class Reach
 {
@@ -105,5 +109,18 @@ public static class Reach
         if (string.Equals(already, directory, StringComparison.Ordinal)) return;
 
         environment["PATH"] = directory + separator + existing;
+    }
+
+    /// <summary>
+    /// <c>HATCH_RUNNER</c> set to <paramref name="runnerName"/>, so a
+    /// <c>hatch</c> call made inside the session names itself as the runner that
+    /// dispatched it rather than as whoever is at the keyboard. A null or blank
+    /// name leaves the environment as it was, an inherited value included.
+    /// </summary>
+    public static void AsRunner(IDictionary<string, string?> environment, string? runnerName)
+    {
+        if (string.IsNullOrWhiteSpace(runnerName)) return;
+
+        environment["HATCH_RUNNER"] = runnerName;
     }
 }

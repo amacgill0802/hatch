@@ -92,4 +92,22 @@ public sealed class ClaudeAdapterTests : IDisposable
         Assert.False(adapter.CanSpawn(out var refusal));
         Assert.Equal("hatch: HATCH_CLAUDE_BIN is not there: /does/not/exist", refusal);
     }
-}
+
+    [Fact]
+    public void The_spawned_session_names_the_runner_that_dispatched_it()
+    {
+        var request = new SessionRequest("/root", "sonnet", "high", "prompt", Quiet: true, RunnerName: "test:/checkout");
+
+        Assert.Equal("test:/checkout", Adapter().BuildHeadless(request).Environment["HATCH_RUNNER"]);
+        Assert.Equal("test:/checkout", Adapter().BuildAttached(request).Environment["HATCH_RUNNER"]);
+    }
+
+    [Fact]
+    public void A_session_with_no_runner_name_leaves_HATCH_RUNNER_as_it_inherited_it()
+    {
+        var request = new SessionRequest("/root", "sonnet", "high", "prompt", Quiet: true, RunnerName: "");
+
+        Adapter().BuildHeadless(request).Environment.TryGetValue("HATCH_RUNNER", out var inherited);
+
+        Assert.Equal(Environment.GetEnvironmentVariable("HATCH_RUNNER"), inherited);
+    }}
