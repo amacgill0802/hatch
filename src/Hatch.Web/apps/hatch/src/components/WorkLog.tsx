@@ -3,12 +3,13 @@ import { Command } from './Command';
 import { IssueSection } from './IssueSection';
 import {
   compactTokens,
+  costPhrase,
+  costTitle,
   durationPhrase,
   entryMark,
   entryTitle,
   errorPhrase,
   hasDescendantSpend,
-  moneyPhrase,
   ownPhrase,
   playbookFileShowCommand,
   playbookSourcePhrase,
@@ -97,7 +98,9 @@ function Entry({ entry }: { entry: WorkLogEntry }) {
         <span>
           <strong>{compactTokens(entry.totalTokens)}</strong> tokens
         </span>
-        <span className="text-muted">{moneyPhrase(entry.costUsd)}</span>
+        <span className="text-muted" title={costTitle(entry.costUsd)}>
+          {costPhrase(entry.costUsd)}
+        </span>
         <span className="text-muted">{durationPhrase(entry.durationMs)}</span>
         <span className="text-muted">
           {entry.turns} {entry.turns === 1 ? 'turn' : 'turns'}

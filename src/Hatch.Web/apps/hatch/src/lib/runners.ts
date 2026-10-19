@@ -18,6 +18,11 @@ import type { Runner, RunnerPatchRequest } from '../types';
 /** The six states a row can be in, in the order they are decided. */
 export type RunnerActivity = 'gone' | 'exhausted' | 'paused' | 'stopping' | 'working' | 'idle';
 
+/** The Max spend field's hint, naming the one thing the cap cannot do: bind an
+    agent whose session reports no price at all. */
+export const MAX_SPEND_HINT =
+  'Dollars, on the same terms. It counts only sessions whose agent reports a price, so it cannot bind one that does not.';
+
 /**
  * What this runner is doing, in one word.
  *

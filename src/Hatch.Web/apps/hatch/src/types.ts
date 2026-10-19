@@ -1519,7 +1519,8 @@ export interface WorkLogModelUse {
   outputTokens: number;
   cacheCreationTokens: number;
   cacheReadTokens: number;
-  costUsd: number;
+  /** Dollars, or null when the agent reported no price - unpriced, not free. */
+  costUsd: number | null;
 }
 
 /** One agent session against one issue. Mirrors WorkLogEntryDto. */
@@ -1543,8 +1544,9 @@ export interface WorkLogEntry {
   isError: boolean;
   turns: number;
   /** Notional API list price, not money that left an account. Secondary to the
-      tokens everywhere it is drawn. */
-  costUsd: number;
+      tokens everywhere it is drawn. Dollars, or null when the agent reported
+      no price - unpriced, not free. */
+  costUsd: number | null;
   inputTokens: number;
   outputTokens: number;
   cacheCreationTokens: number;
@@ -1585,7 +1587,12 @@ export interface WorkLogTotals {
   cacheCreationTokens: number;
   cacheReadTokens: number;
   totalTokens: number;
+  /** The priced rows' sum. An unpriced session adds nothing to it - not zero,
+      nothing. */
   costUsd: number;
+  /** How many of the sum's rows reported no price - their tokens are in
+      totalTokens and their dollars are in nothing. */
+  unpricedSessions: number;
 }
 
 /** An issue's work log. Mirrors WorkLogDto.
@@ -1631,8 +1638,9 @@ export interface WorkLogSession {
   described: boolean;
   isError: boolean;
   turns: number;
-  /** Notional API list price, not money that left an account. */
-  costUsd: number;
+  /** Notional API list price, not money that left an account. Dollars, or
+      null when the agent reported no price - unpriced, not free. */
+  costUsd: number | null;
   inputTokens: number;
   outputTokens: number;
   cacheCreationTokens: number;

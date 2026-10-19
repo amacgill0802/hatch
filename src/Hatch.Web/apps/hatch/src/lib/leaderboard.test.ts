@@ -22,6 +22,7 @@ const totals = (over: Partial<WorkLogTotals> = {}): WorkLogTotals => ({
   cacheReadTokens: 59_000,
   totalTokens: 63_380,
   costUsd: 3.41,
+  unpricedSessions: 0,
   ...over,
 });
 

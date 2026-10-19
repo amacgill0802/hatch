@@ -7,6 +7,7 @@ import {
   boundsRequest,
   drivesLabel,
   isControllable,
+  MAX_SPEND_HINT,
   mineLabel,
   repositoriesLabel,
   runnerActivity,
@@ -173,6 +174,12 @@ describe('mineLabel', () => {
   it('says nothing for a runner without the flag', () => {
     expect(mineLabel(runner({ mine: false }))).toBeNull();
     expect(mineLabel(runner({ mine: null }))).toBeNull();
+  });
+});
+
+describe('MAX_SPEND_HINT', () => {
+  it('says the cap cannot bind an agent that reports no price', () => {
+    expect(MAX_SPEND_HINT).toContain('cannot bind');
   });
 });
 
