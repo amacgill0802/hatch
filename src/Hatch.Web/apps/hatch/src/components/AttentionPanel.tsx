@@ -44,7 +44,7 @@ export function AttentionPanel({
           shipped with. */}
       {exhaustedRunners.length > 0 && (
         <section className="hatch-attention-section hatch-attention-section-exhausted">
-          <h3 className="hatch-attention-heading">Out of Claude usage</h3>
+          <h3 className="hatch-attention-heading">Out of usage</h3>
 
           <ul className="hatch-attention-rows">
             {exhaustedRunners.map((r) => (

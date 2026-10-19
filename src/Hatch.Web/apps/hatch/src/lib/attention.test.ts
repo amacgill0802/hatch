@@ -172,7 +172,7 @@ describe('attentionCount', () => {
     expect(attentionCount(attention())).toBe(0);
   });
 
-  it('does not count a runner out of Claude usage, and stays resting for it', () => {
+  it('does not count a runner out of usage, and stays resting for it', () => {
     // A dot, not a pill: see the control's own remarks.
     const exhausted = attention({ exhaustedRunners: [exhaustedRunner()] });
 
@@ -263,18 +263,18 @@ describe('attentionLabel', () => {
     ).toBe('1 trunk build failing, 1 pull request to review, 1 question to answer');
   });
 
-  it('adds a runner out of Claude usage as its own phrase, singular and plural', () => {
+  it('adds a runner out of usage as its own phrase, singular and plural', () => {
     expect(attentionLabel(attention({ exhaustedRunners: [exhaustedRunner()] }))).toBe(
-      '1 runner is out of Claude usage',
+      '1 runner is out of usage',
     );
     expect(attentionLabel(attention({ exhaustedRunners: [exhaustedRunner(), exhaustedRunner()] }))).toBe(
-      '2 runners are out of Claude usage',
+      '2 runners are out of usage',
     );
   });
 
   it('joins it onto the human halves rather than replacing them', () => {
     expect(attentionLabel(attention({ reviews: [review()], exhaustedRunners: [exhaustedRunner()] }))).toBe(
-      '1 pull request to review, 1 runner is out of Claude usage',
+      '1 pull request to review, 1 runner is out of usage',
     );
   });
 });
