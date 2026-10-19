@@ -1043,6 +1043,10 @@ export interface Playbook {
   types: IssueType[];
   shape: PlaybookShape;
   prompt: string;
+  /** What this row was prescribed - mirrors PlaybookDto.DefaultPrompt. `prompt` is
+      always the effective text; null means no prescribed text to compare against (an
+      operator's own new row, every repo-sourced file row). */
+  defaultPrompt: string | null;
   /** An alias, or a pinned id an operator typed by hand. */
   model: string;
   effort: string;
@@ -1079,6 +1083,10 @@ export interface PlaybookPatchRequest {
   fromStatusId?: number;
   toStatusId?: number;
   types?: IssueType[];
+  /** Undefined or null leaves it alone. '' or whitespace hands the override back to
+      defaultPrompt - refused where the row has none. A non-empty value sets the
+      override; one byte-identical to defaultPrompt is stored as no override - the same
+      three states budget carries. */
   prompt?: string;
   model?: string;
   effort?: string;

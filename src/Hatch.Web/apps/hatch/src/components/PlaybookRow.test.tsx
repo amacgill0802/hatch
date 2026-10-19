@@ -12,6 +12,7 @@ const BASE: Playbook = {
   types: [],
   shape: 'any',
   prompt: 'Do the thing.',
+  defaultPrompt: null,
   model: 'sonnet',
   effort: 'medium',
   budget: null,
@@ -192,6 +193,26 @@ describe('PlaybookRow', () => {
       />,
     );
     expect(shadowedHtml).toContain('shadowed by the file');
+  });
+
+  it("shows the operator's-own-wording badge only for a prompt that differs from a prescribed one", () => {
+    const wording = 'the operator&#x27;s own wording';
+    const html = renderToStaticMarkup(
+      <PlaybookRow playbook={BASE} projects={ONE_PROJECT} statuses={STATUSES} onEdit={noop} onDelete={noop} />,
+    );
+    expect(html).not.toContain(wording);
+
+    const unchanged: Playbook = { ...BASE, defaultPrompt: BASE.prompt };
+    const unchangedHtml = renderToStaticMarkup(
+      <PlaybookRow playbook={unchanged} projects={ONE_PROJECT} statuses={STATUSES} onEdit={noop} onDelete={noop} />,
+    );
+    expect(unchangedHtml).not.toContain(wording);
+
+    const overridden: Playbook = { ...BASE, defaultPrompt: 'Do it differently.' };
+    const overriddenHtml = renderToStaticMarkup(
+      <PlaybookRow playbook={overridden} projects={ONE_PROJECT} statuses={STATUSES} onEdit={noop} onDelete={noop} />,
+    );
+    expect(overriddenHtml).toContain(wording);
   });
 
   it('opens with a real, focusable button distinct from Delete', () => {
