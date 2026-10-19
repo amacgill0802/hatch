@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { newestFirst } from './thread';
+import { NEWEST_FIRST_LABEL, NEWEST_FIRST_TITLE, newestFirst } from './thread';
 import type { Comment } from '../types';
 
 let next = 1;
@@ -33,5 +33,12 @@ describe('newestFirst', () => {
     newestFirst(thread);
 
     expect(thread.map((c) => c.body)).toEqual(['first', 'second']);
+  });
+});
+
+describe('the newest-first wording', () => {
+  it('says "newest first" to a screen reader and "Newest first" on hover', () => {
+    expect(NEWEST_FIRST_LABEL).toBe('newest first');
+    expect(NEWEST_FIRST_TITLE).toBe('Newest first');
   });
 });
