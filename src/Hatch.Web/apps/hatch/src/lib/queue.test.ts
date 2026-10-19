@@ -128,6 +128,7 @@ const entry = (over: Partial<QueueEntry> = {}): QueueEntry => ({
   hopUnder: null,
   clearNote: null,
   model: null,
+  deniedTools: null,
   ...over,
 });
 
