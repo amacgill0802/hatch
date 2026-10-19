@@ -31,6 +31,7 @@ import {
   entryTitle,
   errorPhrase,
   moneyPhrase,
+  resumeCommand,
   totalsPhrase,
 } from '../lib/workLog';
 import type { Board, SessionSort, WorkLogHistory, WorkLogSession, WorkLogSessions } from '../types';
@@ -310,7 +311,7 @@ function Row({ session }: { session: WorkLogSession }) {
     <tr>
       {/* Shortened to fit, with the whole one on the cell - so the column is
           readable and the id is still there to copy. */}
-      <td title={session.sessionId}>
+      <td title={resumeCommand(session.agent, session.sessionId) ?? session.sessionId}>
         <code>{shortSession(session.sessionId)}</code>
         {session.isError && <Badge tone="danger">error</Badge>}
       </td>

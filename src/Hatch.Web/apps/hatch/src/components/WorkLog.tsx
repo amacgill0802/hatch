@@ -79,6 +79,7 @@ export function WorkLog({ log, error }: { log: WorkLogData | null; error: string
 /** One session. Newest first is the server's ordering and is not re-derived. */
 function Entry({ entry }: { entry: WorkLogEntry }) {
   const mark = entryMark(entry);
+  const resume = resumeCommand(entry.agent, entry.sessionId);
 
   return (
     <li className={`hatch-worklog-entry${mark ? ` hatch-worklog-${mark}` : ''}`}>
@@ -109,7 +110,7 @@ function Entry({ entry }: { entry: WorkLogEntry }) {
       {/* The session id in the form it is used in, rather than as an id
           somebody has to assemble a command around. */}
       <div className="hatch-worklog-commands">
-        <Command command={resumeCommand(entry.sessionId)} />
+        {resume ? <Command command={resume} /> : <code>{entry.sessionId}</code>}
         {entry.playbookSource === 'file' && entry.playbookFileSha && (
           <Command command={playbookFileShowCommand(entry.playbookFileSha)} />
         )}

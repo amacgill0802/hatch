@@ -1525,8 +1525,9 @@ export interface WorkLogModelUse {
 /** One agent session against one issue. Mirrors WorkLogEntryDto. */
 export interface WorkLogEntry {
   id: number;
-  /** What `claude --resume` takes. Drawn as a copyable command, not as an id. */
+  /** What a resume command is built from - see `resumeCommand`, which is what is actually drawn. */
   sessionId: string;
+  agent: string | null;
   /** Wall clock either side of the CLI. Deliberately not the same span as
       `durationMs`, which is what the session itself reported. */
   startedAt: string;
@@ -1615,8 +1616,9 @@ export type SessionSort = 'tokens' | 'cost' | 'ended' | 'requests' | 'peakContex
     here draws a per-model breakdown. */
 export interface WorkLogSession {
   id: number;
-  /** What `claude --resume` takes. */
+  /** What a resume command is built from - see `resumeCommand`, which is what is actually drawn. */
   sessionId: string;
+  agent: string | null;
   /** The issue it was run against, and the issue's own title - both on the wire
       so a row links without a second read. */
   issueKey: string;

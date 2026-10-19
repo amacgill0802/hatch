@@ -83,8 +83,20 @@ const pad = (n: number): string => (n < 10 ? `0${n}` : `${n}`);
 /**
  * The one string that gets copied, built here rather than assembled in JSX, so
  * what is on screen and what lands on the clipboard cannot drift apart.
+ * Null for an agent this table does not recognise, including none at all - the
+ * caller draws the bare session id instead.
  */
-export const resumeCommand = (sessionId: string): string => `claude --resume ${sessionId}`;
+const RESUME_COMMANDS: Record<string, (sessionId: string) => string> = {
+  claude: (id) => `claude --resume ${id}`,
+  codex: (id) => `codex exec resume ${id}`,
+  grok: (id) => `grok -r ${id}`,
+};
+
+export function resumeCommand(agent: string | null, sessionId: string): string | null {
+  if (agent === null) return null;
+  const build = RESUME_COMMANDS[agent];
+  return build ? build(sessionId) : null;
+}
 
 /** What is wrong with an entry, if anything - one predicate rather than two
     conditions in a component. An errored run is the louder fact of the two, so
