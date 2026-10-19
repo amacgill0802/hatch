@@ -3313,6 +3313,12 @@ input.hatch-inline-title-input {
   padding: var(--sp-3) 0;
 }
 
+.hatch-playbook-prompt-diff {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
 /* The row's own open button fills its <td> and takes the table's cell padding
    itself, so the <td> gives up its half - otherwise the two would double up. */
 .hatch-table td:has(.hatch-playbook-row-open) {
