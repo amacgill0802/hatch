@@ -157,6 +157,7 @@ public sealed class RunnersTests
 
         var beat = Assert.Single(Beats(h)).Read<RunnerHeartbeatRequest>();
         Assert.Equal(h.Runtime.Where, beat.Where);
+        Assert.Equal(h.Runtime.Adapter.Id, beat.Agent);
     }
 
     [Fact]

@@ -298,8 +298,8 @@ public sealed class Lifecycle(Runtime runtime)
         UsageLimitInfo limit, Checkouts.Choice chosen, IReadOnlyList<(string Path, LimitPushed Result)> pushed, IReadOnlyList<string> tidyLines)
     {
         var body = limit.ResetKnown
-            ? $"This runner ran out of Claude usage. It expects to resume at {UsageLimit.Clock(limit.ResetAt, known: true)}."
-            : "This runner ran out of Claude usage, and the reset time it gave could not be read - "
+            ? $"This runner ran out of {runtime.Adapter.DisplayName} usage. It expects to resume at {UsageLimit.Clock(limit.ResetAt, known: true)}."
+            : $"This runner ran out of {runtime.Adapter.DisplayName} usage, and the reset time it gave could not be read - "
               + $"treating it as an hour away, until {UsageLimit.Clock(limit.ResetAt, known: false, runtime.Clock)}.";
 
         return body + PushedTidyAndResumeBody(chosen, pushed, tidyLines, limit.SessionId, runtime.Adapter);

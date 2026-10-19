@@ -744,7 +744,8 @@ public sealed class WorkCommandTests
 
         Assert.Equal(0, await new WorkCommand(runtime).RunAsync(["AER-1", "--repo", elsewhere], default));
 
-        Assert.Contains(h.Wire.Calls, c => c.Path == $"/api/hatch/runners/{Uri.EscapeDataString(runnerName)}");
+        var beat = h.Wire.To("POST", $"/api/hatch/runners/{Uri.EscapeDataString(runnerName)}")[0].Read<RunnerHeartbeatRequest>();
+        Assert.Equal(runtime.Adapter.Id, beat.Agent);
         Assert.Single(h.Sessions.Spawned);
 
         var call = h.Wire.To("GET", "/api/hatch/work/AER-1")[0];

@@ -85,16 +85,19 @@ public interface IUsageProbe
 public static class Agents
 {
     public static bool Resolve(
-        string id, string? claudeBin, Action<string>? warn, out ISessionRunner runner, out string refusal)
+        string id, string? claudeBin, Action<string>? warn, out ISessionRunner runner, out IAgentAdapter adapter,
+        out string refusal)
     {
         if (id == "claude")
         {
-            runner = new AgentSessionRunner(new ClaudeAdapter(claudeBin, warn));
+            adapter = new ClaudeAdapter(claudeBin, warn);
+            runner = new AgentSessionRunner(adapter);
             refusal = "";
             return true;
         }
 
         runner = null!;
+        adapter = null!;
         refusal = $"hatch: no such agent \"{id}\" - known: {string.Join(", ", Settings.KnownAgentIds)}";
         return false;
     }
