@@ -111,6 +111,36 @@ public static partial class UsageLimit
     }
 
     /// <summary>
+    /// Whether <paramref name="said"/> - the Grok CLI's own result text or its
+    /// error - reports a usage limit: the one-hour backstop,
+    /// <see cref="Recognised.ResetKnown"/> false, window <c>session</c>. Null
+    /// for anything else, including an ordinary error and the per-minute
+    /// <c>429</c> / <c>rate limit exceeded</c> throttle, which Grok retries
+    /// itself and which is not an account running out.
+    /// </summary>
+    /// <remarks>
+    /// The sentences, read from the vendor's open-source repository on
+    /// 2026-10-19 (<c>xai-grok-shell/src/sampling/error.rs</c> and
+    /// <c>session/compaction.rs</c>), none naming a reset time:
+    /// <list type="bullet">
+    /// <item>You’ve reached your free Grok Build usage limit for now. Get SuperGrok for much higher limits, or try again later: ...</item>
+    /// <item>Grok Build usage limit reached</item>
+    /// <item>You hit your free usage limit.</item>
+    /// </list>
+    /// </remarks>
+    public static Recognised? RecogniseGrok(string? said, DateTimeOffset endedAt)
+    {
+        if (string.IsNullOrWhiteSpace(said)) return null;
+        if (!GrokMention().IsMatch(said)) return null;
+
+        // No real Grok limit sentence from a headless error event has been seen
+        // yet. When HA-918's proof (or any run) sees one, its reset-time regex
+        // goes here, ahead of this backstop; until then every Grok limit report
+        // rests an hour.
+        return new Recognised(endedAt + UnknownWindow, ResetKnown: false, "session");
+    }
+
+    /// <summary>
     /// 7:40pm, lowercase, the way a terminal or a ticket says a reset time.
     /// When the sentence itself named a zone (<paramref name="known"/>), that
     /// is read off <paramref name="at"/>'s own carried offset, so the same
@@ -216,6 +246,9 @@ public static partial class UsageLimit
     [GeneratedRegex(@"usage[ _]limit|rate[ _]limit|usage_limit_reached|rate_limit_exceeded|hit your\b.*\blimit\b",
         RegexOptions.IgnoreCase | RegexOptions.Singleline)]
     private static partial Regex CodexMention();
+
+    [GeneratedRegex(@"usage limit", RegexOptions.IgnoreCase)]
+    private static partial Regex GrokMention();
 
     [GeneratedRegex(
         @"resets\s+(?:(?<month>[A-Za-z]{3,9})\.?\s+(?<day>\d{1,2})(?:,\s*(?<year>\d{4}))?" +

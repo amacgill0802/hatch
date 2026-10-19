@@ -4884,7 +4884,7 @@ families are one list, `ModelFamilies` in `Hatch.Contracts`, which the server
 validates against (the board's playbook, a repository's playbook file and an
 issue's override all refuse in one sentence naming the aliases and the
 families: `a model is one of haiku, sonnet, opus, fable, or a pinned id of a
-supported agent (claude-opus-5 for claude; gpt-6-astra for codex) - not "nonsense-1"`) and the CLI
+supported agent (claude-opus-5 for claude; gpt-6-astra for codex; grok-4.6 for grok) - not "nonsense-1"`) and the CLI
 reads. **Pinning an id is choosing an agent.** A runner whose agent
 (`HATCH_AGENT`, or `--agent`) is not that family skips the row before claiming
 it and says so under [what the pass skipped](#what-a-pass-skipped); `work <key>`
