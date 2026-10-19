@@ -54,3 +54,10 @@ export function writeBoardView(view: BoardView): void {
 export function resolveBoardLayout(isPhone: boolean, view: BoardView): BoardView {
   return isPhone ? view : 'full';
 }
+
+/** Whether the board page pins its bar and scrolls its columns inside the
+    shell instead of the document - standalone and phone-width together,
+    independent of which layout (full or stacked) is drawn. */
+export function pinnedBoard(isPhone: boolean, isStandalone: boolean): boolean {
+  return isPhone && isStandalone;
+}
