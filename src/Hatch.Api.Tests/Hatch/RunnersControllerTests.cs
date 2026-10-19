@@ -410,6 +410,30 @@ public class RunnersControllerTests
         Assert.Equal("here:/checkouts/one", (await h.OneAsync()).Where);
     }
 
+    // ---- Agent ----
+
+    [Fact]
+    public async Task Agent_IsStoredAndReadBack()
+    {
+        var h = await NewAsync();
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Agent: "claude"));
+
+        Assert.Equal("claude", (await h.OneAsync()).Agent);
+    }
+
+    [Fact]
+    public async Task ABeatWithNoAgent_IsNeverRefusedOnThatAccount()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Agent: "claude"));
+
+        var instruction = await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+
+        Assert.NotNull(instruction);
+        Assert.Equal("claude", (await h.OneAsync()).Agent);
+    }
+
     // ---- What it is working ----
 
     [Fact]

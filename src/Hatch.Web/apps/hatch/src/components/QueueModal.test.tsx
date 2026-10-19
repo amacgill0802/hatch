@@ -135,6 +135,7 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   clones: null,
   mine: null,
   where: null,
+  agent: null,
   maxRuns: null,
   maxSpend: null,
   untilAt: null,

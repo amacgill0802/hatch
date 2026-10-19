@@ -6644,6 +6644,10 @@ whose name is already the *live* runner at a different `where` is refused with
 `409`: two live runners never share one row, and a gone row can still be taken
 over, which is how a checkout that moved keeps its name. That refusal is the
 backstop; the first choice already tries to dodge it by reading the board.
+`Agent` works the same way - the id of the agent that spawned the process
+(`claude` today, per `Settings.KnownAgentIds`), absent from a runner that has
+not reported one - but carries no uniqueness check, since two runners sharing
+an agent id is not a conflict.
 
 **It also says which repositories it serves.** Every heartbeat from
 `go-to-work` carries the `origin` of each checkout the runner holds,

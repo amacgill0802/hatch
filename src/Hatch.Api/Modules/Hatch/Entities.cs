@@ -2492,6 +2492,7 @@ public class EfHatchRunner
 
     public const int MaxKindLength = 16;
     public const int MaxStateLength = 16;
+    public const int MaxAgentLength = 16;
 
     /// <summary>Room for an issue key, which is what <c>--under</c> takes.</summary>
     public const int MaxUnderLength = 32;
@@ -2622,6 +2623,14 @@ public class EfHatchRunner
     /// </summary>
     [MaxLength(MaxNameLength)]
     public string? Where { get; set; }
+
+    /// <summary>
+    /// The agent that spawned this process, <c>claude</c> today - a fact about
+    /// the running process, overwritten on every heartbeat that names one, the
+    /// same as <see cref="Where"/>.
+    /// </summary>
+    [MaxLength(MaxAgentLength)]
+    public string? Agent { get; set; }
 
     /// <summary>
     /// This runner's own account ran out of Claude usage, and this is when it
