@@ -8,11 +8,11 @@ import { TypeBadge } from '../components/TypeBadge';
 import { agoPhrase } from '../lib/claim';
 import { message } from '../lib/errors';
 import {
+  coverageOf,
   fileRowLabel,
   isReviewPlaybook,
   isUncheckedEdit,
   matchesProjectFilter,
-  shadowedByFile,
   transitionLabel,
 } from '../lib/playbooks';
 import {
@@ -131,7 +131,7 @@ export function PlaybooksPage() {
                   playbook={playbook}
                   projects={projects}
                   statuses={statuses ?? []}
-                  shadowed={activeFile ? shadowedByFile(playbook, activeFile.rows) : false}
+                  shadowed={activeFile && playbook.projectKey === null ? coverageOf(playbook, activeFile.rows) === 'overridden' : false}
                   onEdit={() => setEditing(playbook)}
                   onDelete={() => void act(() => deletePlaybook(playbook.id))}
                 />
