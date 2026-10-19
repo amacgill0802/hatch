@@ -572,6 +572,33 @@ public class PlaybooksControllerTests
         Assert.True((await h.ReadAsync(row.Id)).IsCheck);
     }
 
+    // ---- Model families ----
+
+    [Fact]
+    public async Task APinnedId_OfASecondFamily_IsRefusedByDefaultAndAcceptedWithItsFamilyListed()
+    {
+        var h = await NewAsync();
+
+        var refusal = await h.Playbooks.CreatePlaybook(
+            new PlaybookCreateRequest(h.Todo, h.InProgress, [], "do it", "fake-1", "high"), default);
+
+        Assert.Equal(
+            "a model is one of haiku, sonnet, opus, fable, or a pinned id of a supported agent " +
+            "(claude-opus-5 for claude) - not \"fake-1\"",
+            Reason(refusal.Result));
+
+        var families = new ModelFamilies([
+            ModelFamilies.Default.Rows[0],
+            new ModelFamily("fake", "^fake-[a-z0-9-]+$", "fake-1"),
+        ]);
+        var withFamilies = await NewAsync(families);
+
+        var created = Created(await withFamilies.Playbooks.CreatePlaybook(
+            new PlaybookCreateRequest(withFamilies.Todo, withFamilies.InProgress, [], "do it", "fake-1", "high"), default));
+
+        Assert.Equal("fake-1", created.Model);
+    }
+
     // ---- Harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 9, 2, 12, 0, 0, TimeSpan.Zero);
@@ -603,7 +630,7 @@ public class PlaybooksControllerTests
             Value(await Playbooks.GetPlaybooks(default)).Single(p => p.Id == id);
     }
 
-    private static async Task<Harness> NewAsync()
+    private static async Task<Harness> NewAsync(ModelFamilies? families = null)
     {
         var db = new HatchContext(
             new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
@@ -618,7 +645,7 @@ public class PlaybooksControllerTests
         return new Harness
         {
             Db = db,
-            Playbooks = new PlaybooksController(db, new FakeTimeProvider(Now)),
+            Playbooks = new PlaybooksController(db, new FakeTimeProvider(Now), families),
             Todo = todo.Id,
             InProgress = doing.Id,
             ProjectA = projectA.Id,

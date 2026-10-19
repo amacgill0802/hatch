@@ -37,6 +37,11 @@ public static class HatchModule
         services.Configure<HatchOptions>(configuration.GetSection(HatchOptions.SectionName));
         services.AddSingleton<IssueClaims>();
 
+        // The one list of model families a pinned id is judged against - a
+        // pure value with nothing configurable yet, so the default is the
+        // whole of it.
+        services.AddSingleton(ModelFamilies.Default);
+
         // The runner's two horizons, on the same terms and for the same reason:
         // a configured number, no clock, no database, and every judgement taking
         // the instant it is judging against.

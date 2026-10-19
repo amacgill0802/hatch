@@ -28,8 +28,9 @@ public class PlaybookFileTests
     /// fixture behaves like the file it stands in for, rather than exercising
     /// an end-of-document edge case no editor produces.
     /// </summary>
-    private static (IReadOnlyList<PlaybookCreateRequest>? Rows, string? Problem) Parse(string yaml, List<EfHatchStatus>? statuses = null) =>
-        PlaybookFile.Parse(Encoding.UTF8.GetBytes(yaml.EndsWith('\n') ? yaml : yaml + "\n"), statuses ?? Statuses());
+    private static (IReadOnlyList<PlaybookCreateRequest>? Rows, string? Problem) Parse(
+        string yaml, List<EfHatchStatus>? statuses = null, ModelFamilies? families = null) =>
+        PlaybookFile.Parse(Encoding.UTF8.GetBytes(yaml.EndsWith('\n') ? yaml : yaml + "\n"), statuses ?? Statuses(), families);
 
     // ---- The epic's own example ----
 
@@ -329,15 +330,38 @@ public class PlaybookFileTests
               - from: Breakdown
                 to: Backlog
                 prompt: hi
-                model: gpt-4
+                model: nonsense-1
             """;
 
         var (rows, problem) = Parse(yaml);
 
         Assert.Null(rows);
         Assert.Contains(
-            "a model is one of haiku, sonnet, opus, fable, or a pinned name like claude-opus-5 - not \"gpt-4\"",
+            "a model is one of haiku, sonnet, opus, fable, or a pinned id of a supported agent " +
+            "(claude-opus-5 for claude) - not \"nonsense-1\"",
             problem);
+    }
+
+    [Fact]
+    public void APinnedId_OfASecondFamily_IsAcceptedWhenItsRowIsListed()
+    {
+        const string yaml = """
+            playbooks:
+              - from: Breakdown
+                to: Backlog
+                prompt: hi
+                model: fake-1
+            """;
+
+        var families = new ModelFamilies([
+            ModelFamilies.Default.Rows[0],
+            new ModelFamily("fake", "^fake-[a-z0-9-]+$", "fake-1"),
+        ]);
+
+        var (rows, problem) = Parse(yaml, families: families);
+
+        Assert.Null(problem);
+        Assert.Equal("fake-1", Assert.Single(rows!).Model);
     }
 
     [Fact]
