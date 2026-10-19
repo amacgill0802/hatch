@@ -268,6 +268,10 @@ public class AdminSurfaceTests
         // already says, folded into one answer.
         "ReportsController.GetTimeline",
 
+        // How many issues sat in each board column over time, read off the
+        // status history; Hatch-scoped and open to a person, like GetTimeline.
+        "ReportsController.GetCumulativeFlow",
+
         // My own Claude headroom, off my own runners' heartbeats. Hatch-scoped
         // like the rest of the module and guarded for the same reason the
         // board is: what it says is how much room is left to work tonight,

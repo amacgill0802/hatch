@@ -2772,6 +2772,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/work-log/sessions` | GET | The sessions in a range, ranked, with the range's own totals — see [the leaderboard](#the-leaderboard) |
 | `/work-log/history` | GET | The same rows folded into equal buckets of time, for the graph |
 | `/reports/timeline` | GET | When the work happened: top-level epics active in a range, and the work beneath each, as stretches in the board's active columns. `from`, `to` (default: the 90 days ending now), `projectId`, `createdBy`. Hatch-scoped, open to a key. `400` for an unparseable or inverted bound and for an unknown `projectId` — see [the timeline](#the-timeline) |
+| `/reports/cumulative-flow` | GET | How many issues sat in each board column over time, read off the same status history as the timeline. `from`, `to` (default: the 90 days ending now). Hatch-scoped, open to a key. `400` for an unparseable or inverted bound — see [the cumulative flow](#the-cumulative-flow) |
 | `/runners` | GET | Every runner heard from lately, most recent first — see [runners on the board](#runners-on-the-board) |
 | `/runners/{name}` | POST | The heartbeat: says what this process is, answers with what it has been asked to do. The name is a character off the cast list, or `HATCH_RUNNER`'s override, escaped — a slash in it stays `%2F`. `where` (`host:/path/to/checkout`) rides beside it; a name already the *live* runner at a different `where` is refused with `409` |
 | `/runners/{name}` | PATCH | **Person only** — plain `[RequireRole(User)]`. `{ state?, under?, maxRuns?, maxSpend?, untilAt? }`, all strings, the bulk rule throughout. An agent that could raise its own `--max-spend` could raise its own budget |
@@ -3526,6 +3527,37 @@ convention: there is no control that could, and the browser API client has no
 function that could. There is **no CLI subcommand** for it either; a script
 reaches the same answer with `hatch api GET /api/hatch/reports/timeline?...`,
 which is the [API surface](#api-surface)'s row for it.
+
+### The cumulative flow
+
+```
+GET /api/hatch/reports/cumulative-flow?from=&to=
+```
+
+The same question the timeline answers about one issue at a time, asked about
+the whole board instead: **how many issues sat in each column, at each
+instant**. `from` and `to` are the timeline's own bounds — instants, the 90
+days ending now by default, the same `400`s for an unparseable or inverted
+range. There is no `projectId` or `createdBy`: a column's count is a fact
+about the board, not about any one project or creator.
+
+It answers `{ from, to, step, columns, points, unresolved }`. `columns` is the
+board's own columns in board order — every status that is not deferred, so a
+deferred column contributes to no band. `points` is one `{ at, counts }` per
+grid step from `from` to `to`, oldest first, `counts` parallel to `columns`;
+on a board with no issues it is `[]`. The grid's step is the finest of hour,
+day or week whose point count stays at or under the 1,000-point cap
+`/work-log/history` already uses, falling back to week rather than refusing a
+range that outgrows even that. `from` is clamped forward to the first issue's
+creation, the same as the timeline's own `ClampStart`, so a range reaching
+back before anything existed does not draw an empty stretch. `unresolved`
+counts stretches the same way the timeline's does: a stretch naming a column
+no longer on the board, because it was renamed since and the event predates
+the ids — see [the rebuild, and its one hole](#the-rebuild-and-its-one-hole).
+
+There is no page for it yet and **no CLI subcommand**; a script reaches it
+with `hatch api GET /api/hatch/reports/cumulative-flow?...`, which is the
+[API surface](#api-surface)'s row for it.
 
 ## The overnight
 
