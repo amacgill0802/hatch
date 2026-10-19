@@ -6,26 +6,30 @@ import {
   resizeWindow,
   shiftWindow,
   windowEndingToday,
-  type TimelineWindow,
-} from '../lib/timeline';
+  type ReportWindow,
+  type WindowPreset,
+} from '../lib/reportWindow';
 import { Facet, type FacetOption } from './Facet';
 
 const CUSTOM = 'custom';
 
-/** The timeline's window controls: a step either way, back to today, and a
+/** A report's window controls: a step either way, back to today, and a
     length. It reports the window it would move to and writes nothing - nor does
     it decide whether that differs from the current one; the page that owns the
-    URL does. */
-export function TimelineControls({
+    URL does. `defaultPreset` is the length the report opens at, and the one the
+    Length facet is unlit at. */
+export function ReportWindowControls({
+  defaultPreset,
   window,
   now,
   offsetMinutes,
   onMove,
 }: {
-  window: TimelineWindow;
+  defaultPreset: WindowPreset;
+  window: ReportWindow;
   now: Date;
   offsetMinutes: number;
-  onMove: (next: TimelineWindow) => void;
+  onMove: (next: ReportWindow) => void;
 }) {
   const preset = presetOf(window);
   const key = preset ?? CUSTOM;
@@ -53,7 +57,7 @@ export function TimelineControls({
       </button>
       <Facet
         label="Length"
-        lit={key !== '3m'}
+        lit={key !== defaultPreset}
         value={key}
         options={options}
         onChange={(value) => {
