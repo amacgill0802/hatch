@@ -107,6 +107,7 @@ public sealed class Runners(IOptions<HatchOptions> options)
         runner.Mine,
         runner.Standing,
         runner.Where,
+        runner.Agent,
         runner.ExhaustedUntil,
         drives);
 

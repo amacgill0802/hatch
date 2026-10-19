@@ -331,6 +331,7 @@ public class RunnersController(
         Mine = request.Mine,
         Standing = request.Standing,
         Where = Fits(request.Where, EfHatchRunner.MaxNameLength),
+        Agent = Fits(request.Agent, EfHatchRunner.MaxAgentLength),
         ExhaustedUntil = request.Exhausted == true ? request.ExhaustedUntil : null,
         ForPersonId = forPersonId,
         Usage = UsageJson(request),
@@ -371,6 +372,7 @@ public class RunnersController(
         if (request.Mine is not null) row.Mine = request.Mine;
         if (request.Standing is not null) row.Standing = request.Standing;
         if (request.Where is not null) row.Where = Fits(request.Where, EfHatchRunner.MaxNameLength);
+        if (request.Agent is not null) row.Agent = Fits(request.Agent, EfHatchRunner.MaxAgentLength);
 
         // A tri-state of its own: absent leaves the row's own record alone (an
         // older CLI, or hatch work's single beat, neither of which knows

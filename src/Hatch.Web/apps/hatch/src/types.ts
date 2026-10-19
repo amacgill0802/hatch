@@ -1769,6 +1769,9 @@ export interface Runner {
       the name now that the name is a character and not a path. Null from an
       older CLI that has not sent one yet. */
   where: string | null;
+  /** The agent that spawned this process, `claude` today - drawn beside
+      `where`. Null from a runner that has not reported one yet. */
+  agent: string | null;
   maxRuns: number | null;
   maxSpend: number | null;
   untilAt: string | null;

@@ -34,6 +34,7 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   clones: null,
   mine: null,
   where: 'here:/checkouts/one',
+  agent: null,
   maxRuns: null,
   maxSpend: null,
   untilAt: null,
