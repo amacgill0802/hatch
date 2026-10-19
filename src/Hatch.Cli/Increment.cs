@@ -870,7 +870,7 @@ public sealed class Increment(
         // for this increment and deleted with it, in a directory of its own.
         using var hooks = adapter.WriteHooks(_temp, work.Issue.Key, SessionHooks.Binary(Environment.ProcessPath),
             SessionHooks.Rtk(Environment.GetEnvironmentVariable("HATCH_RTK"), Environment.GetEnvironmentVariable("PATH")));
-        if (hooks is null)
+        if (hooks is null && adapter.CanHook)
             say.Complain($"hatch: {work.Issue.Key} - could not write the hooks a message reaches the session by; one sent now waits for the next session");
 
         var budget = work.Playbook?.Budget is { } m ? m * 1_000_000L : (long?)null;
@@ -888,8 +888,9 @@ public sealed class Increment(
         }
 
         var prompt = Prompt.Compose(work, repositories, branches, conflict, build);
-        var request = new SessionRequest(root, model, effort, prompt, quiet, addDirs, hooks?.Opaque, work.Playbook?.DeniedTools ?? []);
         var render = adapter.CreateReader(root, facts);
+        var request = new SessionRequest(root, model, effort, prompt, quiet, addDirs, hooks?.Opaque, work.Playbook?.DeniedTools ?? [],
+            SessionId: facts.SessionId);
 
         // Whichever side wrote hooks.Clamp - the streamed callback below, or a
         // --quiet session's own transcript-reading hook - this is the one place

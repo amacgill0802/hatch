@@ -15,63 +15,87 @@ public sealed class AgentSessionRunner(IAgentAdapter adapter) : ISessionRunner, 
     {
         var start = adapter.BuildHeadless(request);
 
-        using var process = new Process { StartInfo = start };
-        process.Start();
-
-        // The prompt goes in on stdin rather than as an argument - it is long,
-        // and an argument list is the one place where "long" has a limit worth
-        // avoiding.
-        var writing = Task.Run(async () =>
-        {
-            await process.StandardInput.WriteAsync(request.Prompt);
-            process.StandardInput.Close();
-        }, CancellationToken.None);
-
-        var collected = new StringBuilder();
-        var reading = Task.Run(async () =>
-        {
-            while (await process.StandardOutput.ReadLineAsync(CancellationToken.None) is { } line)
-            {
-                if (onLine is null) collected.AppendLine(line);
-                else onLine(line);
-            }
-        }, CancellationToken.None);
-
         try
         {
-            await process.WaitForExitAsync(ct);
+            using var process = new Process { StartInfo = start };
+            process.Start();
+
+            // The prompt goes in on stdin rather than as an argument - it is long,
+            // and an argument list is the one place where "long" has a limit worth
+            // avoiding. An adapter that delivers it another way is left with a
+            // stdin that reads EOF rather than the terminal.
+            Task writing;
+            if (adapter.PromptOnStdin)
+            {
+                writing = Task.Run(async () =>
+                {
+                    await process.StandardInput.WriteAsync(request.Prompt);
+                    process.StandardInput.Close();
+                }, CancellationToken.None);
+            }
+            else
+            {
+                if (start.RedirectStandardInput) process.StandardInput.Close();
+                writing = Task.CompletedTask;
+            }
+
+            var collected = new StringBuilder();
+            var reading = Task.Run(async () =>
+            {
+                while (await process.StandardOutput.ReadLineAsync(CancellationToken.None) is { } line)
+                {
+                    if (onLine is null) collected.AppendLine(line);
+                    else onLine(line);
+                }
+            }, CancellationToken.None);
+
+            try
+            {
+                await process.WaitForExitAsync(ct);
+            }
+            catch (OperationCanceledException)
+            {
+                Stop(process);
+            }
+
+            // Whatever was written before the kill is still worth having, and the
+            // reader ends of its own accord once the pipe closes.
+            await Task.WhenAll(writing, reading).WaitAsync(TimeSpan.FromSeconds(10), CancellationToken.None);
+            await process.WaitForExitAsync(CancellationToken.None);
+
+            return new SessionResult(process.ExitCode, collected.ToString());
         }
-        catch (OperationCanceledException)
+        finally
         {
-            Stop(process);
+            adapter.Release(request);
         }
-
-        // Whatever was written before the kill is still worth having, and the
-        // reader ends of its own accord once the pipe closes.
-        await Task.WhenAll(writing, reading).WaitAsync(TimeSpan.FromSeconds(10), CancellationToken.None);
-        await process.WaitForExitAsync(CancellationToken.None);
-
-        return new SessionResult(process.ExitCode, collected.ToString());
     }
 
     public async Task<int> AttachAsync(SessionRequest request, CancellationToken ct)
     {
         var start = adapter.BuildAttached(request);
 
-        using var process = new Process { StartInfo = start };
-        process.Start();
-
         try
         {
-            await process.WaitForExitAsync(ct);
-        }
-        catch (OperationCanceledException)
-        {
-            Stop(process);
-            await process.WaitForExitAsync(CancellationToken.None);
-        }
+            using var process = new Process { StartInfo = start };
+            process.Start();
 
-        return process.ExitCode;
+            try
+            {
+                await process.WaitForExitAsync(ct);
+            }
+            catch (OperationCanceledException)
+            {
+                Stop(process);
+                await process.WaitForExitAsync(CancellationToken.None);
+            }
+
+            return process.ExitCode;
+        }
+        finally
+        {
+            adapter.Release(request);
+        }
     }
 
     public Task<IReadOnlyList<string>?> ProbeAsync(string tempDirectory, CancellationToken ct) =>

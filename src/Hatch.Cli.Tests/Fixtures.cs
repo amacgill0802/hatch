@@ -395,4 +395,62 @@ public static class Fixtures
             },
             result = said,
         });
+
+    // ---- Codex's own events ----
+
+    public static string CodexThreadStarted(string threadId = "t-1") =>
+        JsonSerializer.Serialize(new { type = "thread.started", thread_id = threadId });
+
+    public static string CodexItemStarted(string itemType, string? command = null, string? tool = null, string? query = null) =>
+        JsonSerializer.Serialize(new
+        {
+            type = "item.started",
+            item = new Dictionary<string, object?>
+            {
+                ["type"] = itemType,
+                ["command"] = command,
+                ["tool"] = tool,
+                ["query"] = query,
+            },
+        });
+
+    public static string CodexItemCompleted(
+        string itemType, string status = "completed", string? aggregatedOutput = null,
+        string[]? changedPaths = null, string? errorMessage = null, string? text = null, string? message = null) =>
+        JsonSerializer.Serialize(new
+        {
+            type = "item.completed",
+            item = new Dictionary<string, object?>
+            {
+                ["type"] = itemType,
+                ["status"] = status,
+                ["aggregated_output"] = aggregatedOutput,
+                ["changes"] = changedPaths?.Select(p => new { path = p }).ToArray(),
+                ["error"] = errorMessage is null ? null : new { message = errorMessage },
+                ["text"] = text,
+                ["message"] = message,
+            },
+        });
+
+    public static string CodexTurnCompleted(
+        long inputTokens = 100, long cachedInputTokens = 0, long cacheWriteInputTokens = 0,
+        long outputTokens = 50, long? reasoningOutputTokens = 0)
+    {
+        var usage = new Dictionary<string, object?>
+        {
+            ["input_tokens"] = inputTokens,
+            ["cached_input_tokens"] = cachedInputTokens,
+            ["cache_write_input_tokens"] = cacheWriteInputTokens,
+            ["output_tokens"] = outputTokens,
+        };
+        if (reasoningOutputTokens is { } reasoning) usage["reasoning_output_tokens"] = reasoning;
+
+        return JsonSerializer.Serialize(new { type = "turn.completed", usage });
+    }
+
+    public static string CodexTurnFailed(string message) =>
+        JsonSerializer.Serialize(new { type = "turn.failed", error = new { message } });
+
+    public static string CodexError(string message) =>
+        JsonSerializer.Serialize(new { type = "error", message });
 }

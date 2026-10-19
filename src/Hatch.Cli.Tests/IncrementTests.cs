@@ -108,6 +108,79 @@ public sealed class IncrementTests
         await claim.ReleaseAsync();
     }
 
+    /// <summary>The wire an increment under a fake adapter needs, and the one request it spawned.</summary>
+    private static async Task<SessionRequest> RunFakeAsync(Harness h, FakeAdapter adapter)
+    {
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke("FAKE-RESULT fake-session-1|Did a fake thing|In fake detail.|7|2.5|45000");
+            return Task.FromResult(new SessionResult(0, ""));
+        };
+
+        await (h.Runtime with { Adapter = adapter }).Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+        await claim.ReleaseAsync();
+
+        return h.Sessions.Spawned[0];
+    }
+
+    [Fact]
+    public async Task A_reader_that_mints_a_session_id_hands_it_to_the_spawn()
+    {
+        using var h = new Harness();
+        var adapter = new FakeAdapter { OnReader = f => f.SessionId = "minted-1" };
+
+        var request = await RunFakeAsync(h, adapter);
+
+        Assert.Equal("minted-1", request.SessionId);
+    }
+
+    [Fact]
+    public async Task The_claude_path_spawns_with_no_session_id_of_its_own_choosing()
+    {
+        using var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.Null(h.Sessions.Spawned[0].SessionId);
+
+        await claim.ReleaseAsync();
+    }
+
+    [Fact]
+    public async Task A_hooks_write_that_failed_is_complained_of_where_the_agent_has_a_door_for_them()
+    {
+        using var h = new Harness();
+
+        await RunFakeAsync(h, new FakeAdapter { HooksFail = true, CanHook = true });
+
+        Assert.Contains(h.Say.Complained, line => line.Contains("could not write the hooks", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task An_agent_with_no_hooks_door_is_not_complained_of_for_having_none()
+    {
+        using var h = new Harness();
+
+        await RunFakeAsync(h, new FakeAdapter { HooksFail = true, CanHook = false });
+
+        Assert.DoesNotContain(h.Say.Complained, line => line.Contains("could not write the hooks", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task A_usage_limit_under_a_second_adapter_names_that_agent_not_claude()
     {
