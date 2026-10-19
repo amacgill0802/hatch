@@ -92,13 +92,14 @@ export function xOf(scale: Scale, instant: string | number): number {
   return Math.min(CHART_UNITS, Math.max(0, x));
 }
 
-export type TickUnit = 'day' | 'week' | 'month';
+export type TickUnit = 'hour' | 'day' | 'week' | 'month';
 
-/** How coarse the ticks are: a day each up to a month wide, a week each up to
-    half a year, a month each beyond. */
+/** How coarse the ticks are: three hours each up to two days wide, a day each
+    up to a month, a week each up to half a year, a month each beyond. */
 export function tickUnit(scale: Scale): TickUnit {
   const days = (scale.to - scale.from) / DAY_MS;
 
+  if (days <= 2) return 'hour';
   if (days <= 31) return 'day';
   if (days <= 183) return 'week';
 
@@ -131,6 +132,14 @@ function boundaries(unit: TickUnit, start: number, end: number): number[] {
     return out;
   }
 
+  if (unit === 'hour') {
+    const step = 3 * 3_600_000;
+    let at = Math.ceil(start / step) * step;
+    for (; at <= end; at += step) out.push(at);
+
+    return out;
+  }
+
   let at = Math.ceil(start / DAY_MS) * DAY_MS;
   if (unit === 'week') {
     while (new Date(at).getUTCDay() !== 1) at += DAY_MS;
@@ -147,6 +156,8 @@ function boundaries(unit: TickUnit, start: number, end: number): number[] {
  *
  * Only boundaries inside `[from, to]` are returned, both ends included. Labels:
  *
+ * - `hour` - `15:00`, with the short month and day beside it on the first tick
+ *   and on every midnight, so the eye always has a date to hang the times on;
  * - `day` - the day number, with the short month on the first tick and on every
  *   1st, so the eye always has a month to hang the numbers on;
  * - `week` - `3 Oct`, since a Monday alone is not a date;
@@ -163,13 +174,21 @@ export function ticks(scale: Scale, offsetMinutes: number, locale?: string): Tic
   const shift = offsetMinutes * MINUTE_MS;
   const format = (shifted: number, options: Intl.DateTimeFormatOptions) =>
     new Date(shifted).toLocaleDateString(locale, { ...options, timeZone: 'UTC' });
+  const formatTime = (shifted: number, options: Intl.DateTimeFormatOptions) =>
+    new Date(shifted).toLocaleTimeString(locale, { ...options, timeZone: 'UTC' });
 
   return boundaries(unit, scale.from + shift, scale.to + shift).map((shifted, i) => {
     const first = i === 0;
     const date = new Date(shifted);
     let label: string;
 
-    if (unit === 'day') {
+    if (unit === 'hour') {
+      const time = formatTime(shifted, { hour: '2-digit', minute: '2-digit' });
+      label =
+        first || date.getUTCHours() === 0
+          ? `${format(shifted, { day: 'numeric', month: 'short' })} ${time}`
+          : time;
+    } else if (unit === 'day') {
       label =
         first || date.getUTCDate() === 1
           ? format(shifted, { day: 'numeric', month: 'short' })

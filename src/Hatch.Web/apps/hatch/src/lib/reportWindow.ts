@@ -18,13 +18,15 @@ const DAY_MS = 86_400_000;
     `Window`, which is the DOM global. */
 export type ReportWindow = { from: string; to: string };
 
-export type WindowPreset = '2w' | '1m' | '3m' | '6m' | '1y';
+export type WindowPreset = '1d' | '1w' | '2w' | '1m' | '3m' | '6m' | '1y';
 
 /** The `range` shorthand and the control's choices, narrowest first. This is
     not the leaderboard's 24h..30d vocabulary. 183 is not 182 or 184: it sits
     exactly on the week/month edge of `tickUnit`, so `6m` is the widest window
     still ticked by the week. */
 export const WINDOW_PRESETS: { key: WindowPreset; label: string; days: number }[] = [
+  { key: '1d', label: '1 day', days: 1 },
+  { key: '1w', label: '1 week', days: 7 },
   { key: '2w', label: '2 weeks', days: 14 },
   { key: '1m', label: '1 month', days: 30 },
   { key: '3m', label: '3 months', days: 90 },
