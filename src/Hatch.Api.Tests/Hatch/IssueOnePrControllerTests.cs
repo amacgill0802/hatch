@@ -121,6 +121,94 @@ public class IssueOnePrControllerTests
             (await h.OnePr.PutIssueOnePr("AER-404", new OnePrRequest("on"), default)).Result);
     }
 
+    // ---- Born with it ----
+
+    [Theory]
+    [InlineData("on", true)]
+    [InlineData("off", false)]
+    [InlineData("inherit", null)]
+    public async Task AStory_CanBeBornWithIt(string value, bool? expected)
+    {
+        var h = await NewAsync();
+
+        var story = await h.FileAsync("story", "the story", onePr: value);
+
+        Assert.Equal(expected, (await h.RowAsync(story.Key)).OnePullRequest);
+        Assert.Equal(expected, (await h.ReadAsync(story.Key)).OnePrOwn);
+        Assert.Empty(await h.EventsAsync(story.Key));
+    }
+
+    [Fact]
+    public async Task BornWithIt_IsReadCaseInsensitivelyAndTrimmed()
+    {
+        var h = await NewAsync();
+
+        var story = await h.FileAsync("story", "the story", onePr: " ON ");
+
+        Assert.True((await h.RowAsync(story.Key)).OnePullRequest);
+    }
+
+    [Fact]
+    public async Task BornWithoutIt_FollowsTheProject()
+    {
+        var h = await NewAsync();
+
+        var story = await h.FileAsync("story", "the story");
+
+        Assert.Null((await h.RowAsync(story.Key)).OnePullRequest);
+        Assert.Null((await h.ReadAsync(story.Key)).OnePrOwn);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("maybe")]
+    [InlineData("true")]
+    public async Task BornWithAnythingElse_IsRefusedWithTheSentencePutUses(string value)
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", "the story");
+        var before = await h.Db.Issues.CountAsync();
+
+        var refused = await h.Issues.CreateIssue(
+            new IssueCreateRequest(h.ProjectId, "story", "another", null, null, null, null, value), default);
+        var put = await h.OnePr.PutIssueOnePr(story.Key, new OnePrRequest(value), default);
+
+        var bad = Assert.IsType<BadRequestObjectResult>(refused.Result);
+        var putBad = Assert.IsType<BadRequestObjectResult>(put.Result);
+        Assert.Equal(putBad.Value, bad.Value);
+        Assert.Equal(before, await h.Db.Issues.CountAsync());
+    }
+
+    [Theory]
+    [InlineData("epic", "on")]
+    [InlineData("task", "on")]
+    [InlineData("bug", "on")]
+    [InlineData("task", "inherit")]
+    public async Task BornWithIt_OnlyAStoryTakesIt(string type, string value)
+    {
+        var h = await NewAsync();
+        var before = await h.Db.Issues.CountAsync();
+
+        var refused = await h.Issues.CreateIssue(
+            new IssueCreateRequest(h.ProjectId, type, "not a story", null, null, null, null, value), default);
+
+        var bad = Assert.IsType<BadRequestObjectResult>(refused.Result);
+        Assert.Contains($"this is a {type}", bad.Value!.ToString());
+        Assert.Equal(before, await h.Db.Issues.CountAsync());
+    }
+
+    [Fact]
+    public async Task ABadValueOnATask_GetsTheValueSentence()
+    {
+        var h = await NewAsync();
+
+        var refused = await h.Issues.CreateIssue(
+            new IssueCreateRequest(h.ProjectId, "task", "not a story", null, null, null, null, "maybe"), default);
+
+        var bad = Assert.IsType<BadRequestObjectResult>(refused.Result);
+        Assert.Equal("\"maybe\" is not a one-PR setting - on, off or inherit", bad.Value);
+    }
+
     // ---- Who may ----
 
     [Fact]
@@ -476,8 +564,8 @@ public class IssueOnePrControllerTests
             await Db.SaveChangesAsync();
         }
 
-        public async Task<IssueDto> FileAsync(string type, string title, string? parentKey = null) =>
-            Created(await Issues.CreateIssue(new IssueCreateRequest(ProjectId, type, title, null, parentKey, null, null), default));
+        public async Task<IssueDto> FileAsync(string type, string title, string? parentKey = null, string? onePr = null) =>
+            Created(await Issues.CreateIssue(new IssueCreateRequest(ProjectId, type, title, null, parentKey, null, null, onePr), default));
 
         public async Task<IssueDto> SetAsync(string key, string value) =>
             Value(await OnePr.PutIssueOnePr(key, new OnePrRequest(value), default));

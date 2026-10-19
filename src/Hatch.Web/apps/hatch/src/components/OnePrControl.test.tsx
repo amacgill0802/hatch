@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { OnePrControl } from './OnePrControl';
-import { onePrSaid } from '../lib/onePr';
+import { ISSUE_TYPES } from '../types';
+import { OnePrControl, OnePrSteps, type OnePrSetting } from './OnePrControl';
+import { onePrSaid, onePrToFile } from '../lib/onePr';
 
 const story = (over: Partial<Parameters<typeof OnePrControl>[0]['issue']> = {}) => ({
   key: 'HA-5',
@@ -62,5 +63,40 @@ describe('OnePrControl', () => {
     const html = renderToStaticMarkup(<OnePrControl issue={story()} onChange={() => {}} />);
 
     expect(html).toContain('<button');
+  });
+});
+
+describe('OnePrSteps', () => {
+  it.each([
+    ['inherit', 'Project default'],
+    ['on', 'On'],
+    ['off', 'Off'],
+  ] as [OnePrSetting, string][])('marks exactly %s', (value, word) => {
+    const html = renderToStaticMarkup(<OnePrSteps value={value} label="Set it" onChange={() => {}} />);
+
+    expect(html.match(/aria-pressed="true"/g)).toHaveLength(1);
+    expect(html).toMatch(new RegExp(`aria-pressed="true"[^>]*>${word}<`));
+  });
+
+  it('carries the given label', () => {
+    const html = renderToStaticMarkup(<OnePrSteps value="inherit" label="Set the thing" onChange={() => {}} />);
+
+    expect(html).toContain('aria-label="Set the thing"');
+  });
+});
+
+describe('onePrToFile', () => {
+  it('files the setting for a story', () => {
+    for (const setting of ['inherit', 'on', 'off'] as OnePrSetting[]) {
+      expect(onePrToFile('story', setting)).toBe(setting);
+    }
+  });
+
+  it('files nothing for any other type, whatever the setting', () => {
+    for (const type of ISSUE_TYPES.filter((t) => t !== 'story')) {
+      for (const setting of ['inherit', 'on', 'off'] as OnePrSetting[]) {
+        expect(onePrToFile(type, setting)).toBeUndefined();
+      }
+    }
   });
 });

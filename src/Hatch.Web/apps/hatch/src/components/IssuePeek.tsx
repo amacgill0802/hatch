@@ -309,7 +309,6 @@ export function IssuePeek({
           <Button variant="danger" loading={asked.deleting ?? false} onClick={() => void remove()}>
             Delete
           </Button>
-          <Button onClick={onClose}>Close</Button>
           {/* An anchor rather than a <Link>: target="_blank" opens a second
               document, which React Router does not route. appHref is what keeps
               that second document on the right prefix - see lib/basename.ts.

@@ -753,6 +753,12 @@ public record ClaimHeartbeatRequest(Guid Token, string? Chatter, int? PlaybookId
 /// column - the server decides both, so no client has to know what "the inbox"
 /// is called this week.
 /// </summary>
+/// <param name="OnePr">
+/// A story's one-PR setting from birth - <c>on</c>, <c>off</c> or
+/// <c>inherit</c>, the names <c>PUT .../one-pr</c> takes. Absent (or null)
+/// leaves it as it is for any story, which is inheriting the project's
+/// default. Refused on anything but a story, <c>inherit</c> included.
+/// </param>
 public record IssueCreateRequest(
     int ProjectId,
     string Type,
@@ -760,7 +766,8 @@ public record IssueCreateRequest(
     string? Description,
     string? ParentKey,
     string? ReadyAt,
-    string? DueAt);
+    string? DueAt,
+    string? OnePr = null);
 
 /// <summary>
 /// An edit. Every field is optional and null means "leave this alone", which

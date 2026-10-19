@@ -151,6 +151,17 @@ describe('NewIssueDialog', () => {
     expect(html).toContain('HATCH-…');
   });
 
+  it('offers no one-PR steps while Type is the default task', () => {
+    stubStorage();
+
+    const html = renderToStaticMarkup(
+      dialog({ open: true, projects: [PROJECT], candidates: [], defaultProjectKey: '', onClose: noop, onCreated: noop }),
+    );
+
+    expect(html).not.toContain('hatch-one-pr-steps');
+    expect(html).not.toContain('One pull request');
+  });
+
   it('shows no key preview and no File it when there are no projects at all', () => {
     stubStorage();
 
