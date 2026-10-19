@@ -55,6 +55,22 @@ public class SearchControllerTests
         Assert.Null(result.Hits[1].ClosedAt);
     }
 
+    [Fact]
+    public async Task NoWords_OrdersByClosedOrCreated_ThenCreated()
+    {
+        var h = await NewAsync();
+        var closedLate = await h.FileAsync(h.ProjectAId, title: "old, closed last");
+        var open = await h.FileAsync(h.ProjectAId, title: "open");
+        var closedEarly = await h.FileAsync(h.ProjectAId, title: "new, closed first");
+        await h.StampAsync(closedLate, Day, closedAt: Day.AddDays(10));
+        await h.StampAsync(open, Day.AddDays(5));
+        await h.StampAsync(closedEarly, Day.AddDays(2), closedAt: Day.AddDays(3));
+
+        var result = await h.SearchAsync();
+
+        Assert.Equal([closedLate.Key, open.Key, closedEarly.Key], result.Hits.Select(x => x.Card.Key));
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("   ")]
