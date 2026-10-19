@@ -5,6 +5,7 @@ import { MomentField } from '../components/MomentField';
 import { agoPhrase } from '../lib/claim';
 import { message } from '../lib/errors';
 import {
+  ACTIVITY_TONES,
   activityWords,
   boundsChanged,
   boundsOf,
@@ -16,7 +17,6 @@ import {
   mineLabel,
   repositoriesLabel,
   runnerActivity,
-  type RunnerActivity,
   type RunnerBounds,
 } from '../lib/runners';
 import { useRunners } from '../lib/useRunners';
@@ -98,18 +98,6 @@ export function RunnersPage() {
   );
 }
 
-/** What each activity is worth saying loudly. Working is the one worth a colour
-    - it is the row that is spending money right now - and gone is the one worth
-    a warning. */
-const TONES: Record<RunnerActivity, 'muted' | 'success' | 'danger' | 'primary'> = {
-  working: 'success',
-  stopping: 'primary',
-  paused: 'primary',
-  exhausted: 'danger',
-  gone: 'danger',
-  idle: 'muted',
-};
-
 function Row({
   runner,
   now,
@@ -138,7 +126,7 @@ function Row({
           <Text tone="muted">{drivesLabel(runner)}</Text>
         </td>
         <td>
-          <Badge tone={TONES[activity]}>{activityWords(runner, now)}</Badge>
+          <Badge tone={ACTIVITY_TONES[activity]}>{activityWords(runner, now)}</Badge>
         </td>
         <td>{runner.line ?? <Text tone="muted">nothing yet</Text>}</td>
         <td>{agoPhrase(runner.lastSeenAt, now)}</td>
