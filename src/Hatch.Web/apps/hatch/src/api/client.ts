@@ -11,6 +11,7 @@ import type {
   Board,
   Comment,
   CommentCreateRequest,
+  CumulativeFlow,
   HatchSettings,
   HatchSettingsWriteRequest,
   ImportRequest,
@@ -634,6 +635,29 @@ export interface TimelineQuery {
   to?: string | null;
   projectId?: number | null;
   createdBy?: string | null;
+}
+
+/** How many issues sat in each board column over time, read off the same
+    status history as `getTimeline`. The route takes no `projectId` or
+    `createdBy`: a column's count is a fact about the board, not about any one
+    project or creator.
+
+    Anything null or undefined is left out rather than sent empty, as
+    `getTimeline` does. */
+export const getCumulativeFlow = (query: CumulativeFlowQuery) => {
+  const params = new URLSearchParams();
+  for (const [name, value] of Object.entries(query)) {
+    if (value !== null && value !== undefined) params.set(name, String(value));
+  }
+  const qs = params.toString();
+  return fetchJson<CumulativeFlow>('/api/hatch/reports/cumulative-flow' + (qs ? '?' + qs : ''));
+};
+
+/** The cumulative-flow route's query string; it has no DTO. An unset field is
+    left out of the URL, not sent empty. */
+export interface CumulativeFlowQuery {
+  from?: string | null;
+  to?: string | null;
 }
 
 export interface WorkLogSessionQuery {
