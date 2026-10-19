@@ -55,6 +55,7 @@ import type {
   Runner,
   RunnerDownloads,
   RunnerPatchRequest,
+  SearchResult,
   SessionSort,
   Status,
   StatusCreateRequest,
@@ -255,6 +256,11 @@ export const searchIssues = (filter: IssueSearch) => {
   const query = params.toString();
   return fetchJson<IssueCard[]>(`/api/hatch/issues${query ? `?${query}` : ''}`);
 };
+
+/** The search page's data: `params` is already built, so the page and the
+    test share one builder (lib/search.ts's `searchRequest`). */
+export const getSearch = (params: URLSearchParams) =>
+  fetchJson<SearchResult>(`/api/hatch/search?${params.toString()}`);
 
 export const bulkEditIssues = (request: IssueBulkEditRequest) =>
   fetchJson<IssueBulkResult>('/api/hatch/issues/bulk', { method: 'POST', ...asJson(request) });
