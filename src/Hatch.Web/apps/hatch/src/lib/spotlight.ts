@@ -23,6 +23,7 @@
    refuses, but a client that loops on one hangs the board - terminates, and
    a walk that returns to the hovered card does not light it. */
 
+import { chains } from './chains';
 import type { IssueCard, QueueEntry } from '../types';
 
 export type Spot = 'dependency' | 'turn' | 'ancestor' | 'descendant' | 'dim';
@@ -52,11 +53,8 @@ export function spotlight(
   // A card's first row is the one that places it: the queue can hold a second
   // for the same key, and the earlier one is where it is served.
   const rowAt = new Map<string, number>();
-  const rowByKey = new Map<string, QueueEntry>();
   rows.forEach((row, index) => {
-    if (rowAt.has(row.issue.key)) return;
-    rowAt.set(row.issue.key, index);
-    rowByKey.set(row.issue.key, row);
+    if (!rowAt.has(row.issue.key)) rowAt.set(row.issue.key, index);
   });
 
   const ancestorsOf = (key: string): string[] => {
@@ -85,31 +83,8 @@ export function spotlight(
     return seen;
   };
 
-  // Seeded with the hovered card and its ancestors, since an ancestor's edge
-  // holds everything below it. A prerequisite is followed only where the
-  // queue holds a row for it - a met one stands in a terminal column, which
-  // the queue never reads - and its own ancestors join the worklist so their
-  // edges are read in the same pass, without being painted by it.
-  const dependencies = (): Set<string> => {
-    const red = new Set<string>();
-    const queued = new Set<string>([hovered, ...ancestorsOf(hovered)]);
-    const work = [...queued];
-    while (work.length > 0) {
-      for (const prerequisite of rowByKey.get(work.pop()!)?.issue.dependsOnKeys ?? []) {
-        if (!rowByKey.has(prerequisite) || red.has(prerequisite)) continue;
-        red.add(prerequisite);
-        for (const key of [prerequisite, ...ancestorsOf(prerequisite)]) {
-          if (queued.has(key)) continue;
-          queued.add(key);
-          work.push(key);
-        }
-      }
-    }
-    red.delete(hovered);
-    return red;
-  };
-
-  const red = dependencies();
+  const red = new Set(chains(hovered, cards, rows).filter((edge) => edge.flow === 'upstream').map((edge) => edge.from));
+  red.delete(hovered);
   const ancestors = new Set(ancestorsOf(hovered));
   const descendants = descendantsOf(hovered);
   const hoveredRow = rowAt.get(hovered);
