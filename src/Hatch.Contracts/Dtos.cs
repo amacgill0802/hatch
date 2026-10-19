@@ -1876,6 +1876,31 @@ public static class HopKinds
     public const string Close = "close";
 }
 
+/// <summary>Which of the seven kinds folded a row - see QueueEntryDto.BlockedKind.</summary>
+public static class BlockedKinds
+{
+    /// <summary>The issue's own live claim.</summary>
+    public const string Working = "working";
+
+    /// <summary>A full WIP section, or an epic at its own limit.</summary>
+    public const string Wip = "wip";
+
+    /// <summary>An unmet dependency edge, its own or an ancestor's.</summary>
+    public const string Dependency = "dependency";
+
+    /// <summary>Parked behind higher-ranking clear work, or waiting its turn in the merge train.</summary>
+    public const string Turn = "turn";
+
+    /// <summary>Waiting on a parent, a child, a sibling in flight, or a relative's claim.</summary>
+    public const string Family = "family";
+
+    /// <summary>An unanswered question, a person's assignment, a hold, a pause, or a next column only a person moves work into.</summary>
+    public const string Person = "person";
+
+    /// <summary>Every other fold.</summary>
+    public const string Other = "other";
+}
+
 /// <summary>
 /// One of the project's bound remotes, as a dispatch names it - see
 /// <see cref="ProjectRepositoryDto"/> for the write side. The server has
@@ -1932,6 +1957,11 @@ public record WorkRepositoryDto(string Remote, string Canonical, string? BaseBra
 /// playbook matched, empty where it denies nothing. Read by a client that
 /// spawns, to skip a row its agent cannot honour before it claims it.
 /// </param>
+/// <param name="BlockedKind">
+/// One of <see cref="BlockedKinds"/> naming which kind of fold <paramref
+/// name="Blocked"/> is, or null exactly where <paramref name="Blocked"/> is
+/// null. Lets a client group the queue without parsing the sentence.
+/// </param>
 public record QueueEntryDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -1943,7 +1973,8 @@ public record QueueEntryDto(
     string? HopUnder = null,
     string? ClearNote = null,
     string? Model = null,
-    IReadOnlyList<string>? DeniedTools = null);
+    IReadOnlyList<string>? DeniedTools = null,
+    string? BlockedKind = null);
 
 /// <summary>
 /// One issue in the review column that a runner holds a checkout for, and what

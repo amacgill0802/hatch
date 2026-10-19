@@ -251,7 +251,8 @@ public class WorkController(
             r.HopUnder,
             r.ClearNote,
             r.Model,
-            r.DeniedTools)).ToList();
+            r.DeniedTools,
+            r.BlockedKind)).ToList();
     }
 
     /// <summary>

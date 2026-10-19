@@ -1176,6 +1176,10 @@ export interface QueueEntry {
   /** The matched playbook's denied-tools rules as written; null where none
       matched, empty where it denies nothing. As on `QueueEntryDto`. */
   deniedTools: string[] | null;
+  /** Which of the seven kinds folded this row, or null exactly where
+      `blocked` is null. Lets a client group the queue without parsing the
+      sentence. As on `QueueEntryDto`. */
+  blockedKind: 'working' | 'wip' | 'dependency' | 'turn' | 'family' | 'person' | 'other' | null;
 }
 
 /** One column's share of a subtree: how many of its leaves sit there. A status

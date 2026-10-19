@@ -272,21 +272,25 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                         : to;
                     MergeWork.Judgement? landing = landed.TryGetValue(issue.Id, out var landedJudgement) ? landedJudgement : null;
                     var letGo = issue.StalledAt is not null ? letGoCounts?.GetValueOrDefault(issue.Id, 0) ?? 0 : 0;
-                    var blocked = Blocked(
+                    var (blocked, blockedKind) = BlockedWithKind(
                         issue, status, rowTo, playbook, waiting, letGo, sendBackStreak, loop, pace, gate, family, claimed,
                         implementation, assignees[issue.Id], repos, merged, built, hopKind, statuses, wip, epics,
                         trainSlots.GetValueOrDefault(issue.Id),
                         landing, projectRepoSourced);
 
                     var sentence = blocked;
+                    var kind = blockedKind;
 
                     // Nothing at a lower tier is picked up while a strictly
                     // higher one still has clear work - a hop is exempt from
                     // being parked itself, but still becomes the row that
                     // parks the tiers below it.
                     if (blocked is null && !hop && parkedByKey is not null)
+                    {
                         sentence = $"{parkedByKey} ranks {parkedByLevel} and is clear - " +
                                    $"nothing at {PriorityLevels.Name(level)} is picked up while higher-ranking work is available";
+                        kind = BlockedKinds.Turn;
+                    }
 
                     // The first clear row of this tier. Independent of the park
                     // above: a row already parked was clear before the park
@@ -296,7 +300,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                         firstClearThisTier = IssueKey.Format(issue.Project!.Key, issue.Number);
 
                     rows.Add(new ScanRow(
-                        issue, status, rowTo, sentence,
+                        issue, status, rowTo, sentence, kind,
                         KindOf(issue, status, rowTo, merged, built, claimed.Now, landing),
                         hop && sentence is null,
                         sentence is null ? hopKind : null,
@@ -842,12 +846,52 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         IReadOnlyDictionary<long, EpicLimit> epics,
         TrainSlot? train = null,
         MergeWork.Judgement? landing = null,
+        RepoSourcedPlaybooks? repoSourced = null) =>
+        BlockedWithKind(
+            issue, from, to, playbook, waiting, letGo, sendBackStreak, loop, pace, gate, family, claimed,
+            implementation, assignee, repos, verdicts, builds, hopKind, statuses, wip, epics, train, landing,
+            repoSourced).Sentence;
+
+    /// <summary>
+    /// <see cref="Blocked"/>'s own answer, plus which of <see cref="BlockedKinds"/>
+    /// it is - null exactly where the sentence is. Every return point tags a
+    /// kind; only the five <see cref="BlockedKinds.Working"/>,
+    /// <see cref="BlockedKinds.Family"/> (a relative's claim), <see cref="BlockedKinds.Wip"/>,
+    /// <see cref="BlockedKinds.Dependency"/> and <see cref="BlockedKinds.Turn"/>
+    /// (the train clause) are named correctly here - every other site tags
+    /// <see cref="BlockedKinds.Other"/>, which HA-965 revises one fold at a
+    /// time against HA-937's table.
+    /// </summary>
+    public static (string? Sentence, string? Kind) BlockedWithKind(
+        EfHatchIssue issue,
+        EfHatchStatus from,
+        EfHatchStatus? to,
+        EfHatchPlaybook? playbook,
+        int waiting,
+        int letGo,
+        int sendBackStreak,
+        LoopScope? loop,
+        PaceReadings? pace,
+        DependencyGate gate,
+        FamilyGate family,
+        ClaimGate claimed,
+        EfHatchStatus? implementation,
+        AssigneeDto? assignee,
+        RepositoryDeclaration repos,
+        IReadOnlyList<EfHatchMergeCheck> verdicts,
+        IReadOnlyList<EfHatchBuildCheck> builds,
+        string? hopKind,
+        List<EfHatchStatus> statuses,
+        WipSection? wip,
+        IReadOnlyDictionary<long, EpicLimit> epics,
+        TrainSlot? train = null,
+        MergeWork.Judgement? landing = null,
         RepoSourcedPlaybooks? repoSourced = null)
     {
         var hop = hopKind is not null;
 
         if (from.IsTerminal)
-            return $"\"{from.Name}\" is where work ends - there is nothing after it";
+            return ($"\"{from.Name}\" is where work ends - there is nothing after it", BlockedKinds.Other);
 
         // Said before the column-after test, which would otherwise refuse this
         // with "there is nowhere for this to go" - true, and no use to somebody
@@ -855,10 +899,10 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         // moving. Nothing comes off the shelf on a pass's say-so: a deferred
         // ticket is waiting on a person deciding it is work again.
         if (from.IsDeferred)
-            return $"\"{from.Name}\" is deferred - a person puts it back on the board, not a pass";
+            return ($"\"{from.Name}\" is deferred - a person puts it back on the board, not a pass", BlockedKinds.Other);
 
         if (to is null)
-            return $"there is no column after \"{from.Name}\", so there is nowhere for this to go";
+            return ($"there is no column after \"{from.Name}\", so there is nowhere for this to go", BlockedKinds.Other);
 
         // A task whose work is pushed to its story's branch has nothing left for
         // an agent to do and no pull request of its own to merge: it waits for the
@@ -866,7 +910,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         // column's conflict and build checks, both of which read a branch named
         // for this issue's own key and would find none.
         if (gate.WaitingOn(issue.Id, statuses) is { } storyKey)
-            return $"waiting on {storyKey}'s pull request - its work is pushed to the story's branch, and the story opens the one pull request";
+            return ($"waiting on {storyKey}'s pull request - its work is pushed to the story's branch, and the story opens the one pull request", BlockedKinds.Other);
 
         if (from.MergesPullRequest)
         {
@@ -881,10 +925,10 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             // read as actionable but is not the head gains the clause.
             if (train is { IsHead: false } slot
                 && judgement.Kind is WorkKinds.Merge or WorkKinds.Update or WorkKinds.Pending)
-                return $"{judgement.Sentence} - waiting its turn behind {slot.HeadKey}, " +
-                       $"position {slot.Position} in the train";
+                return ($"{judgement.Sentence} - waiting its turn behind {slot.HeadKey}, " +
+                       $"position {slot.Position} in the train", BlockedKinds.Turn);
 
-            return judgement.Sentence;
+            return (judgement.Sentence, BlockedKinds.Other);
         }
 
         // A trunk-landing review row has no branch, so it is never conflict or
@@ -893,19 +937,20 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         // assignee) would also fold it. Only the review self-move reaches this -
         // a hop out of the column carries another column as its target.
         if (landing is { } landed && to.Id == from.Id)
-            return landed.Sentence;
+            return (landed.Sentence, BlockedKinds.Other);
 
         if (to.IsTerminal && hopKind != HopKinds.Close)
-            return $"the next column is \"{to.Name}\", and only the operator moves work there";
+            return ($"the next column is \"{to.Name}\", and only the operator moves work there", BlockedKinds.Other);
 
         if (to.IsProtected && hopKind != HopKinds.Approve)
-            return $"the next column is \"{to.Name}\", and only its approvers move work there";
+            return ($"the next column is \"{to.Name}\", and only its approvers move work there", BlockedKinds.Other);
 
-        if (claimed.Held(issue) is { } holder)
-            return holder;
+        var held = claimed.HeldWithKind(issue);
+        if (held.Sentence is { } holder)
+            return (holder, held.Kind);
 
         if (issue.Held)
-            return "held - a person told the loop to leave this alone until they say otherwise";
+            return ("held - a person told the loop to leave this alone until they say otherwise", BlockedKinds.Other);
 
         if (issue.StalledAt is { } stalledAt)
         {
@@ -913,25 +958,25 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             var why = issue.StalledWhy is { Length: > 0 } w ? $" ({w})" : "";
 
             if (resumeSeconds <= 0)
-                return $"stalled{why} - this board never resumes a marked ticket unattended; a person moves it";
+                return ($"stalled{why} - this board never resumes a marked ticket unattended; a person moves it", BlockedKinds.Other);
 
             if (claimed.Now - stalledAt < TimeSpan.FromSeconds(resumeSeconds))
-                return $"stalled {Minutes((int)(claimed.Now - stalledAt).TotalSeconds)} ago{why} and resumes itself after {Minutes(resumeSeconds)}";
+                return ($"stalled {Minutes((int)(claimed.Now - stalledAt).TotalSeconds)} ago{why} and resumes itself after {Minutes(resumeSeconds)}", BlockedKinds.Other);
 
             if (letGo >= claimed.Claims!.StallResumeLimit)
-                return $"stalled {letGo} times in a row, at this board's limit of {claimed.Claims!.StallResumeLimit} - held for a person now, not resumed again";
+                return ($"stalled {letGo} times in a row, at this board's limit of {claimed.Claims!.StallResumeLimit} - held for a person now, not resumed again", BlockedKinds.Other);
         }
 
         var (pausedLevel, pausedFrom) = gate.Effective(issue.Id);
         if (pausedLevel == PriorityLevels.Paused)
-            return pausedFrom is null
+            return (pausedFrom is null
                 ? "paused - a person set it aside, and nothing picks it up until they set it back"
-                : $"paused from {pausedFrom} - a person set it aside, and nothing picks it up until they set it back";
+                : $"paused from {pausedFrom} - a person set it aside, and nothing picks it up until they set it back", BlockedKinds.Other);
 
         if (loop is not null)
         {
             if (IsWaiting(issue, loop.Today, loop.OffsetMinutes))
-                return $"not workable until {IssueMoment.Format(issue.ReadyAt, issue.ReadyAtHasTime)}";
+                return ($"not workable until {IssueMoment.Format(issue.ReadyAt, issue.ReadyAtHasTime)}", BlockedKinds.Other);
 
             // Loop policy, not a fact about the issue - a hop is exempt, the
             // same way it is exempt from needing a playbook, and a named
@@ -940,10 +985,10 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             // reading. Both windows reset on their own, so both are the
             // board's to clear.
             if (!hop && pausedLevel == PriorityLevels.Economy && pace?.Economy.Fold is { } economyFold)
-                return economyFold;
+                return (economyFold, BlockedKinds.Other);
 
             if (!hop && pausedLevel == PriorityLevels.Low && pace?.Low.Fold is { } lowFold)
-                return lowFold;
+                return (lowFold, BlockedKinds.Other);
 
             if (loop.Mine)
             {
@@ -955,9 +1000,9 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                     (assignee is { Kind: ActorKind.Person } person && loop.Principal is { Kind: ActorKind.Person } p && person.Id == p.Id) ||
                     (assignee is { Kind: ActorKind.Key } && assignee.Id == loop.CallerKeyId);
                 if (!isMine)
-                    return assignee is null
+                    return (assignee is null
                         ? "assigned to nobody - a --mine pass takes only your own"
-                        : $"assigned to {assignee.Name}, not to you";
+                        : $"assigned to {assignee.Name}, not to you", BlockedKinds.Other);
             }
             else if (assignee?.Kind == ActorKind.Person)
             {
@@ -966,12 +1011,12 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                 // thing an agent should pick up, and one whose assignee no
                 // longer resolves is not assigned at all - the liveness rule
                 // reaching the dispatcher without a line of its own.
-                return $"assigned to {assignee.Name} - an unattended pass leaves a person's work alone";
+                return ($"assigned to {assignee.Name} - an unattended pass leaves a person's work alone", BlockedKinds.Other);
             }
         }
 
         if (waiting > 0)
-            return $"{waiting} unanswered question{(waiting == 1 ? "" : "s")} - it is waiting on a person, not on an agent";
+            return ($"{waiting} unanswered question{(waiting == 1 ? "" : "s")} - it is waiting on a person, not on an agent", BlockedKinds.Other);
 
         // A repository matters wherever a session is spawned, because every
         // session runs in the primary repository's checkout: every move but a
@@ -983,12 +1028,12 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
 
         if (!hop || to.Id == implementation?.Id)
         {
-            if (RepositoryFold(issue, repos) is { } repoBlock) return repoBlock;
+            if (RepositoryFold(issue, repos) is { } repoBlock) return (repoBlock, BlockedKinds.Other);
         }
 
         if (to.Id == implementation?.Id)
         {
-            if (gate.Unmet(issue.Id) is { Count: > 0 } waitingOn) return WaitingOn(waitingOn);
+            if (gate.Unmet(issue.Id) is { Count: > 0 } waitingOn) return (WaitingOn(waitingOn), BlockedKinds.Dependency);
         }
 
         // The mirror of the dependency fold above: that one gates the move in,
@@ -999,7 +1044,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         // sentence and its own scope - this one is guarded off epics so the
         // two do not both speak for the same issue.
         if (issue.Type != "epic" && from.Id == implementation?.Id && family.OpenWorkChildren(issue.Id).Count > 0)
-            return "its children are the work, and some are still open";
+            return ("its children are the work, and some are still open", BlockedKinds.Other);
 
         // An epic is verified by its own stories, not merely cleared off one
         // column: it is held wherever it stands at or past the implementation
@@ -1011,13 +1056,13 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         if (issue.Type == "epic" && !conflicts && wip is not null
             && Columns.AtOrPastImplementation(statuses, from.Id)
             && family.EpicFold(issue.Id, statuses) is { } epicBlock)
-            return epicBlock;
+            return (epicBlock, BlockedKinds.Other);
 
         // A full section, or an epic at its own limit, needs other work to
         // leave, so it is said after a dependency, which needs other work to
         // land, and before a missing playbook, which needs the operator - see
         // Wip.LoadAsync.
-        if (WipFold(wip, issue, from, to, epics) is { } full) return full;
+        if (WipFold(wip, issue, from, to, epics) is { } full) return (full, BlockedKinds.Wip);
 
         // Last before the playbook, and after the repository: a question needs a
         // person, a repository needs a clone, and a clean branch with a build
@@ -1025,7 +1070,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         // least useful thing to say about an issue that is folded for a reason
         // somebody can act on.
         if (conflicts && ReviewWork.Judge(issue, verdicts, builds) is { Fold: { } reviewBlock })
-            return reviewBlock;
+            return (reviewBlock, BlockedKinds.Other);
 
         // A story, bug or task standing left of the implementation column
         // stops where it stands until its own parent reaches it - whatever
@@ -1041,13 +1086,13 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             && issue.ParentId is { } holdParentId
             && !Columns.AtOrPastImplementation(statuses, from.Id)
             && !family.ParentStarted(holdParentId, statuses))
-            return "its parent has not reached the implementation column, so nothing pulls it forward yet";
+            return ("its parent has not reached the implementation column, so nothing pulls it forward yet", BlockedKinds.Other);
 
         // The hop answers condition 8 and nothing else: an express issue in a
         // column marked ExpressSkips needs no playbook, because the loop
         // carries it on itself rather than spawning a session for it. Every
         // fold above still applies exactly as it applies to any other issue.
-        if (hop) return null;
+        if (hop) return (null, null);
 
         // Reached only when hop is false and an epic is otherwise entering the
         // implementation column - one of HopKind's own epic branch conditions
@@ -1062,12 +1107,12 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             var epicParent = family.ParentOf(issue.Id);
 
             if (epicParent is null)
-                return "a top-level epic is moved in by a person - its own column is the signal for everything under it";
+                return ("a top-level epic is moved in by a person - its own column is the signal for everything under it", BlockedKinds.Other);
 
             if (epicParent is not { Type: "epic" } || !Columns.AtOrPastImplementation(statuses, epicParent.StatusId))
-                return "its parent epic is not running, so nothing pulls it in";
+                return ("its parent epic is not running, so nothing pulls it in", BlockedKinds.Other);
 
-            return FamilyGate.NothingUnder;
+            return (FamilyGate.NothingUnder, BlockedKinds.Other);
         }
 
         // A column that pulls its children is never "no playbook covers
@@ -1079,22 +1124,22 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         // column (e.g. plain Backlog) has nothing to pull, so it falls
         // through unchanged.
         if (from.ParentPulls && issue.ParentId is { } parentId && family.ParentStarted(parentId, statuses))
-            return "a sibling is already in flight, so only one child is pulled through at a time";
+            return ("a sibling is already in flight, so only one child is pulled through at a time", BlockedKinds.Other);
 
         if (SendBackEligible(issue, from, family, statuses, playbook) && sendBackStreak >= claimed.Claims!.StallResumeLimit)
-            return $"sent back {sendBackStreak} times in a row, at this board's limit of " +
-                   $"{claimed.Claims!.StallResumeLimit} - held for a person now, not sent back again";
+            return ($"sent back {sendBackStreak} times in a row, at this board's limit of " +
+                   $"{claimed.Claims!.StallResumeLimit} - held for a person now, not sent back again", BlockedKinds.Other);
 
         if (playbook?.BriefLimit is { } limit && family.Children(issue.Id).Count == 0 && issue.Description.Length > limit)
-            return $"its brief is {issue.Description.Length.ToString("N0", CultureInfo.InvariantCulture)} characters, " +
-                   $"and this move is spawned on at most {limit.ToString("N0", CultureInfo.InvariantCulture)} - cut it into tasks first";
+            return ($"its brief is {issue.Description.Length.ToString("N0", CultureInfo.InvariantCulture)} characters, " +
+                   $"and this move is spawned on at most {limit.ToString("N0", CultureInfo.InvariantCulture)} - cut it into tasks first", BlockedKinds.Other);
 
-        if (repoSourced is { Fold: { } fold }) return fold;
+        if (repoSourced is { Fold: { } fold }) return (fold, BlockedKinds.Other);
         return playbook is null
-            ? repoSourced is { Trunk: { } trunk }
+            ? (repoSourced is { Trunk: { } trunk }
                 ? $"no playbook covers \"{from.Name}\" to \"{to.Name}\" for {An(issue.Type)} - add one to .hatch/playbooks.yaml on {trunk}, or a board-wide one on the Playbooks page"
-                : $"no playbook covers \"{from.Name}\" to \"{to.Name}\" for {An(issue.Type)} - add one on the Playbooks page"
-            : null;
+                : $"no playbook covers \"{from.Name}\" to \"{to.Name}\" for {An(issue.Type)} - add one on the Playbooks page", BlockedKinds.Other)
+            : (null, null);
     }
 
     /// <summary>
@@ -1424,7 +1469,7 @@ public sealed record PlaybookMatch(EfHatchPlaybook? Playbook, string? Source, Pl
 
 /// <summary>One issue the pass looked at, and what it decided.</summary>
 public sealed record ScanRow(
-    EfHatchIssue Issue, EfHatchStatus From, EfHatchStatus? To, string? Blocked, string Kind, bool Hop,
+    EfHatchIssue Issue, EfHatchStatus From, EfHatchStatus? To, string? Blocked, string? BlockedKind, string Kind, bool Hop,
     string? HopKind = null, string? HopUnder = null, string? ClearNote = null,
     int EffectivePriority = PriorityLevels.Normal, string? EffectiveFrom = null,
     string? Model = null, IReadOnlyList<string>? DeniedTools = null);
@@ -1471,15 +1516,24 @@ public sealed record ClaimGate(IssueClaims? Claims, DateTimeOffset Now, Guid? He
     /// itself. Failing all of that, who is working a line of the tree
     /// through it: an ancestor, or a descendant, the caller does not hold.
     /// </summary>
-    public string? Held(EfHatchIssue issue)
+    public string? Held(EfHatchIssue issue) => HeldWithKind(issue).Sentence;
+
+    /// <summary>
+    /// <see cref="Held"/>'s own answer, plus which of <see cref="BlockedKinds"/>
+    /// it is: <see cref="BlockedKinds.Working"/> off the live-claim branch,
+    /// <see cref="BlockedKinds.Family"/> off the relative's, both null
+    /// wherever <see cref="Held"/> itself returns null.
+    /// </summary>
+    public (string? Sentence, string? Kind) HeldWithKind(EfHatchIssue issue)
     {
-        if (Claims is null) return null;
+        if (Claims is null) return (null, null);
 
         var claim = ClaimSnapshot.Of(issue);
         if (Claims.IsLive(claim, Now))
-            return claim.Token == HeldToken ? null : Claims.Sentence(claim, Now);
+            return claim.Token == HeldToken ? (null, null) : (Claims.Sentence(claim, Now), BlockedKinds.Working);
 
-        return Lineage.Holder(issue.Id, HeldToken);
+        var holder = Lineage.Holder(issue.Id, HeldToken);
+        return holder is null ? (null, null) : (holder, BlockedKinds.Family);
     }
 }
 
