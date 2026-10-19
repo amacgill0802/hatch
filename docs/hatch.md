@@ -3272,7 +3272,9 @@ counts, the notional USD, whether the run errored, and what the session said it
 did in its `work-log` block. For a repo-sourced project's session, the row
 also carries which of the three layers its playbook came from, and, for the
 file, the trunk, the sha and the hash it was confirmed against at spawn -
-null on a table-sourced row and on a row an older runner wrote. **No Claude
+null on a table-sourced row and on a row an older runner wrote. It also
+carries which agent ran it, an id like `claude` - null on a row a CLI built
+before this shipped wrote, and never guessed by the server. **No Claude
 credential is anywhere in this path.**
 A leaderboard on an installation with no subscription token is the whole
 leaderboard rather than a reduced one.

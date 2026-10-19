@@ -163,7 +163,8 @@ public static class WorkLogRollup
                 w.CacheReadTokens,
                 w.Requests,
                 w.PeakContextTokens,
-                w.PromptChars))
+                w.PromptChars,
+                w.Agent))
             .ToListAsync(ct);
 
         var ranked = sort switch
@@ -306,7 +307,8 @@ public static class WorkLogRollup
         long CacheReadTokens,
         int? Requests,
         long? PeakContextTokens,
-        int? PromptChars);
+        int? PromptChars,
+        string? Agent);
 
     /// <summary>The headline, added the one way it is added - see <see cref="Fold"/>.</summary>
     private static long Tokens(SessionRow r) =>
@@ -336,7 +338,8 @@ public static class WorkLogRollup
         Tokens(r),
         r.Requests,
         r.PeakContextTokens,
-        r.PromptChars);
+        r.PromptChars,
+        r.Agent);
 
     /// <summary>The log, narrowed to a set of issues - or the whole of it when there is none.</summary>
     private static IQueryable<EfHatchWorkLogEntry> Scoped(HatchContext db, List<long>? scope) =>
