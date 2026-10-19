@@ -13,6 +13,7 @@
     "./tokens.css": "./src/tokens.css",
     "./base.css": "./src/base.css",
     "./menuState": "./src/components/menuState.ts",
+    "./calloutPlacement": "./src/components/calloutPlacement.ts",
     "./standalone/topbar": "./src/standalone/topbar.ts"
   },
   "dependencies": {
