@@ -225,7 +225,7 @@ export function PlaybooksPage() {
     label in, with a trailing blank cell standing in for the Delete column a
     file row never has; omitted, as in the "Files on the trunk" card below,
     neither cell is drawn and the row is this mini-table's own four columns. */
-function PlaybookFileRowLine({
+export function PlaybookFileRowLine({
   row,
   statuses,
   label,
