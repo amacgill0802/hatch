@@ -20,8 +20,9 @@
 import { useLayoutEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { StatusDot } from './StatusPill';
 import { boardColumns } from '../lib/columns';
-import { goToRows, goToStatus, keepHighlight, whereOnBoard } from '../lib/goTo';
+import { SEARCH_ROW, entryKeys, goToRows, goToStatus, whereOnBoard } from '../lib/goTo';
 import type { Mark } from '../lib/goTo';
+import { searchPath } from '../lib/search';
 import type { IssueCard, Status } from '../types';
 
 export interface OmniBarProps {
@@ -33,6 +34,9 @@ export interface OmniBarProps {
   /** A row was taken. The console does not give focus back: the board is about
       to put it on the card. */
   onTake: (card: IssueCard) => void;
+  /** The trailing row was taken; the console does not give focus back, for the
+      reason `onTake` does not. */
+  onSearch: (path: string) => void;
   /** Dismissed without taking anything; focus has already gone back. */
   onClose: () => void;
 }
@@ -50,7 +54,7 @@ function Marked({ text, marks }: { text: string; marks: Mark[] }): ReactNode {
   return parts;
 }
 
-export function OmniBar({ cards, statuses, visibleKeys, onTake, onClose }: OmniBarProps) {
+export function OmniBar({ cards, statuses, visibleKeys, onTake, onSearch, onClose }: OmniBarProps) {
   const [query, setQuery] = useState('');
   /* A key, not an index, and null for "the first row". Derived at render below
      rather than kept in step by an effect, so the board's refresh - which hands
@@ -69,11 +73,13 @@ export function OmniBar({ cards, statuses, visibleKeys, onTake, onClose }: OmniB
   const base = useId();
   const listId = `${base}-list`;
   const rowId = (key: string) => `${base}-row-${key}`;
+  const searchRowId = `${base}-row-search`;
 
   const { rows, total } = useMemo(() => goToRows(cards, query), [cards, query]);
   const columns = useMemo(() => boardColumns(statuses), [statuses]);
-  const active = keepHighlight(rows, highlight);
-  const activeIndex = rows.findIndex((r) => r.card.key === active);
+  const order = entryKeys(rows, query);
+  const active = highlight !== null && order.includes(highlight) ? highlight : (order[0] ?? null);
+  const activeIndex = order.indexOf(active ?? '');
 
   function dismiss() {
     if (done.current) return;
@@ -85,12 +91,13 @@ export function OmniBar({ cards, statuses, visibleKeys, onTake, onClose }: OmniB
   function take(index: number) {
     if (done.current || index < 0) return;
     done.current = true;
-    onTake(rows[index].card);
+    if (order[index] === SEARCH_ROW) onSearch(searchPath(query)!);
+    else onTake(rows[index].card);
   }
 
   function move(to: number) {
-    const row = rows[Math.min(Math.max(to, 0), rows.length - 1)];
-    if (row) setHighlight(row.card.key);
+    const key = order[Math.min(Math.max(to, 0), order.length - 1)];
+    if (key !== undefined) setHighlight(key);
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLInputElement>) {
@@ -161,7 +168,7 @@ export function OmniBar({ cards, statuses, visibleKeys, onTake, onClose }: OmniB
             aria-expanded="true"
             aria-controls={listId}
             aria-autocomplete="list"
-            aria-activedescendant={active === null ? undefined : rowId(active)}
+            aria-activedescendant={active === null ? undefined : active === SEARCH_ROW ? searchRowId : rowId(active)}
             onChange={(e) => {
               setQuery(e.target.value);
               setHighlight(null);
@@ -213,6 +220,25 @@ export function OmniBar({ cards, statuses, visibleKeys, onTake, onClose }: OmniB
               </li>
             );
           })}
+          {searchPath(query) !== null && (
+            <li
+              id={searchRowId}
+              role="option"
+              aria-selected={active === SEARCH_ROW}
+              ref={active === SEARCH_ROW ? activeRow : null}
+              className={`hatch-omni-row hatch-omni-row--search${active === SEARCH_ROW ? ' is-active' : ''}`}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => take(rows.length)}
+              onMouseMove={() => {
+                if (active !== SEARCH_ROW) setHighlight(SEARCH_ROW);
+              }}
+            >
+              <span className="hatch-omni-marker" aria-hidden="true">
+                {active === SEARCH_ROW ? '❯' : ''}
+              </span>
+              <span className="hatch-omni-title">Search everything for “{query.trim()}”</span>
+            </li>
+          )}
         </ul>
 
         <div className="hatch-omni-status">

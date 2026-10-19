@@ -7,6 +7,7 @@ import {
   isSearching,
   matchedWords,
   readSearch,
+  searchPath,
   searchRequest,
   statusPath,
   writeSearch,
@@ -186,5 +187,27 @@ describe('matchedWords', () => {
 describe('statusPath', () => {
   it('links to the search page filtered by status', () => {
     expect(statusPath(7)).toBe('/search?statusId=7');
+  });
+});
+
+describe('searchPath', () => {
+  it('is null for a blank query', () => {
+    expect(searchPath('')).toBeNull();
+  });
+
+  it('is null for a whitespace-only query', () => {
+    expect(searchPath('   ')).toBeNull();
+  });
+
+  it('links to the search page with the query', () => {
+    expect(searchPath('ha 99')).toBe('/search?q=ha+99');
+  });
+
+  it('trims the query', () => {
+    expect(searchPath(' sync bug ')).toBe('/search?q=sync+bug');
+  });
+
+  it('encodes a query with special characters rather than splitting it', () => {
+    expect(searchPath('a&b=c')).toBe('/search?q=a%26b%3Dc');
   });
 });

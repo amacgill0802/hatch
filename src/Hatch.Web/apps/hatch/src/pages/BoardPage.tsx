@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   DndContext,
   DragOverlay,
@@ -131,6 +131,7 @@ export function BoardPage() {
   const [directory, setDirectory] = useState<AssigneeDirectory | null>(null);
   const [filing, setFiling] = useState(false);
   const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
   /* Only two halves of the filter outlive the page: the types are in the
      browser's storage and the project is in the URL - see changeFilter below -
      so each is read once here, on the way into local state, rather than off
@@ -535,6 +536,12 @@ export function BoardPage() {
     }
   };
 
+  const onSearch = (path: string) => {
+    setGoing(false);
+    stopLinger();
+    navigate(path);
+  };
+
   const onDragStart = ({ active }: DragStartEvent) => {
     stopLinger();
     setFound(null);
@@ -715,6 +722,7 @@ export function BoardPage() {
           statuses={board.statuses}
           visibleKeys={visibleKeys}
           onTake={onTake}
+          onSearch={onSearch}
           onClose={() => setGoing(false)}
         />
       )}

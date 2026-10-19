@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { GO_TO_LIMIT, goToRows, goToStatus, keepHighlight, whereOnBoard } from './goTo';
+import { GO_TO_LIMIT, SEARCH_ROW, entryKeys, goToRows, goToStatus, keepHighlight, whereOnBoard } from './goTo';
 import type { IssueCard, Status } from '../types';
 
 /* Spread onto rather than written whole, so a new field on IssueCard is one
@@ -185,6 +185,21 @@ describe('keepHighlight', () => {
 
   it('is null when there are no rows', () => {
     expect(keepHighlight([], 'AER-1')).toBeNull();
+  });
+});
+
+describe('entryKeys', () => {
+  it('lists the rows then the search row, for a non-blank query', () => {
+    const rows = goToRows(numbered('AER', 1, 2, 3), 'aer').rows;
+    expect(entryKeys(rows, 'aer')).toEqual(['AER-1', 'AER-2', 'AER-3', SEARCH_ROW]);
+  });
+
+  it('is just the search row when nothing matches a non-blank query', () => {
+    expect(entryKeys([], 'zzz')).toEqual([SEARCH_ROW]);
+  });
+
+  it('is empty for a blank query', () => {
+    expect(entryKeys([], '  ')).toEqual([]);
   });
 });
 
