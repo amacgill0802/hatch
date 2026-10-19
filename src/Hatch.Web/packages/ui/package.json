@@ -14,6 +14,7 @@
     "./base.css": "./src/base.css",
     "./menuState": "./src/components/menuState.ts",
     "./calloutPlacement": "./src/components/calloutPlacement.ts",
+    "./calloutSubject": "./src/components/calloutSubject.ts",
     "./standalone/topbar": "./src/standalone/topbar.ts"
   },
   "dependencies": {

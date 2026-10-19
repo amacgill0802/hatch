@@ -17,11 +17,13 @@ import type {
 import { createMenuBar } from './menuState';
 import type { MenuBar as CalloutController } from './menuState';
 import { placeCallout } from './calloutPlacement';
+import { openSubject } from './calloutSubject';
 import './Callout.css';
 
 interface GroupValue {
   controller: CalloutController;
   suspended: boolean;
+  subjects: Map<string, string>;
 }
 
 const GroupContext = createContext<GroupValue | null>(null);
@@ -43,17 +45,33 @@ export interface CalloutGroupProps {
   /** Close whatever is open and keep every callout in the group closed until
       this clears. */
   suspended?: boolean;
+  /** Which registered subject's callout is open, by the name its
+      `useCallout(subject)` call registered - null while nothing is open,
+      while `suspended`, or when the open anchor registered none. */
+  onOpenChange?: (subject: string | null) => void;
   children: ReactNode;
 }
 
 /** Puts the callouts inside it on one controller, so at most one is open and
     moving from one anchor to the next switches at once. */
-function CalloutGroup({ suspended = false, children }: CalloutGroupProps) {
+function CalloutGroup({ suspended = false, onOpenChange, children }: CalloutGroupProps) {
   const [controller] = useState(newController);
+  const [subjects] = useState(() => new Map<string, string>());
   useEffect(() => {
     if (suspended) controller.close();
   }, [suspended, controller]);
-  return <GroupContext.Provider value={{ controller, suspended }}>{children}</GroupContext.Provider>;
+
+  const openId = useSyncExternalStore(controller.subscribe, () => controller.openId, () => null);
+  const subject = openSubject(openId, suspended, subjects);
+  const report = useRef(onOpenChange);
+  report.current = onOpenChange;
+  useEffect(() => {
+    report.current?.(subject);
+  }, [subject]);
+
+  return (
+    <GroupContext.Provider value={{ controller, suspended, subjects }}>{children}</GroupContext.Provider>
+  );
 }
 
 export interface UseCallout {
@@ -87,7 +105,7 @@ export interface UseCallout {
  * All timing and one-open-per-group live in `menuState.ts`; this is the DOM
  * around it.
  */
-export function useCallout(): UseCallout {
+export function useCallout(subject?: string): UseCallout {
   const group = useContext(GroupContext);
   const [own] = useState(() => (group ? null : newController()));
   const controller = group?.controller ?? own!;
@@ -102,6 +120,14 @@ export function useCallout(): UseCallout {
   const open = isOpen && !suspended;
 
   useEffect(() => () => controller.close(id), [controller, id]);
+
+  useEffect(() => {
+    if (!group || subject === undefined) return;
+    group.subjects.set(id, subject);
+    return () => {
+      group.subjects.delete(id);
+    };
+  }, [group, id, subject]);
 
   // Document-level: on the board the keyboard focus is on a different element
   // from the anchor, so neither element's own handlers would hear these.
