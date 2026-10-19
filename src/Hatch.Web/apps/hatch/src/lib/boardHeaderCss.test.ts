@@ -57,9 +57,10 @@ describe('the board header at phone width', () => {
     expect(search['min-width']).toBe('0');
   });
 
-  it('sizes Filters, the queue control and the view toggle to the same facet height', () => {
+  it('sizes Filters, the queue control, flow-viz and the view toggle to the same facet height', () => {
     expect(declarationsWithin('max-width: 40rem', '.hatch-board-filters-more > summary')['height']).toBe('var(--facet-h)');
     expect(declarationsWithin('max-width: 40rem', '.hatch-queue-control')['height']).toBe('var(--facet-h)');
+    expect(declarationsWithin('max-width: 40rem', '.hatch-flow-viz-control')['height']).toBe('var(--facet-h)');
     expect(declarationsWithin('max-width: 40rem', '.hatch-board-view-toggle')['height']).toBe('var(--facet-h)');
   });
 });
