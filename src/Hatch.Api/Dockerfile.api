@@ -38,7 +38,12 @@ RUN npm --prefix src/Hatch.Web ci
 COPY src/Hatch.Web src/Hatch.Web
 ARG HATCH_REVISION
 ARG HATCH_SEQUENCE
-ENV HATCH_REVISION=$HATCH_REVISION HATCH_SEQUENCE=$HATCH_SEQUENCE
+# Where this repository publishes its setup guide (site/setup.md), stamped into
+# index.html beside the revision for the gear's Setup Prompt and the Docs page.
+# publish.yml supplies it; a local `docker compose up` does not, and the board
+# then offers no setup line rather than one that names somebody else's site.
+ARG HATCH_SETUP_GUIDE
+ENV HATCH_REVISION=$HATCH_REVISION HATCH_SEQUENCE=$HATCH_SEQUENCE HATCH_SETUP_GUIDE=$HATCH_SETUP_GUIDE
 RUN npm --prefix src/Hatch.Web run build --workspaces --if-present
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build-env

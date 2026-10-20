@@ -4,6 +4,7 @@ import DOMPurify from 'dompurify';
 import { PageHeader } from '@hatch/ui';
 import { docLinkTarget, hashId, isPlainPrimaryClick, renderDocs } from '../lib/docs';
 import { usePhone } from '../lib/viewport';
+import { DocsSetupPrompt } from '../components/SetupPromptBox';
 // Relative on purpose: Vite refuses a "/hatch-at-home.md" specifier into public/.
 // The file stays where it is, so it is still served at /apps/hatch/hatch-at-home.md.
 import source from '../../public/hatch-at-home.md?raw';
@@ -62,6 +63,9 @@ export function DocsPage() {
   return (
     <div className="hatch-page">
       <PageHeader title={title} />
+      {/* First under the title, because bringing somebody on is the thing a
+          reader of this page is most likely to want to pass along. */}
+      <DocsSetupPrompt />
       {/* A direct child of .hatch-page, which caps its children at --measure. */}
       <div className="hatch-docs">
         {/* Plain anchors, not <Link>: a router link would turn a fragment into a route change. */}

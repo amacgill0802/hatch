@@ -117,6 +117,32 @@
   color: var(--muted);
 }
 
+/* The gear's Setup Prompt row: a <button> wearing .hatch-menu__item (see
+   NavSetupPrompt.tsx for why it is not a Menu.Item), so it is reset to look
+   like the links around it - full width, left-aligned, the panel's own type -
+   with the copy mark and, after a press, a muted word saying what happened. */
+.hatch-setup-prompt {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  border: none;
+  background: none;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.hatch-setup-prompt__icon {
+  flex: none;
+}
+
+.hatch-setup-prompt__said {
+  margin-inline-start: auto;
+  color: var(--muted);
+  font-size: var(--t-label);
+}
+
 /* The build stamp at the foot of the gear's panel - a quiet statement of fact,
    the same register as .hatch-local-person, but a stack of muted lines rather
    than a single row, so it is its own rule rather than that class reused.
@@ -3166,6 +3192,29 @@ input.hatch-inline-title-input {
    comes first in the markup, so both children name their grid cell. top: 0 is
    the sticky edge because .hatch-page is the scrollport. Heading sizes come from
    base.css and are not restated. */
+/* The setup line at the top of the Docs page: the house's note box, on the
+   page's tokens like every other .hatch-docs rule. */
+.hatch-docs-setup {
+  margin-bottom: var(--sp-6);
+  padding: var(--sp-3) var(--sp-4);
+  border: thin solid var(--line);
+  border-radius: var(--r-ctl);
+  background: var(--card);
+}
+
+.hatch-docs-setup__lead {
+  margin: 0 0 var(--sp-2);
+}
+
+.hatch-docs-setup .hatch-command {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.hatch-docs-setup .hatch-command code {
+  overflow-wrap: anywhere;
+}
+
 .hatch-docs {
   display: grid;
   grid-template-columns: minmax(0, 68ch) minmax(12rem, 16rem);

@@ -14,14 +14,20 @@ one ticket at a time, all night if you let it.
 This page takes you from nothing to a board running on your machine and an
 agent working it from your terminal. Ten minutes if the downloads are quick.
 
+**Not a developer?** With a Claude plan and Claude Code on this machine
+([what you need](#before-you-paste)), paste this one line into Claude and it
+walks you through the rest, doing the typing:
+
+```
+Set me up with Hatch: {{ '/setup/' | absolute_url }}
+```
+
 </div>
 
-## Not a developer? Paste one line into Claude
+## Before you paste
 
-If you are not a developer, Claude can set Hatch up for you: you paste one line
-and it walks you through, doing the typing.
-
-**Before you paste**
+If you are not a developer, Claude can set Hatch up for you: you paste the one
+line above and it walks you through. It needs two things first.
 
 - **A Claude plan.** Pro, Max, Team or Enterprise, or a Console account. The
   free claude.ai plan does not include Claude Code.
@@ -33,14 +39,9 @@ and it walks you through, doing the typing.
   `curl -fsSL https://claude.ai/install.sh | bash` on macOS and Linux, or
   `irm https://claude.ai/install.ps1 | iex` in PowerShell.
 
-Then paste this into Claude:
-
-```
-Set me up with Hatch: {{ '/setup/' | absolute_url }}
-```
-
-Claude reads the guide and takes it from there. To do it yourself, the steps
-below are the same path.
+Then paste the line at the top of this page into Claude. Claude reads the
+guide and takes it from there. To do it yourself, the steps below are the same
+path.
 
 <ul class="cards">
   <li><a href="{{ '/how-to-hatch/' | relative_url }}">How to Hatch</a><span>Playbooks, the order work is taken in, and where a person is the one who moves things.</span></li>
