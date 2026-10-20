@@ -8,6 +8,7 @@ import { NavAttention } from './components/NavAttention';
 import { NavBuild } from './components/NavBuild';
 import { NavLocalPerson } from './components/NavLocalPerson';
 import { NavOvernight } from './components/NavOvernight';
+import { NavSetupPrompt } from './components/NavSetupPrompt';
 import { NavUtilization } from './components/NavUtilization';
 import { OvernightProvider } from './components/OvernightProvider';
 import { PrimaryNav } from './components/PrimaryNav';
@@ -121,6 +122,9 @@ function AppShell() {
                   panel above, from navRows, so it is drawn here only on the
                   desk, where the primary nav has no room for it behind a menu. */}
               {!isPhone && <Menu.Item as={NavLink} to="/docs">Docs</Menu.Item>}
+              {/* The line that brings somebody new on, one press from any page.
+                  Absent from a build stamped with no setup guide. */}
+              <NavSetupPrompt />
               {me ? (
                 <>
                   <hr className="hatch-menu__divider" />

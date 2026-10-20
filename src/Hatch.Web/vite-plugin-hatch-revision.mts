@@ -29,6 +29,13 @@
  * through; publish.yml computes them) rather than from git, so a local
  * `npm run build` needs no repository and honestly reports `dev`.
  *
+ * **It also stamps where the setup guide is**, as `hatch-setup-guide`, when
+ * the build was told (HATCH_SETUP_GUIDE; publish.yml asks GitHub for this
+ * repository's Pages site). It is here because this is the one place a build
+ * fact reaches index.html, and index.html rather than the bundle for the
+ * reason above. Untold, there is no meta at all rather than a made-up one:
+ * apps/hatch/src/lib/setupPrompt.ts reads its absence as "offer no line".
+ *
  * **This file is ESM by its extension, not by its package.** It sits next to
  * the workspace root's package.json, which deliberately carries no `"type"`.
  * `.mts` (and the `.mjs` specifier the apps import it by) is always an ES
@@ -69,11 +76,21 @@ interface RevisionPlugin {
 export function hatchRevision({ app }: HatchRevisionOptions): RevisionPlugin {
   const revision = process.env.HATCH_REVISION || DEV_REVISION
   const sequence = process.env.HATCH_SEQUENCE || DEV_SEQUENCE
+  const setupGuide = process.env.HATCH_SETUP_GUIDE?.trim() || null
 
   return {
     name: 'hatch-revision',
     transformIndexHtml() {
       return [
+        ...(setupGuide
+          ? [
+              {
+                tag: 'meta',
+                attrs: { name: 'hatch-setup-guide', content: setupGuide },
+                injectTo: 'head-prepend' as const,
+              },
+            ]
+          : []),
         {
           tag: 'meta',
           attrs: { name: 'hatch-revision', content: revision },

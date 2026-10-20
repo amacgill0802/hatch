@@ -28,6 +28,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+      # Read-only, for "Find the setup guide" below.
+      pages: read
 
     steps:
       # ref pins this checkout to the commit "Build and test" actually ran
@@ -51,6 +53,20 @@ jobs:
         id: revision
         run: |
           echo "sequence=$(git rev-list --count HEAD)" >> "$GITHUB_OUTPUT"
+
+      # Where this repository's Pages site publishes site/setup.md, asked of
+      # GitHub rather than written down (docs/ethos.md), so a fork's image hands
+      # out a line that sets people up from the fork, custom domain or not. The
+      # board stamps it into index.html for the gear's Setup Prompt and the top
+      # of the Docs page. A repository with Pages off answers 404, the address
+      # is empty, and the board offers no line - never a failed publish.
+      - name: Find the setup guide
+        id: guide
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          site=$(gh api "repos/${{ github.repository }}/pages" --jq .html_url 2>/dev/null || true)
+          echo "address=${site:+${site%/}/setup/}" >> "$GITHUB_OUTPUT"
 
       - name: Log in to the Container registry
         uses: docker/login-action@v4
@@ -80,6 +96,7 @@ jobs:
           build-args: |
             HATCH_REVISION=${{ github.event.workflow_run.head_sha }}
             HATCH_SEQUENCE=${{ steps.revision.outputs.sequence }}
+            HATCH_SETUP_GUIDE=${{ steps.guide.outputs.address }}
 
   # The runner in a container, published beside the two images the local stack
   # already names.
